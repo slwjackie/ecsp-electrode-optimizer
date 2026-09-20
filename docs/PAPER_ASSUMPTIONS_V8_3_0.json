@@ -1,0 +1,253 @@
+{
+  "schema": "ecsp.paper-assumptions/v1",
+  "release": "8.3.0-PaperReactiveEuler-Experimental",
+  "source": {
+    "title": "전기 제어 고체 추진제 연소 메커니즘의 수치적 해석",
+    "doi": "10.6108/KSPE.2024.28.3.031",
+    "reviewed_scope": "all 10 PDF pages, equations, captions and references"
+  },
+  "verdict": "NOT_FULLY_VERIFIED",
+  "paper_explicit": [
+    {
+      "item": "domain",
+      "value": "10 mm by 10 mm 2-D",
+      "source": "p.32"
+    },
+    {
+      "item": "reactive_Euler_state_and_flux",
+      "value": "U=[rho,rho*u_x,rho*u_y,rho*E,rho*lambda] and Eq.(1) flux/source structure",
+      "source": "p.33 Eq.(1)"
+    },
+    {
+      "item": "solid_thermal_decomposition_structure",
+      "value": "rho*C*T_t=k*laplacian(T)-r_alpha*Q_r and Arrhenius form",
+      "source": "p.34 Eq.(2)",
+      "warning": "printed units are dimensionally inconsistent"
+    },
+    {
+      "item": "Tait_mechanical_EOS",
+      "value": "pressure and sound-speed form",
+      "source": "p.34 Eq.(3)"
+    },
+    {
+      "item": "material_level_set",
+      "value": "phi_t+u_x*phi_x+u_y*phi_y=0; phi<0 inside and phi>0 outside",
+      "source": "p.34 Eq.(4)"
+    },
+    {
+      "item": "spatial_temporal_family",
+      "value": "WENO and third-order Runge-Kutta",
+      "source": "p.34"
+    },
+    {
+      "item": "grid_family",
+      "value": [50, 100, 150, 200],
+      "unit": "cells per axis",
+      "source": "p.34"
+    },
+    {
+      "item": "MPI_concept",
+      "value": "domain decomposition and virtual-cell exchange",
+      "source": "p.35"
+    },
+    {
+      "item": "reaction_species_semantics",
+      "value": "0 before reaction and 1 after reaction",
+      "source": "p.35-p.38"
+    },
+    {
+      "item": "reported_regression_velocity",
+      "value": 3.6094,
+      "unit": "mm/s",
+      "source": "p.38"
+    },
+    {
+      "item": "experimental_regression_velocity",
+      "value": 3.3696,
+      "unit": "mm/s",
+      "source": "p.38"
+    }
+  ],
+  "unresolved_required": [
+    "initial rho, p/T, u_x, u_y, lambda and alpha fields",
+    "external boundary conditions",
+    "electrode geometry dimensions and contact thermal/electrical conditions",
+    "Tait A, B, N and rho0 for the ECSP material",
+    "caloric EOS and reference energy",
+    "reaction omega(lambda,T), Q and all kinetic coefficients",
+    "A_alpha, E_alpha, f(alpha), Q_r and a dimensionally consistent rate basis",
+    "potential governing equation and electrical boundary conditions",
+    "measured conductivity and electric-potential fields",
+    "molar electrochemical rate needed to convert H[J/mol] to W/m^3",
+    "material interface jump conditions and EOS/property assignment",
+    "WENO order, variant, reconstruction variables and epsilon",
+    "Riemann solver or flux splitting",
+    "third-order Runge-Kutta tableau",
+    "CFL number and time-step/end-time history",
+    "flux/source splitting",
+    "level-set reinitialization equation and frequency",
+    "MPI topology, halo width, corner exchange and message order",
+    "overlapping-grid construction",
+    "Species contour threshold, interpolation, correspondence and fit interval",
+    "raw numerical and experimental time series"
+  ],
+  "dimension_conflicts": [
+    {
+      "equation": 1,
+      "printed": "rho*H with H described in J/mol",
+      "required_for_SI": "H_echem[J/mol] * molar_rate[mol/(m^3*s)]",
+      "implementation": "accept only an explicit W/m^3 field or corrected BV callback",
+      "provenance": "ASSUMED_NOT_FROM_PAPER"
+    },
+    {
+      "equation": 2,
+      "printed": "r_alpha=dalpha/dt with a surface molar-rate unit, multiplied by Q_r[J/kg]",
+      "required_for_SI": "for dimensionless alpha, -rho*Q_r*dalpha/dt",
+      "implementation": "dimensionless alpha-rate closure",
+      "provenance": "ASSUMED_NOT_FROM_PAPER"
+    },
+    {
+      "equation": 1,
+      "printed": "ambiguous total energy description",
+      "required_for_SI": "E is specific total energy J/kg",
+      "implementation": "specific total energy",
+      "provenance": "DIMENSIONAL_INFERENCE"
+    }
+  ],
+  "algorithm_assumptions": [
+    {
+      "item": "caloric_closure",
+      "choice": "Tait cold energy plus constant cv",
+      "provenance": "ASSUMED_NOT_FROM_PAPER"
+    },
+    {
+      "item": "reaction_closure",
+      "choice": "one-step irreversible Arrhenius progress",
+      "provenance": "ASSUMED_NOT_FROM_PAPER"
+    },
+    {
+      "item": "spatial_reconstruction",
+      "choice": "component-wise WENO5-JS reconstruction of primitive rho,u,v,T,lambda values derived from conservative cell averages; each left/right trace uses an independent affine normalization over its exact five-cell stencil",
+      "warning": "the derived primitive values are not exact primitive-variable cell averages and this is not characteristic reconstruction",
+      "provenance": "ASSUMED_NOT_FROM_PAPER"
+    },
+    {
+      "item": "riemann_solver",
+      "choice": "HLL",
+      "provenance": "ASSUMED_NOT_FROM_PAPER"
+    },
+    {
+      "item": "time_integrator",
+      "choice": "Shu-Osher SSPRK(3,3)",
+      "provenance": "ASSUMED_NOT_FROM_PAPER"
+    },
+    {
+      "item": "source_coupling",
+      "choice": "source evaluated at every SSPRK stage",
+      "provenance": "ASSUMED_NOT_FROM_PAPER"
+    },
+    {
+      "item": "positivity_fallback",
+      "choice": "local first-order HLL only on an invalid reconstructed face",
+      "provenance": "ASSUMED_NOT_FROM_PAPER",
+      "diagnostic": "count, fraction and maximum absolute raw conservative-component correction",
+      "warning": "the correction components carry mixed physical units and are not a dimensionless error norm"
+    },
+    {
+      "item": "external_boundary",
+      "choice": "explicit outflow or periodic",
+      "provenance": "ASSUMED_NOT_FROM_PAPER"
+    },
+    {
+      "item": "level_set_gradient",
+      "choice": "finite-difference WENO5-JS upwind",
+      "provenance": "ASSUMED_NOT_FROM_PAPER"
+    },
+    {
+      "item": "level_set_reinitialization",
+      "choice": "optional Sussman/Godunov PDE",
+      "provenance": "ASSUMED_NOT_FROM_PAPER",
+      "diagnostic": "zero-contour area drift and sign-change count"
+    },
+    {
+      "item": "MPI_decomposition",
+      "choice": "row-wise with a three-cell WENO halo",
+      "provenance": "ASSUMED_NOT_FROM_PAPER"
+    },
+    {
+      "item": "front_thresholds",
+      "choice": [0.3, 0.5, 0.7],
+      "provenance": "ASSUMED_NOT_FROM_PAPER"
+    },
+    {
+      "item": "material_interface_in_runnable_demo",
+      "choice": "passive level-set with a single EOS",
+      "provenance": "ASSUMED_NOT_FROM_PAPER",
+      "warning": "phi does not choose phase, EOS, properties, source masks or interface jumps; this is not a ghost-fluid or overlapping-grid reproduction"
+    }
+  ],
+  "implemented_numerical_safety_guards": [
+    {
+      "item": "Tait_N_near_one",
+      "implementation": "N=1 analytic logarithmic limit and expm1((N-1)*log(rho/rho0))/(N-1) for nearby N",
+      "purpose": "avoid cancellation in cold specific energy",
+      "paper_status": "IMPLEMENTATION_SAFETY_NOT_SPECIFIED_BY_PAPER"
+    },
+    {
+      "item": "reference_energy_gauge_covariance",
+      "implementation": "reconstruct primitive fields and rebuild conservative face states before HLL",
+      "purpose": "avoid component-wise conservative-energy weights changing under an arbitrary Tait reference-energy offset",
+      "paper_status": "ASSUMED_NOT_FROM_PAPER"
+    },
+    {
+      "item": "stable_WENO_epsilon",
+      "implementation": "scale nonlinear-weight denominators by their pointwise minimum instead of directly forming inverse squares",
+      "purpose": "avoid overflow for very small positive epsilon",
+      "paper_status": "IMPLEMENTATION_SAFETY_NOT_SPECIFIED_BY_PAPER"
+    },
+    {
+      "item": "reaction_thermal_headroom",
+      "implementation": "limit explicit flow and solid reaction steps by both progress headroom and temperature-floor headroom for cooling signed heat",
+      "purpose": "prevent a valid pre-stage state from stepping below the configured temperature reject floor",
+      "paper_status": "ASSUMED_NOT_FROM_PAPER"
+    },
+    {
+      "item": "electrical_heat_sign",
+      "implementation": "reject any stage where joule_heat plus electrochemical_heat is negative",
+      "purpose": "keep the current provider contract limited to electrical heating rather than unbounded cooling",
+      "paper_status": "CURRENT_IMPLEMENTATION_RESTRICTION"
+    },
+    {
+      "item": "resource_preflight",
+      "implementation": "versioned history and grid-working-set planning guards plus runtime measured stage-metadata accounting",
+      "purpose": "reject configured resource excess before major allocation or accepted-history commit",
+      "warning": "planning estimates and Python-object measurements do not guarantee OS RSS, allocator fragmentation, third-party workspaces or instantaneous peak memory"
+    }
+  ],
+  "current_structural_limitations": [
+    "material_level_set is transported but does not select phase, EOS, properties, source masks or interface jump conditions",
+    "Eq. (1) Euler and Eq. (2) condensed states advance independently over the full grid with no heat, mass or momentum exchange",
+    "electrical heat is applied to Eq. (1) only and is not duplicated in Eq. (2)",
+    "Species-front output is a fixed positive-x ray displacement diagnostic, not true local-normal speed; multiple-intersection rays are excluded",
+    "the row-partition and halo API is not integrated into the ReactiveSolver time loop and actual MPI ranks are untested",
+    "no reactive CUDA, sm_80, A100 or batch backend is implemented",
+    "finite conservation residuals are diagnostic-only because no calibrated absolute and scale-aware tolerances exist; non-finite residuals fail closed",
+    "geometry_ranking_eligible is always false until a concrete corrected BC adapter enforces potential convergence, current balance and BV residuals"
+  ],
+  "forbidden_hidden_substitutions": [
+    "no default material constants in solver constructors",
+    "no Butler-Volmer in paper_faithful mode",
+    "no constant extended electrical source when its callback is absent",
+    "no onset-triggered electrical source shutdown",
+    "no reaction-progress contour used as material_level_set",
+    "no cell-state density/pressure/temperature/progress clipping",
+    "no legacy area/front-length metric labelled as paper regression velocity",
+    "no fixed positive-x ray displacement labelled as true local-normal regression velocity",
+    "no finite conservation residual labelled passed without calibrated absolute and scale-aware tolerances",
+    "no electrode-geometry ranking eligibility from self-attested callback metadata",
+    "no CUDA, A100, MPI, paper reproduction or experimental pass claim without execution"
+  ],
+  "runnable_assumed_configuration": "config/paper_faithful_assumed_v8_3_0.yaml",
+  "strict_fail_closed_configuration": "config/paper_faithful_required_inputs_v8_3_0.yaml",
+  "extended_configuration": "config/ecsp_extended_reactive_v8_3_0.yaml"
+}

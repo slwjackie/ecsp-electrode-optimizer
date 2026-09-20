@@ -1,0 +1,5 @@
+{
+  "status": "failed",
+  "errorType": "PropagationCandidateNumericalError",
+  "message": "Nonphysical local thermochemical endpoint: nonfinite_state_count=0, nonfinite_state_cell_count=0, nonfinite_temperature_count=0, alpha1_min=8.318608801965313e-10, alpha1_max=1.0, alpha2_min=1.3750239970435866e-18, alpha2_max=1.0, cation_min=3.0146024565524954e-14, anion_min=3.0146024565524954e-14, pva_min=0.0, final_temperature_min_K=298.1500003349062, final_temperature_max_K=2500.0012922586584, thermo_tmin_K=250.0, thermo_tmax_K=2500.0, maximum_alpha_bound_excess=0.0, maximum_negative_inventory_violation=0.0, offending_flattened_cell_indices={'temperature_above_tmax_tolerance': 32337}"
+}

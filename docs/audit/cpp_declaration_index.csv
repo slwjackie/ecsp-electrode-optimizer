@@ -1,0 +1,601 @@
+﻿file,line,source,interpretation
+cpp/bc_native/bc_engine.cpp,150,"int maxit=get_int(cfg,""outer_max"",120),minit=get_int(cfg,""outer_min"",2);double relax=get(cfg,""outer_relax"",.35);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,310,"TORCH_CHECK(std::abs(xs[0].item<double>())<=1e-12&&std::abs(xs[item.size-1].item<double>()-1)<=1e-12,",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,337,"double linear_rtol=get(cfg,""linear_rtol"",1e-9),linear_atol=get(cfg,""linear_atol"",1e-12);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,338,"double outer_relax=get(cfg,""outer_relax"",.35),outer_phi_tol=get(cfg,""outer_phi_tol"",.01),outer_current_tol=get(cfg,""outer_current_tol"",.005);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,339,"double balance_rel=get(cfg,""balance_rel"",.005),balance_abs=get(cfg,""balance_abs"",1e-12);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,345,"double end=get(cfg,""end"",2),eval=get(cfg,""evaluation"",end),snapshot=get(cfg,""snapshot"",.02),electrical_interval=get(cfg,""electrical_interval"",.0025);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,347,"double evaluation_end_tol=64*std::max(std::numeric_limits<double>::denorm_min(),",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,353,"double electrical_step_tol=64*std::numeric_limits<double>::epsilon()*std::max(1.,std::abs(electrical_step_ratio));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,359,"double evaluation_tol=64*std::numeric_limits<double>::epsilon()*std::max(1.,std::abs(evaluation_ratio));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,363,"double onset_T=get(cfg,""onset_T"",523.15),onset_X=get(cfg,""onset_X"",.01),onset_A=get(cfg,""onset_area"",.01);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,365,constexpr int NH=24;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,366,"double max_steps_raw=get(cfg,""max_steps"",100000);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,367,"double max_history_bytes=get(cfg,""max_history_bytes"",16.0*1024.0*1024.0*1024.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,374,"double ratio_tol=64*std::numeric_limits<double>::epsilon()*std::max(1.,std::abs(ratio));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,384,"double stop_value=get(cfg,""stop_on_onset"",0),save_value=get(cfg,""save_handoff"",0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,393,long double snapshot_values=static_cast<long double>(4)*snapshot_count_upper*,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,418,"double nextsnapshot=0;int solveevery=static_cast<int>(electrical_step_nearest),executed=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,420,"double initial_lp_mass=p.m_lp*p.lp0,initial_pva_mass=p.m_pva*p.pva0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,421,"double initialmass=initial_lp_mass+initial_pva_mass,xi=mn(p.lp0/1.45,p.pva0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,432,"double thermal_cfl_tolerance=64*std::numeric_limits<double>::epsilon()*std::max(1.,p.thermal_cfl_safety);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,440,double step_dt=step==steps-1?end-step_start:p.dt;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,441,double t=step==steps-1?end:step_start+step_dt;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_engine.cpp,518,double remaining_mass_tolerance=128*std::numeric_limits<double>::epsilon();,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_ops_cpu.cpp,24,"const int64_t*cp=ci.data_ptr<int64_t>();const bool*ap=an.data_ptr<bool>(),*act=a.data_ptr<bool>();const double*sp=s.data_ptr<double>(),*tp=tr.data_ptr<double>(),*vp=v.data_ptr<double>();double*op=out.data_ptr<double>();",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,15,"constexpr int NS=10, NP=8, ND=9, NCONTACT=9;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,24,"struct Property { int mode=0,offset=0,size=0; double value=0,tref=298.15,ea=0; };",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,25,"struct Kinetic { int offset=0,size=0; double heat=0; };",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,26,"struct Channel {double eq=0,j0=0,alpha=.5,n=1,reverse=1,heat=0,stoich=0;};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,30,"double R=8.314462618,F=96485.33212,zp=1,zm=-1,dx=1,dt=.00025;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,31,"double sigma_min=1e-4,sigma_max=.5,initial_T=298.15,ambient=298.15;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,32,"double cp0=0,cm0=0,water0=0,lp0=0,pva0=0,m_lp=0,m_pva=0,density=1000;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,33,"double w1=2./3,w2=1./3,rate_max=1000,layer=.001;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,34,"double min_T=200,max_T=3000,convection=0,emissivity=0,sb=5.670374419e-8;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,35,"double min_fraction=1e-6,max_multiple=2,max_delta=.05,lim_rtol=1e-7,conc_floor=1e-12;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,36,"double cathode=0,exp_limit=45,local_abs=.01,local_rel=1e-4,roundoff=2;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,37,"double conductivity_floor=1e-12,slope_floor=1e-12,contact_normal=3e-5;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,38,double thermal_cfl_safety=1;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,94,"BC_HD double lookup(double x,const double* table,int offset,int n,int yrow=1){",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,107,"double ea=lookup(a,table,k.offset,k.size,1),g=lookup(a,table,k.offset,k.size,2);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,112,"double T=mx(s[i],1.);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,113,"double dp=property(T,p.prop[0],table,p.R),dm=property(T,p.prop[1],table,p.R),dw=property(T,p.prop[2],table,p.R);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,114,"double si=p.F*p.F/(p.R*T)*(p.zp*p.zp*dp*mx(s[total+i],0.)+p.zm*p.zm*dm*mx(s[2*total+i],0.));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,115,"double se=p.augmented?property(T,p.prop[3],table,p.R):0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,139,"double scale=mx(mx(abs_fp64(raw),abs_fp64(d)),mx(abs_fp64(old),lower));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,141,double delta_error=abs_fp64(d-raw);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,149,"double bound_scale=mx(mx(abs_fp64(nu),abs_fp64(ru)),lower);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,151,double bound_error=abs_fp64(nu-ru);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,174,"double T=s[i],a1=s[4*total+i],a2=s[5*total+i],oldx=s[6*total+i];",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,175,"double r1=kinetic(a1,T,p.kin[0],table,p.R),r2=kinetic(a2,T,p.kin[1],table,p.R);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,177,"double proposed_a1=clamp(a1+p.dt*r1,0,1),proposed_a2=clamp(a2+p.dt*r2,0,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,178,"double proposed_da1=mx(proposed_a1-a1,0),proposed_da2=mx(proposed_a2-a2,0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,179,"double dc=0,da=0,dw=0,conduct=0,thermal_face_sum=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,183,"double kface=harmonic(tr[7*total+i],tr[7*total+q]);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,187,"double tf=mx(.5*(T+s[q]),1.),dv=s[7*total+q]-s[7*total+i];",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,188,"double hp=harmonic(tr[i],tr[q]),hm=harmonic(tr[total+i],tr[total+q]),hw=harmonic(tr[2*total+i],tr[2*total+q]);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,198,"double nc=limit_update(s[total+i],dc,p.cp0,p,lc),na=limit_update(s[2*total+i],da,p.cm0,p,la);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,199,"double transported_water=limit_update(s[3*total+i],dw,p.water0,p,lw);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,200,double neutral=.5*(nc+na);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,201,"double lp_floor=mx(p.conc_floor,p.min_fraction*mx(p.cp0,p.cm0));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,202,"double water_floor=mx(p.conc_floor,p.min_fraction*p.water0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,204,"double requested_ec_lp=mx(heat[2*total+i]*p.dt,0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,205,"double accepted_ec_lp=mn(requested_ec_lp,mx(neutral-lp_floor,0));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,211,"double requested_ec_water=mx(heat[3*total+i]*p.dt,0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,212,"double accepted_ec_water=mn(requested_ec_water,mx(transported_water-water_floor,0));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,215,double lp_acceptance=requested_ec_lp>0?accepted_ec_lp/requested_ec_lp:1;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,216,double water_acceptance=requested_ec_water>0?accepted_ec_water/requested_ec_water:1;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,219,double accepted_echem_heat=heat[5*total+i]*water_acceptance+heat[6*total+i]*lp_acceptance;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,221,"double xi_max=mn(p.lp0/1.45,p.pva0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,222,double proposed_dx=p.w1*proposed_da1+p.w2*proposed_da2;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,224,"double pva_remaining=mx(p.pva0-xi_max*oldx,0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,225,"double maximum_dxi=mn(mx(neutral-lp_floor,0)/1.45,pva_remaining);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,229,"double xi_scale=proposed_dxi>0?clamp(maximum_dxi/proposed_dxi,0,1):1;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,230,"double accepted_da1=proposed_da1*xi_scale,accepted_da2=proposed_da2*xi_scale;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,231,"double na1=a1+accepted_da1,na2=a2+accepted_da2;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,232,"double nx=clamp(p.w1*na1+p.w2*na2,0,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,233,"double progress_increment=mx(nx-oldx,0),accepted_dxi=xi_max*progress_increment;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,241,"double accepted_r1=accepted_da1/p.dt,accepted_r2=accepted_da2/p.dt;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,242,double chem_energy=p.density*(p.kin[0].heat*accepted_da1+p.kin[1].heat*accepted_da2);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,243,"double loss=p.convection/p.layer*(T-p.ambient)+p.emissivity*p.sb/p.layer*(pow_fp64(T,4)-pow_fp64(p.ambient,4));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,245,double thermal_capacity=p.density*tr[6*total+i];,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,267,"eta=mx(eta,0);double kf=c.alpha*c.n*p.F/(p.R*T),kr=(1-c.alpha)*c.n*p.F/(p.R*T);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,268,"double rf=kf*eta,rr=-kr*eta,ef=exp_fp64(clamp(rf,-p.exp_limit,p.exp_limit)),er=exp_fp64(clamp(rr,-p.exp_limit,p.exp_limit));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,269,double j=c.j0*(cf*ef-(p.full_bv?c.reverse*er:0));,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,270,double d=c.j0*(cf*ef*kf*((rf>-p.exp_limit&&rf<p.exp_limit&&eta>0)?1:0),C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,277,"Channel w=p.ch[an?0:1],l=p.ch[an?2:3];double ew=mx(gap-w.eq,0),el=mx(gap-l.eq,0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,279,"double j=bw.j+bl.j,jb=G*mx(drop-gap,0),slope=bw.d+bl.d+G;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,280,"double physical=mn(p.local_abs>0?p.local_abs:DBL_MAX,p.local_rel>0?p.local_rel*mx(mx(abs_fp64(j),abs_fp64(jb)),1.):DBL_MAX);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,281,"double roundoff=.5*p.roundoff*DBL_EPSILON*(mx(abs_fp64(gap),1.)*abs_fp64(slope)+mx(abs_fp64(drop),1.)*abs_fp64(G));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,292,"double T=mx(s[i],1.),wf=p.water0>0?clamp(s[3*total+i]/p.water0,0,1):0,",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,296,"double G=mx(tr[5*total+i]/p.contact_normal,p.conductivity_floor/p.contact_normal);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,297,"double drop=mx(an?volts[b]-s[7*total+i]:s[7*total+i]-p.cathode,0),lo=0,hi=drop,gap=.5*drop;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,316,out[5*count+f]=double(used);out[6*count+f]=r.ew;out[7*count+f]=r.el;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,333,"double ex=-grad_dir(s+7*total,prop,i,i+1,i-1,col<p.n-1,col>0,p.dx);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,334,"double ey=-grad_dir(s+7*total,prop,i,i+p.n,i-p.n,row<p.n-1,row>0,p.dx);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,335,"double jdx=0,jdy=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,342,"double jx=tr[5*total+i]*ex+jdx,jy=tr[5*total+i]*ey+jdy;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,343,"double jm=sqrt_fp64(jx*jx+jy*jy),heat=0,rhs=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,351,int64_t j=nb[d];double eface=-(s[7*total+j]-s[7*total+i])/p.dx;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,352,"double johm=harmonic(tr[5*total+i],tr[5*total+j])*eface,jdiff=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/bc_scalar.h,371,"double v=coeff[i]*x[i];int64_t j=i%(int64_t(n)*n);int r=int(j/n),c=int(j%n);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/standalone.cpp,33,"constexpr const char* standard=""C++20"";",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/bc_native/standalone.cpp,35,"constexpr const char* standard=""C++17"";",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,22,double domain = 0.020;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,23,double layer = 0.001;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,24,double voltage = 260.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,25,double cathode_voltage = 0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,26,double dt = 2.5e-4;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,27,double end_time = 2.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,28,double eval_time = 2.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,29,double electrical_interval = 2.5e-3;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,30,double ignition_T = 622.15;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,31,double ignition_progress_guard = 0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,32,double ignition_rate_guard = 0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,36,double density = 1261.36;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,37,double cation0 = 3000.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,38,double anion0 = 3000.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,39,double water0 = 30000.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,40,double lp0 = 3000.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,41,double glycerol_pva_ratio = 0.5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,42,double boric_pva_ratio = 0.1;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,43,double effective_softening_T = 355.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,46,double R = 8.314462618;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,47,double F = 96485.33212;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,48,double zplus = 1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,49,double zminus = -1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,50,"double Dp_dry = 5e-15, Dm_dry = 3e-15;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,51,"double Dp_wet = 2e-13, Dm_wet = 1.5e-13;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,52,double Dw0 = 2e-10;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,53,"double Ea_Dp = 22000.0, Ea_Dm = 25000.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,54,double Tref = 298.15;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,55,double liquid_D_gain = 120.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,56,double water_activity_exp = 1.2;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,57,double glycerol_gain = 1.5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,58,double crosslink_penalty = 0.8;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,59,double concentration_min_fraction = 1e-6;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,60,double concentration_max_multiple = 2.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,61,double electroneutral_relax = 1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,62,double max_relative_concentration_change = 0.05;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,66,double sigma_e0 = 0.001;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,67,double sigma_e_temp_coeff = 0.006;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,68,double sigma_e_liquid_suppression = 0.98;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,69,"double sigma_min = 1e-4, sigma_max = 0.5;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,73,double transition_width = 15.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,74,double phase_relax_time = 0.08;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,75,double latent_heat = 0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,76,double fast_ion_liquid_threshold = 0.1;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,82,double diffusion_layer = 3e-5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,83,double reaction_layer_min = 3e-5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,84,double contact_normal_length = 3e-5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,85,double initial_contact_drop = 5.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,89,double activation_heat_fraction = 1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,90,double exp_limit = 45.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,91,double liquid_kinetics_gain = 40.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,92,double min_active_area = 0.02;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,95,"double Eeq=0, j0=1, alpha=0.5, reverse=1, n=1, km=1e-5;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,96,"double dH=0, water_stoich=0, salt_stoich=0, gas_yield=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,97,"double ref_activity=1, nernst_exp=-1;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,101,double activity_floor = 1e-6;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,102,"double activity_A = 0.2, activity_B = 1.0, activity_linear = 0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,103,double max_log10_gamma = 0.5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,104,double max_nernst_shift = 0.25;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,108,"double pass_form = 0.02, pass_remove=0.005, pass_jref=1000.0, pass_jexp=1.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,109,"double pass_T0=360.0, pass_Tw=25.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,111,"double gas_cov_form=0.2, gas_cov_detach=1.0, gas_source_ref=100.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,112,double gas_thermal_insulation=0.5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,116,"double robin_phi_tol=0.01, robin_current_tol=0.005, robin_balance_tol=0.005;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,117,double robin_relax=0.35;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,118,double robin_balance_abs=1e-12;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,119,"double gauge_margin=25.0, gauge_max_step=65.0, gauge_deriv_floor=1e-14;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,121,double gauge_relax=1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,123,"double local_abs_tol=0.01, local_rel_tol=1e-4;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,127,"double chem_A=5e9, chem_Ea=110000.0, chem_order=1.0, oxidizer_order=0.5;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,128,"double oxidizer_consume=0.25, chem_max_rate=50.0, chem_heat=200000.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,129,"double gas_molar_mass=0.03, gas_yield_mass=0.35, chem_activation_T=430.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,132,"double cp=2200.0, k=0.4, T0=298.15, Tamb=298.15, hconv=12.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,133,"double emissivity=0.85, sigma_sb=5.670374419e-8, Tmin=250.0, Tmax=2500.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,134,"double gas_D=3e-6, gas_loss=1.0, gas_max=5000.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,138,"double pcg_rtol_static=1e-10, pcg_rtol_coupled=1e-9, pcg_atol=1e-12;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,139,"double current_floor=1e-15, current_density_floor=1e-12;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,174,"auto legacy_rtol=m.find(""pcg_rtol"");if(legacy_rtol!=m.end()){std::istringstream ss(legacy_rtol->second);double v=0;ss>>v;if(v>0){c.pcg_rtol_static=v;c.pcg_rtol_coupled=v;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,263,"struct Transport {std::vector<double> Dp,Dm,Dw,sigi,sige,sig,waterAct,fast; explicit Transport(size_t N=0):Dp(N),Dm(N),Dw(N),sigi(N),sige(N),sig(N),waterAct(N),fast(N){}};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,264,"struct Electrical {std::vector<double> Ex,Ey,Jx,Jy,Jmag,Jox,Joy,Jdx,Jdy,qj,ionicFrac; explicit Electrical(size_t N=0):Ex(N),Ey(N),Jx(N),Jy(N),Jmag(N),Jox(N),Joy(N),Jdx(N),Jdy(N),qj(N),ionicFrac(N){}};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,268,"double rawA=0,rawC=0,totalI=0,mismatch=0,waterFrac=0,lpFrac=0,utilization=0,maxNernstShift=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,269,"int outerIters=0,gaugeIters=0,linearSolves=0; long long linearIterations=0; double gaugeOffset=0,balanceCombined=0; bool converged=false;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,272,"struct SolverDiag {int iterations=0; double relres=0; bool converged=false; std::string method=""cpp_fp64_pcg_jacobi_surface_contact"";};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,275,"static inline double harmonic(double a,double b){double sum=a+b; return (a>0&&b>0&&sum>0)?2*a*b/sum:0.0;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,276,static inline double sigmoid(double x){ if(x>=0){double e=std::exp(-x);return 1/(1+e);} double e=std::exp(x);return e/(1+e); },C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,279,"double sr=0.0, sc=0.0, count=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,293,"const double norm2=std::max(vr*vr+vc*vc,1e-20);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,294,"const double available=std::max((c.voltage-c.cathode_voltage)-2.0*c.initial_contact_drop,0.1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,297,const double projection=((r-cc.first)*vr+(col-cc.second)*vc)/norm2;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,298,"const double xi=clampd(projection,0.0,1.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,314,"const double T=std::max(s.T[i],1.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,315,"const double wa=clampd(s.water[i]/std::max(c.water0,1e-12),0,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,319,const double pa=std::exp(-c.Ea_Dp/c.R*(1/T-1/c.Tref));,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,320,const double ma=std::exp(-c.Ea_Dm/c.R*(1/T-1/c.Tref));,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,321,"const double fast=clampd((s.liquid[i]-c.fast_ion_liquid_threshold)/std::max(1-c.fast_ion_liquid_threshold,1e-30),0,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,322,const double phase_gain=1+c.liquid_D_gain*fast;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,323,const double plasticizer=1+c.glycerol_gain*c.glycerol_pva_ratio;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,324,const double crosslink=1/(1+c.crosslink_penalty*c.boric_pva_ratio);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,327,const double Dw=c.Dw0*std::exp(-12000/c.R*(1/T-1/c.Tref))*(1+4*fast);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,328,"const double sigi=c.F*c.F/(c.R*T)*(c.zplus*c.zplus*Dp*std::max(s.cp[i],0.0)+c.zminus*c.zminus*Dm*std::max(s.cm[i],0.0));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,329,"const double solid=std::max(1-c.sigma_e_liquid_suppression*s.liquid[i],0.01);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,330,const double sige=c.sigma_e0*std::exp(c.sigma_e_temp_coeff*(T-c.T0))*solid;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,355,"for(int r=0;r<n;r++)for(int col=0;col<n-1;col++){size_t a=g.id(r,col),b=g.id(r,col+1);if(g.prop[a]&&g.prop[b]){double dp=harmonic(t.Dp[a],t.Dp[b]),dm=harmonic(t.Dm[a],t.Dm[b]);double j=-c.F*(c.zplus*dp*(s.cp[b]-s.cp[a])/h+c.zminus*dm*(s.cm[b]-s.cm[a])/h);fx[size_t(r)*(n+1)+col+1]=j;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,356,"for(int r=0;r<n-1;r++)for(int col=0;col<n;col++){size_t a=g.id(r,col),b=g.id(r+1,col);if(g.prop[a]&&g.prop[b]){double dp=harmonic(t.Dp[a],t.Dp[b]),dm=harmonic(t.Dm[a],t.Dm[b]);double j=-c.F*(c.zplus*dp*(s.cp[b]-s.cp[a])/h+c.zminus*dm*(s.cm[b]-s.cm[a])/h);fy[size_t(r+1)*n+col]=j;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,374,"const double surface_scale=h*h/std::max(c.layer,1e-30);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,391,"const double ka=std::max(contact->anodeSlope[i],0.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,392,"const double kc=std::max(contact->cathodeSlope[i],0.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,406,"static void apply_A(const LinearSystem& A,const std::vector<double>& x,std::vector<double>& y){int n=A.n;y.assign(A.N,0);for(int r=1;r<n-1;r++)for(int c=1;c<n-1;c++){size_t i=size_t(r)*n+c;if(!A.active[i])continue;double v=A.diag[i]*x[i];if(A.active[i+1])v-=A.ce[i]*x[i+1];if(A.active[i-1])v-=A.cw[i]*x[i-1];if(A.active[i+n])v-=A.cn[i]*x[i+n];if(A.active[i-n])v-=A.cs[i]*x[i-n];y[i]=v;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,407,"static double dot_active(const LinearSystem&A,const std::vector<double>&a,const std::vector<double>&b){double s0=0,s1=0,s2=0,s3=0;for(size_t i=0;i<A.N;i++)if(A.active[i]){double v=a[i]*b[i];switch(i&3u){case 0:s0+=v;break;case 1:s1+=v;break;case 2:s2+=v;break;default:s3+=v;break;}}return (s0+s1)+(s2+s3);}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,409,"std::vector<double> Ax,r,z,p,Ap;apply_A(A,x,Ax);r.assign(A.N,0);z.assign(A.N,0);p.assign(A.N,0);for(size_t i=0;i<A.N;i++)if(A.active[i]){r[i]=A.b[i]-Ax[i];z[i]=r[i]/A.diag[i];p[i]=z[i];}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,410,"double bnorm=std::sqrt(std::max(dot_active(A,A.b,A.b),0.0)), thr=std::max(relative_tolerance*std::max(bnorm,1.0),c.pcg_atol);double rz=dot_active(A,r,z);SolverDiag d;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,411,"for(int it=0;it<c.pcg_max_iter;it++){double rn=std::sqrt(std::max(dot_active(A,r,r),0.0));if(rn<=thr){d.iterations=it;d.relres=rn/std::max(bnorm,1.0);d.converged=true;return d;}apply_A(A,p,Ap);double pap=dot_active(A,p,Ap);if(!(pap>0)&&std::isfinite(pap))break;if(!std::isfinite(pap)||std::abs(pap)<1e-300)break;double alpha=rz/pap;for(size_t i=0;i<A.N;i++)if(A.active[i]){x[i]+=alpha*p[i];r[i]-=alpha*Ap[i];z[i]=r[i]/A.diag[i];}double rz2=dot_active(A,r,z);if(!std::isfinite(rz2)||rz<=0)break;double beta=rz2/rz;for(size_t i=0;i<A.N;i++)if(A.active[i])p[i]=z[i]+beta*p[i];rz=rz2;d.iterations=it+1;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,412,"apply_A(A,x,Ax);for(size_t i=0;i<A.N;i++)if(A.active[i])r[i]=A.b[i]-Ax[i];double rn=std::sqrt(std::max(dot_active(A,r,r),0.0));d.relres=rn/std::max(bnorm,1.0);d.converged=rn<=thr;return d;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,425,double maxchg=0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,443,"const double bn=std::sqrt(std::max(dot_active(A,A.b,A.b),0.0));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,444,"const double rn=std::sqrt(std::max(dot_active(A,r,r),0.0));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,457,"struct ChannelEval {double j=0,dj=0,eta=0,shift=0;};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,458,"static double activity_gamma(double salt,double /*T*/,const Config&c){double I=std::max(salt/1000.0,0.0),sq=std::sqrt(I);double lg=-c.activity_A*sq/std::max(1+c.activity_B*sq,1e-12)+c.activity_linear*I;lg=clampd(lg,-std::abs(c.max_log10_gamma),std::abs(c.max_log10_gamma));return std::pow(10.0,lg);}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,459,"static std::pair<double,double> eeq(const Config::Channel&ch,double activity,double T,const Config&c){double shift=0;if(c.nernst_enabled){double ratio=std::max(activity/std::max(ch.ref_activity,c.activity_floor),c.activity_floor);shift=c.R*T/(ch.n*c.F)*ch.nernst_exp*std::log(ratio);shift=clampd(shift,-std::abs(c.max_nernst_shift),std::abs(c.max_nernst_shift));}return {ch.Eeq+shift,shift};}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,460,"static ChannelEval channel_eval(const Config::Channel&ch,double cf,double conc,double D,double eta,double T,double kinetic,const Config&c){ChannelEval e;e.eta=std::max(eta,0.0);double kf=ch.alpha*ch.n*c.F/(c.R*T),kr=(1-ch.alpha)*ch.n*c.F/(c.R*T);double rf=kf*e.eta,rr=-kr*e.eta;double f=clampd(rf,-c.exp_limit,c.exp_limit),r=clampd(rr,-c.exp_limit,c.exp_limit);double pref=ch.j0*kinetic,ef=std::exp(f),er=std::exp(r);double raw=c.full_bv?pref*(cf*ef-ch.reverse*er):pref*cf*ef;double draw=0;if(raw>0&&e.eta>0){draw=c.full_bv?pref*(cf*ef*kf + ch.reverse*er*kr):pref*cf*ef*kf;}double jk=std::max(raw,0.0);if(c.mass_transfer_saturation){double km=c.derive_km?D/std::max(c.diffusion_layer,1e-30):ch.km;double jl=ch.n*c.F*km*std::max(conc,0.0);if(jl>c.current_density_floor){double inv=1/(1+jk/jl);e.j=jk*inv;e.dj=draw*inv*inv;}else e.j=e.dj=0;}else{e.j=jk;e.dj=draw;}if(!std::isfinite(e.j)||!std::isfinite(e.dj))e.j=e.dj=0;return e;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,463,"static CellContext context_at(size_t i,const State&s,const Transport&t,const Config&c){(void)t;CellContext x{};x.T=std::max(s.T[i],1.0);x.water_factor=clampd(s.water[i]/std::max(c.water0,1e-30),0,1);x.salt_conc=std::min(s.cp[i],s.cm[i]);x.salt_factor=clampd(x.salt_conc/std::max(c.lp0,1e-30),0,1);x.kinetic=1+c.liquid_kinetics_gain*clampd((s.liquid[i]-c.fast_ion_liquid_threshold)/std::max(1-c.fast_ion_liquid_threshold,1e-30),0,1);x.active=clampd((1-s.pass[i])*(1-s.coverage[i]),c.min_active_area,1.0);double wa=std::max(x.water_factor,c.activity_floor),sa=std::max(x.salt_factor*activity_gamma(x.salt_conc,x.T,c),c.activity_floor);auto a=eeq(c.water_a,wa,x.T,c),b=eeq(c.water_c,wa,x.T,c),d=eeq(c.lp_a,sa,x.T,c),e=eeq(c.lp_c,sa,x.T,c);x.eeq_wa=a.first;x.eeq_wc=b.first;x.eeq_la=d.first;x.eeq_lc=e.first;x.shiftmax=std::max({std::abs(a.second),std::abs(b.second),std::abs(d.second),std::abs(e.second)});return x;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,465,"struct LocalFace {double jw=0,jl=0,eta_w=0,eta_l=0,phi_face=0,sensitivity=0;bool ok=true;};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,466,"static LocalFace solve_face(size_t i,bool anode,double phi_cell,double sigma_face,const State&s,const Transport&t,const Config&c,double h){LocalFace out;CellContext x=context_at(i,s,t,c);double maxdrop=anode?std::max(c.voltage-phi_cell,0.0):std::max(phi_cell-c.cathode_voltage,0.0);if(maxdrop<=0){out.phi_face=anode?c.voltage:c.cathode_voltage;return out;}double G=std::max(sigma_face/h,c.sigma_min/h),lo=0,hi=maxdrop,gap=.5*maxdrop;auto eval=[&](double g,double&j,double&dj,double&residual,double&scale,double&ew,double&el){double eta_w=std::max(g-(anode?x.eeq_wa:x.eeq_wc),0.0),eta_l=std::max(g-(anode?x.eeq_la:x.eeq_lc),0.0);ChannelEval w=channel_eval(anode?c.water_a:c.water_c,x.water_factor,s.water[i],t.Dw[i],eta_w,x.T,1.0,c);double D=std::min(t.Dp[i],t.Dm[i]);ChannelEval l=channel_eval(anode?c.lp_a:c.lp_c,x.salt_factor,x.salt_conc,D,eta_l,x.T,x.kinetic,c);j=x.active*(w.j+l.j);dj=x.active*(w.dj+l.dj);double jb=G*std::max(maxdrop-g,0.0);residual=j-jb;scale=std::max({std::abs(j),std::abs(jb),1.0});ew=eta_w;el=eta_l;};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,467,"double j=0,dj=0,sg=0,sc=1,ew=0,el=0;bool ok=false;for(int it=1;it<=c.local_max_iter;it++){eval(gap,j,dj,sg,sc,ew,el);if(it>=c.local_min_iter && std::abs(sg)<=std::min(c.local_abs_tol,c.local_rel_tol*sc)){ok=true;break;}if(sg<0)lo=gap;else hi=gap;gap=.5*(lo+hi);}for(int k=0;k<c.local_newton&&!ok;k++){eval(gap,j,dj,sg,sc,ew,el);double der=dj+G;if(std::isfinite(der)&&der>1e-12){double cand=clampd(gap-sg/der,lo,hi);gap=cand;eval(gap,j,dj,sg,sc,ew,el);if(sg<0)lo=gap;else hi=gap;if(std::abs(sg)<=std::min(c.local_abs_tol,c.local_rel_tol*sc))ok=true;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,468,"eval(gap,j,dj,sg,sc,ew,el);ChannelEval w=channel_eval(anode?c.water_a:c.water_c,x.water_factor,s.water[i],t.Dw[i],ew,x.T,1.0,c);ChannelEval l=channel_eval(anode?c.lp_a:c.lp_c,x.salt_factor,x.salt_conc,std::min(t.Dp[i],t.Dm[i]),el,x.T,x.kinetic,c);out.jw=x.active*w.j;out.jl=x.active*l.j;out.eta_w=ew;out.eta_l=el;out.phi_face=anode?c.voltage-gap:c.cathode_voltage+gap;double ks=x.active*(w.dj+l.dj);double L=std::max(ks,G),sm=std::min(ks,G);out.sensitivity=(L>1e-12)?sm/(1+sm/L):0;out.ok=ok;return out;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,473,double sensitivity=0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,527,"double sum=std::accumulate(s.phi.begin(),s.phi.end(),0.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,528,"const double initial=sum/std::max<size_t>(g.N,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,530,"double rmin=1e300,rmax=-1e300;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,549,const double midpoint=.5*(low+high);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,565,"double totalW=0,totalL=0,total=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,606,double previous_current=.5*(boundary.r.rawA+boundary.r.rawC);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,607,"double dphi=1e300,dI=1e300;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,626,const double current=.5*(boundary.r.rawA+boundary.r.rawC);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,659,"static void masked_gradient(const std::vector<double>&f,const Grid&g,double h,std::vector<double>&gx,std::vector<double>&gy){gx.assign(g.N,0);gy.assign(g.N,0);int n=g.n;for(int r=0;r<n;r++)for(int c=0;c<n;c++){size_t i=g.id(r,c);if(!g.prop[i])continue;bool e=c+1<n&&g.prop[i+1],w=c>0&&g.prop[i-1],nn=r+1<n&&g.prop[i+n],ss=r>0&&g.prop[i-n];if(e&&w)gx[i]=(f[i+1]-f[i-1])/(2*h);else if(e)gx[i]=(f[i+1]-f[i])/h;else if(w)gx[i]=(f[i]-f[i-1])/h;if(nn&&ss)gy[i]=(f[i+n]-f[i-n])/(2*h);else if(nn)gy[i]=(f[i+n]-f[i])/h;else if(ss)gy[i]=(f[i]-f[i-n])/h;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,660,"static void compute_current(const State&s,const Transport&t,const Grid&g,const Config&c,double h,Electrical&e){std::vector<double>px,py,cpx,cpy,cmx,cmy;masked_gradient(s.phi,g,h,px,py);masked_gradient(s.cp,g,h,cpx,cpy);masked_gradient(s.cm,g,h,cmx,cmy);for(size_t i=0;i<g.N;i++){if(!g.prop[i])continue;e.Ex[i]=-px[i];e.Ey[i]=-py[i];e.Jdx[i]=c.diffusion_potential?-c.F*(c.zplus*t.Dp[i]*cpx[i]+c.zminus*t.Dm[i]*cmx[i]):0;e.Jdy[i]=c.diffusion_potential?-c.F*(c.zplus*t.Dp[i]*cpy[i]+c.zminus*t.Dm[i]*cmy[i]):0;e.Jox[i]=t.sig[i]*e.Ex[i];e.Joy[i]=t.sig[i]*e.Ey[i];e.Jx[i]=e.Jox[i]+e.Jdx[i];e.Jy[i]=e.Joy[i]+e.Jdy[i];e.Jmag[i]=std::hypot(e.Jx[i],e.Jy[i]);e.qj[i]=std::max(e.Jox[i]*e.Ex[i]+e.Joy[i]*e.Ey[i],0.0);double Em=std::hypot(e.Ex[i],e.Ey[i]),ii=t.sigi[i]*Em,ie=t.sige[i]*Em;e.ionicFrac[i]=ii/std::max(ii+ie,c.current_density_floor);}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,662,"static double lap_at(const std::vector<double>&f,int n,int r,int c,double h){auto at=[&](int rr,int cc){rr=std::max(0,std::min(n-1,rr));cc=std::max(0,std::min(n-1,cc));return f[size_t(rr)*n+cc];};return (at(r,c+1)+at(r,c-1)+at(r+1,c)+at(r-1,c)-4*at(r,c))/(h*h);}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,663,"static void flux_div_charged(const std::vector<double>&conc,const std::vector<double>&D,const State&s,const Grid&g,const Config&c,double h,double z,std::vector<double>&div){int n=g.n;std::vector<double>fx(size_t(n)*(n+1),0),fy(size_t(n+1)*n,0);for(int r=0;r<n;r++)for(int col=0;col<n-1;col++){size_t a=g.id(r,col),b=g.id(r,col+1);if(g.prop[a]&&g.prop[b]){double df=harmonic(D[a],D[b]),cf=.5*(conc[a]+conc[b]),Tf=std::max(.5*(s.T[a]+s.T[b]),1.0);fx[size_t(r)*(n+1)+col+1]=-df*(conc[b]-conc[a])/h-z*df*c.F/(c.R*Tf)*cf*(s.phi[b]-s.phi[a])/h;}}for(int r=0;r<n-1;r++)for(int col=0;col<n;col++){size_t a=g.id(r,col),b=g.id(r+1,col);if(g.prop[a]&&g.prop[b]){double df=harmonic(D[a],D[b]),cf=.5*(conc[a]+conc[b]),Tf=std::max(.5*(s.T[a]+s.T[b]),1.0);fy[size_t(r+1)*n+col]=-df*(conc[b]-conc[a])/h-z*df*c.F/(c.R*Tf)*cf*(s.phi[b]-s.phi[a])/h;}}div.assign(g.N,0);for(int r=0;r<n;r++)for(int col=0;col<n;col++){size_t i=g.id(r,col);if(g.prop[i])div[i]=(fx[size_t(r)*(n+1)+col+1]-fx[size_t(r)*(n+1)+col])/h+(fy[size_t(r+1)*n+col]-fy[size_t(r)*n+col])/h;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,664,"static void flux_div_neutral(const std::vector<double>&conc,const std::vector<double>&D,const Grid&g,double h,std::vector<double>&div){int n=g.n;std::vector<double>fx(size_t(n)*(n+1),0),fy(size_t(n+1)*n,0);for(int r=0;r<n;r++)for(int col=0;col<n-1;col++){size_t a=g.id(r,col),b=g.id(r,col+1);if(g.prop[a]&&g.prop[b])fx[size_t(r)*(n+1)+col+1]=-harmonic(D[a],D[b])*(conc[b]-conc[a])/h;}for(int r=0;r<n-1;r++)for(int col=0;col<n;col++){size_t a=g.id(r,col),b=g.id(r+1,col);if(g.prop[a]&&g.prop[b])fy[size_t(r+1)*n+col]=-harmonic(D[a],D[b])*(conc[b]-conc[a])/h;}div.assign(g.N,0);for(int r=0;r<n;r++)for(int col=0;col<n;col++){size_t i=g.id(r,col);if(g.prop[i])div[i]=(fx[size_t(r)*(n+1)+col+1]-fx[size_t(r)*(n+1)+col])/h+(fy[size_t(r+1)*n+col]-fy[size_t(r)*n+col])/h;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,665,"static bool limited_update(double&field,double rate,double dt,double ref,const Config&c){double raw=dt*rate,lim=c.max_relative_concentration_change*std::max(field,ref*c.concentration_min_fraction),ld=clampd(raw,-lim,lim);double rawu=field+ld,lo=ref*c.concentration_min_fraction,hi=ref*c.concentration_max_multiple,up=clampd(rawu,lo,hi);bool l=std::abs(ld-raw)>1e-12+1e-7*std::max({std::abs(raw),std::abs(ld),std::abs(field),lo})||std::abs(up-rawu)>1e-12+1e-7*std::max({std::abs(up),std::abs(rawu),lo});field=up;return l;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,666,"static double update_species(State&s,Transport&t,const Reaction&r,const std::vector<double>&chem,const Grid&g,const Config&c,double h,double dt){int subs=std::max(1,c.species_substeps);double limiter=0;size_t propcnt=std::count(g.prop.begin(),g.prop.end(),uint8_t(1));for(int sub=0;sub<subs;sub++){if(sub>0)transport_fields(s,g,c,t);std::vector<double>dc,dm,dw;if(c.full_np){flux_div_charged(s.cp,t.Dp,s,g,c,h,c.zplus,dc);flux_div_charged(s.cm,t.Dm,s,g,c,h,c.zminus,dm);flux_div_neutral(s.water,t.Dw,g,h,dw);}else{dc.assign(g.N,0);dm.assign(g.N,0);dw.assign(g.N,0);}size_t limcount=0;for(size_t i=0;i<g.N;i++)if(g.prop[i]){double cs=chem[i]*c.lp0*c.oxidizer_consume;double rc=-dc[i]-r.saltSink[i]-cs,rm=-dm[i]-r.saltSink[i]-cs,rw=-dw[i]-r.waterSink[i];bool a=limited_update(s.cp[i],rc,dt/subs,c.cation0,c),b=limited_update(s.cm[i],rm,dt/subs,c.anion0,c),d=limited_update(s.water[i],rw,dt/subs,c.water0,c);double neutral=.5*(s.cp[i]+s.cm[i]);s.cp[i]=(1-c.electroneutral_relax)*s.cp[i]+c.electroneutral_relax*neutral;s.cm[i]=(1-c.electroneutral_relax)*s.cm[i]+c.electroneutral_relax*neutral;if(a||b||d)limcount++;}limiter+=double(limcount)/std::max<size_t>(propcnt,1);}return limiter/subs;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,667,"static void update_blocking(State&s,const Reaction&r,const Grid&g,const Config&c,double dt){for(size_t i=0;i<g.N;i++){bool zone=r.anodeZone[i]||r.cathodeZone[i];if(!zone||!g.prop[i]){s.pass[i]=s.coverage[i]=0;continue;}double jt=r.jwa[i]+r.jla[i]+r.jwc[i]+r.jlc[i];if(c.passivation_enabled){double gate=sigmoid((s.T[i]-c.pass_T0)/std::max(c.pass_Tw,1e-12));double form=c.pass_form*std::pow(std::max(jt/c.pass_jref,0.0),c.pass_jexp)*gate*(1-s.pass[i]);s.pass[i]=clampd(s.pass[i]+dt*(form-c.pass_remove*s.pass[i]),0,1);}if(c.gas_coverage_enabled){double source=std::max(r.gasSource[i]/c.gas_source_ref,0.0);double form=c.gas_cov_form*source*(1-s.coverage[i]);s.coverage[i]=clampd(s.coverage[i]+dt*(form-c.gas_cov_detach*s.coverage[i]),0,1);}}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,669,"static double percentile99(std::vector<double> v){if(v.empty())return 0;std::sort(v.begin(),v.end());double pos=.99*(v.size()-1),lo=std::floor(pos),hi=std::ceil(pos),w=pos-lo;return v[size_t(lo)]*(1-w)+v[size_t(hi)]*w;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,672,double undecomp=1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,673,double energy_at_eval=0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,675,"double congestion=0.0,peakT=0.0,peakI=0.0,finalR=0.0,solver_res=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,679,"double wall=0.0,max_species_limiter=0.0,max_temp_cap=0.0,max_gas_cap=0.0,max_chem_cap=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,680,double simulated_time=0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,691,"double h=c.domain/std::max(g.n-1,1),alphaT=c.k/(c.density*c.cp);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,705,double meanJ=0.0; size_t pcnt=0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,708,"double congestion=percentile99(Jvals)/std::max(meanJ,c.current_density_floor);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,710,"double energy=0.0,prev_power=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,712,"double eval_undecomp=1.0,eval_energy=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,716,double time=(step+1)*c.dt;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,735,"double ox=std::min(s.cp[i],s.cm[i])/std::max(c.lp0,1e-12);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,736,double gate=sigmoid((s.T[i]-c.chem_activation_T)/20.0);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,737,"double rate=c.chem_A*std::exp(-c.chem_Ea/(c.R*std::max(s.T[i],1.0)))",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,747,"double maxT=0.0,sumAlpha=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,751,double leq=1/(1+std::exp(-(s.T[i]-c.effective_softening_T)/c.transition_width));,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,753,"double chemgas=c.density*c.gas_yield_mass*chem[i]/std::max(c.gas_molar_mass,1e-30);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,756,"double convfac=clampd(1-c.gas_thermal_insulation*s.coverage[i],0.05,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,782,"double undecomp=1-sumAlpha/std::max<size_t>(pcnt,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,811,"const double invN=1.0/std::max<size_t>(g.N,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,812,"const double anode_fraction=std::count(g.anode.begin(),g.anode.end(),uint8_t(1))*invN;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,813,"const double cathode_fraction=std::count(g.cathode.begin(),g.cathode.end(),uint8_t(1))*invN;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver.cpp,879,"transport_fields(s,g,c,t); double h=c.domain/std::max(g.n-1,1); int gi=0; double go=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,22,double domain = 0.020;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,23,double layer = 0.001;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,24,double voltage = 260.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,25,double cathode_voltage = 0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,26,double dt = 2.5e-4;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,27,double end_time = 2.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,28,double eval_time = 2.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,29,double electrical_interval = 2.5e-3;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,30,double ignition_T = 622.15;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,31,double ignition_progress_guard = 0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,32,double ignition_rate_guard = 0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,36,double density = 1261.36;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,37,double cation0 = 3000.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,38,double anion0 = 3000.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,39,double water0 = 30000.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,40,double lp0 = 3000.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,41,double glycerol_pva_ratio = 0.5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,42,double boric_pva_ratio = 0.1;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,43,double effective_softening_T = 355.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,46,double R = 8.314462618;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,47,double F = 96485.33212;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,48,double zplus = 1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,49,double zminus = -1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,50,"double Dp_dry = 5e-15, Dm_dry = 3e-15;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,51,"double Dp_wet = 2e-13, Dm_wet = 1.5e-13;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,52,double Dw0 = 2e-10;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,53,"double Ea_Dp = 22000.0, Ea_Dm = 25000.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,54,double Tref = 298.15;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,55,double liquid_D_gain = 120.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,56,double water_activity_exp = 1.2;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,57,double glycerol_gain = 1.5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,58,double crosslink_penalty = 0.8;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,59,double concentration_min_fraction = 1e-6;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,60,double concentration_max_multiple = 2.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,61,double electroneutral_relax = 1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,62,double max_relative_concentration_change = 0.05;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,66,double sigma_e0 = 0.001;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,67,double sigma_e_temp_coeff = 0.006;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,68,double sigma_e_liquid_suppression = 0.98;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,69,"double sigma_min = 1e-4, sigma_max = 0.5;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,73,double transition_width = 15.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,74,double phase_relax_time = 0.08;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,75,double latent_heat = 0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,76,double fast_ion_liquid_threshold = 0.1;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,82,double diffusion_layer = 3e-5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,83,double reaction_layer_min = 3e-5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,84,double contact_normal_length = 3e-5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,85,double initial_contact_drop = 5.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,89,double activation_heat_fraction = 1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,90,double exp_limit = 45.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,91,double liquid_kinetics_gain = 40.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,92,double min_active_area = 0.02;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,95,"double Eeq=0, j0=1, alpha=0.5, reverse=1, n=1, km=1e-5;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,96,"double dH=0, water_stoich=0, salt_stoich=0, gas_yield=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,97,"double ref_activity=1, nernst_exp=-1;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,101,double activity_floor = 1e-6;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,102,"double activity_A = 0.2, activity_B = 1.0, activity_linear = 0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,103,double max_log10_gamma = 0.5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,104,double max_nernst_shift = 0.25;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,108,"double pass_form = 0.02, pass_remove=0.005, pass_jref=1000.0, pass_jexp=1.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,109,"double pass_T0=360.0, pass_Tw=25.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,111,"double gas_cov_form=0.2, gas_cov_detach=1.0, gas_source_ref=100.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,112,double gas_thermal_insulation=0.5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,116,"double robin_phi_tol=0.01, robin_current_tol=0.005, robin_balance_tol=0.005;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,117,double robin_relax=0.35;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,118,double robin_balance_abs=1e-12;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,119,"double gauge_margin=25.0, gauge_max_step=65.0, gauge_deriv_floor=1e-14;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,121,double gauge_relax=1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,123,"double local_abs_tol=0.01, local_rel_tol=1e-4;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,127,"double chem_A=5e9, chem_Ea=110000.0, chem_order=1.0, oxidizer_order=0.5;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,128,"double oxidizer_consume=0.25, chem_max_rate=50.0, chem_heat=200000.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,129,"double gas_molar_mass=0.03, gas_yield_mass=0.35, chem_activation_T=430.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,132,"double cp=2200.0, k=0.4, T0=298.15, Tamb=298.15, hconv=12.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,133,"double emissivity=0.85, sigma_sb=5.670374419e-8, Tmin=250.0, Tmax=2500.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,134,"double gas_D=3e-6, gas_loss=1.0, gas_max=5000.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,138,"double pcg_rtol_static=1e-10, pcg_rtol_coupled=1e-9, pcg_atol=1e-12;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,139,"double current_floor=1e-15, current_density_floor=1e-12;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,174,"auto legacy_rtol=m.find(""pcg_rtol"");if(legacy_rtol!=m.end()){std::istringstream ss(legacy_rtol->second);double v=0;ss>>v;if(v>0){c.pcg_rtol_static=v;c.pcg_rtol_coupled=v;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,263,"struct Transport {std::vector<double> Dp,Dm,Dw,sigi,sige,sig,waterAct,fast; explicit Transport(size_t N=0):Dp(N),Dm(N),Dw(N),sigi(N),sige(N),sig(N),waterAct(N),fast(N){}};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,264,"struct Electrical {std::vector<double> Ex,Ey,Jx,Jy,Jmag,Jox,Joy,Jdx,Jdy,qj,ionicFrac; explicit Electrical(size_t N=0):Ex(N),Ey(N),Jx(N),Jy(N),Jmag(N),Jox(N),Joy(N),Jdx(N),Jdy(N),qj(N),ionicFrac(N){}};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,268,"double rawA=0,rawC=0,totalI=0,mismatch=0,waterFrac=0,lpFrac=0,utilization=0,maxNernstShift=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,269,"int outerIters=0,gaugeIters=0,linearSolves=0; long long linearIterations=0; double gaugeOffset=0,balanceCombined=0; bool converged=false;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,272,"struct SolverDiag {int iterations=0; double relres=0; bool converged=false; std::string method=""cpp_fp64_pcg_jacobi_surface_contact"";};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,275,"static inline double harmonic(double a,double b){double sum=a+b; return (a>0&&b>0&&sum>0)?2*a*b/sum:0.0;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,276,static inline double sigmoid(double x){ if(x>=0){double e=std::exp(-x);return 1/(1+e);} double e=std::exp(x);return e/(1+e); },C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,279,"double sr=0.0, sc=0.0, count=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,293,"const double norm2=std::max(vr*vr+vc*vc,1e-20);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,294,"const double available=std::max((c.voltage-c.cathode_voltage)-2.0*c.initial_contact_drop,0.1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,297,const double projection=((r-cc.first)*vr+(col-cc.second)*vc)/norm2;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,298,"const double xi=clampd(projection,0.0,1.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,314,"const double T=std::max(s.T[i],1.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,315,"const double wa=clampd(s.water[i]/std::max(c.water0,1e-12),0,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,319,const double pa=std::exp(-c.Ea_Dp/c.R*(1/T-1/c.Tref));,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,320,const double ma=std::exp(-c.Ea_Dm/c.R*(1/T-1/c.Tref));,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,321,"const double fast=clampd((s.liquid[i]-c.fast_ion_liquid_threshold)/std::max(1-c.fast_ion_liquid_threshold,1e-30),0,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,322,const double phase_gain=1+c.liquid_D_gain*fast;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,323,const double plasticizer=1+c.glycerol_gain*c.glycerol_pva_ratio;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,324,const double crosslink=1/(1+c.crosslink_penalty*c.boric_pva_ratio);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,327,const double Dw=c.Dw0*std::exp(-12000/c.R*(1/T-1/c.Tref))*(1+4*fast);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,328,"const double sigi=c.F*c.F/(c.R*T)*(c.zplus*c.zplus*Dp*std::max(s.cp[i],0.0)+c.zminus*c.zminus*Dm*std::max(s.cm[i],0.0));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,329,"const double solid=std::max(1-c.sigma_e_liquid_suppression*s.liquid[i],0.01);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,330,const double sige=c.sigma_e0*std::exp(c.sigma_e_temp_coeff*(T-c.T0))*solid;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,355,"for(int r=0;r<n;r++)for(int col=0;col<n-1;col++){size_t a=g.id(r,col),b=g.id(r,col+1);if(g.prop[a]&&g.prop[b]){double dp=harmonic(t.Dp[a],t.Dp[b]),dm=harmonic(t.Dm[a],t.Dm[b]);double j=-c.F*(c.zplus*dp*(s.cp[b]-s.cp[a])/h+c.zminus*dm*(s.cm[b]-s.cm[a])/h);fx[size_t(r)*(n+1)+col+1]=j;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,356,"for(int r=0;r<n-1;r++)for(int col=0;col<n;col++){size_t a=g.id(r,col),b=g.id(r+1,col);if(g.prop[a]&&g.prop[b]){double dp=harmonic(t.Dp[a],t.Dp[b]),dm=harmonic(t.Dm[a],t.Dm[b]);double j=-c.F*(c.zplus*dp*(s.cp[b]-s.cp[a])/h+c.zminus*dm*(s.cm[b]-s.cm[a])/h);fy[size_t(r+1)*n+col]=j;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,374,"const double surface_scale=h*h/std::max(c.layer,1e-30);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,391,"const double ka=std::max(contact->anodeSlope[i],0.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,392,"const double kc=std::max(contact->cathodeSlope[i],0.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,406,"static void apply_A(const LinearSystem& A,const std::vector<double>& x,std::vector<double>& y){int n=A.n;y.assign(A.N,0);for(int r=1;r<n-1;r++)for(int c=1;c<n-1;c++){size_t i=size_t(r)*n+c;if(!A.active[i])continue;double v=A.diag[i]*x[i];if(A.active[i+1])v-=A.ce[i]*x[i+1];if(A.active[i-1])v-=A.cw[i]*x[i-1];if(A.active[i+n])v-=A.cn[i]*x[i+n];if(A.active[i-n])v-=A.cs[i]*x[i-n];y[i]=v;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,407,"static double dot_active(const LinearSystem&A,const std::vector<double>&a,const std::vector<double>&b){double s0=0,s1=0,s2=0,s3=0;for(size_t i=0;i<A.N;i++)if(A.active[i]){double v=a[i]*b[i];switch(i&3u){case 0:s0+=v;break;case 1:s1+=v;break;case 2:s2+=v;break;default:s3+=v;break;}}return (s0+s1)+(s2+s3);}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,409,"std::vector<double> Ax,r,z,p,Ap;apply_A(A,x,Ax);r.assign(A.N,0);z.assign(A.N,0);p.assign(A.N,0);for(size_t i=0;i<A.N;i++)if(A.active[i]){r[i]=A.b[i]-Ax[i];z[i]=r[i]/A.diag[i];p[i]=z[i];}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,410,"double bnorm=std::sqrt(std::max(dot_active(A,A.b,A.b),0.0)), thr=std::max(relative_tolerance*std::max(bnorm,1.0),c.pcg_atol);double rz=dot_active(A,r,z);SolverDiag d;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,411,"for(int it=0;it<c.pcg_max_iter;it++){double rn=std::sqrt(std::max(dot_active(A,r,r),0.0));if(rn<=thr){d.iterations=it;d.relres=rn/std::max(bnorm,1.0);d.converged=true;return d;}apply_A(A,p,Ap);double pap=dot_active(A,p,Ap);if(!(pap>0)&&std::isfinite(pap))break;if(!std::isfinite(pap)||std::abs(pap)<1e-300)break;double alpha=rz/pap;for(size_t i=0;i<A.N;i++)if(A.active[i]){x[i]+=alpha*p[i];r[i]-=alpha*Ap[i];z[i]=r[i]/A.diag[i];}double rz2=dot_active(A,r,z);if(!std::isfinite(rz2)||rz<=0)break;double beta=rz2/rz;for(size_t i=0;i<A.N;i++)if(A.active[i])p[i]=z[i]+beta*p[i];rz=rz2;d.iterations=it+1;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,412,"apply_A(A,x,Ax);for(size_t i=0;i<A.N;i++)if(A.active[i])r[i]=A.b[i]-Ax[i];double rn=std::sqrt(std::max(dot_active(A,r,r),0.0));d.relres=rn/std::max(bnorm,1.0);d.converged=rn<=thr;return d;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,425,double maxchg=0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,443,"const double bn=std::sqrt(std::max(dot_active(A,A.b,A.b),0.0));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,444,"const double rn=std::sqrt(std::max(dot_active(A,r,r),0.0));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,457,"struct ChannelEval {double j=0,dj=0,eta=0,shift=0;};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,458,"static double activity_gamma(double salt,double /*T*/,const Config&c){double I=std::max(salt/1000.0,0.0),sq=std::sqrt(I);double lg=-c.activity_A*sq/std::max(1+c.activity_B*sq,1e-12)+c.activity_linear*I;lg=clampd(lg,-std::abs(c.max_log10_gamma),std::abs(c.max_log10_gamma));return std::pow(10.0,lg);}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,459,"static std::pair<double,double> eeq(const Config::Channel&ch,double activity,double T,const Config&c){double shift=0;if(c.nernst_enabled){double ratio=std::max(activity/std::max(ch.ref_activity,c.activity_floor),c.activity_floor);shift=c.R*T/(ch.n*c.F)*ch.nernst_exp*std::log(ratio);shift=clampd(shift,-std::abs(c.max_nernst_shift),std::abs(c.max_nernst_shift));}return {ch.Eeq+shift,shift};}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,460,"static ChannelEval channel_eval(const Config::Channel&ch,double cf,double conc,double D,double eta,double T,double kinetic,const Config&c){ChannelEval e;e.eta=std::max(eta,0.0);double kf=ch.alpha*ch.n*c.F/(c.R*T),kr=(1-ch.alpha)*ch.n*c.F/(c.R*T);double rf=kf*e.eta,rr=-kr*e.eta;double f=clampd(rf,-c.exp_limit,c.exp_limit),r=clampd(rr,-c.exp_limit,c.exp_limit);double pref=ch.j0*kinetic,ef=std::exp(f),er=std::exp(r);double raw=c.full_bv?pref*(cf*ef-ch.reverse*er):pref*cf*ef;double draw=0;if(raw>0&&e.eta>0){draw=c.full_bv?pref*(cf*ef*kf + ch.reverse*er*kr):pref*cf*ef*kf;}double jk=std::max(raw,0.0);if(c.mass_transfer_saturation){double km=c.derive_km?D/std::max(c.diffusion_layer,1e-30):ch.km;double jl=ch.n*c.F*km*std::max(conc,0.0);if(jl>c.current_density_floor){double inv=1/(1+jk/jl);e.j=jk*inv;e.dj=draw*inv*inv;}else e.j=e.dj=0;}else{e.j=jk;e.dj=draw;}if(!std::isfinite(e.j)||!std::isfinite(e.dj))e.j=e.dj=0;return e;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,463,"static CellContext context_at(size_t i,const State&s,const Transport&t,const Config&c){(void)t;CellContext x{};x.T=std::max(s.T[i],1.0);x.water_factor=clampd(s.water[i]/std::max(c.water0,1e-30),0,1);x.salt_conc=std::min(s.cp[i],s.cm[i]);x.salt_factor=clampd(x.salt_conc/std::max(c.lp0,1e-30),0,1);x.kinetic=1+c.liquid_kinetics_gain*clampd((s.liquid[i]-c.fast_ion_liquid_threshold)/std::max(1-c.fast_ion_liquid_threshold,1e-30),0,1);x.active=clampd((1-s.pass[i])*(1-s.coverage[i]),c.min_active_area,1.0);double wa=std::max(x.water_factor,c.activity_floor),sa=std::max(x.salt_factor*activity_gamma(x.salt_conc,x.T,c),c.activity_floor);auto a=eeq(c.water_a,wa,x.T,c),b=eeq(c.water_c,wa,x.T,c),d=eeq(c.lp_a,sa,x.T,c),e=eeq(c.lp_c,sa,x.T,c);x.eeq_wa=a.first;x.eeq_wc=b.first;x.eeq_la=d.first;x.eeq_lc=e.first;x.shiftmax=std::max({std::abs(a.second),std::abs(b.second),std::abs(d.second),std::abs(e.second)});return x;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,465,"struct LocalFace {double jw=0,jl=0,eta_w=0,eta_l=0,phi_face=0,sensitivity=0;bool ok=true;};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,466,"static LocalFace solve_face(size_t i,bool anode,double phi_cell,double sigma_face,const State&s,const Transport&t,const Config&c,double h){LocalFace out;CellContext x=context_at(i,s,t,c);double maxdrop=anode?std::max(c.voltage-phi_cell,0.0):std::max(phi_cell-c.cathode_voltage,0.0);if(maxdrop<=0){out.phi_face=anode?c.voltage:c.cathode_voltage;return out;}double G=std::max(sigma_face/h,c.sigma_min/h),lo=0,hi=maxdrop,gap=.5*maxdrop;auto eval=[&](double g,double&j,double&dj,double&residual,double&scale,double&ew,double&el){double eta_w=std::max(g-(anode?x.eeq_wa:x.eeq_wc),0.0),eta_l=std::max(g-(anode?x.eeq_la:x.eeq_lc),0.0);ChannelEval w=channel_eval(anode?c.water_a:c.water_c,x.water_factor,s.water[i],t.Dw[i],eta_w,x.T,1.0,c);double D=std::min(t.Dp[i],t.Dm[i]);ChannelEval l=channel_eval(anode?c.lp_a:c.lp_c,x.salt_factor,x.salt_conc,D,eta_l,x.T,x.kinetic,c);j=x.active*(w.j+l.j);dj=x.active*(w.dj+l.dj);double jb=G*std::max(maxdrop-g,0.0);residual=j-jb;scale=std::max({std::abs(j),std::abs(jb),1.0});ew=eta_w;el=eta_l;};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,467,"double j=0,dj=0,sg=0,sc=1,ew=0,el=0;bool ok=false;for(int it=1;it<=c.local_max_iter;it++){eval(gap,j,dj,sg,sc,ew,el);if(it>=c.local_min_iter && std::abs(sg)<=std::min(c.local_abs_tol,c.local_rel_tol*sc)){ok=true;break;}if(sg<0)lo=gap;else hi=gap;gap=.5*(lo+hi);}for(int k=0;k<c.local_newton&&!ok;k++){eval(gap,j,dj,sg,sc,ew,el);double der=dj+G;if(std::isfinite(der)&&der>1e-12){double cand=clampd(gap-sg/der,lo,hi);gap=cand;eval(gap,j,dj,sg,sc,ew,el);if(sg<0)lo=gap;else hi=gap;if(std::abs(sg)<=std::min(c.local_abs_tol,c.local_rel_tol*sc))ok=true;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,468,"eval(gap,j,dj,sg,sc,ew,el);ChannelEval w=channel_eval(anode?c.water_a:c.water_c,x.water_factor,s.water[i],t.Dw[i],ew,x.T,1.0,c);ChannelEval l=channel_eval(anode?c.lp_a:c.lp_c,x.salt_factor,x.salt_conc,std::min(t.Dp[i],t.Dm[i]),el,x.T,x.kinetic,c);out.jw=x.active*w.j;out.jl=x.active*l.j;out.eta_w=ew;out.eta_l=el;out.phi_face=anode?c.voltage-gap:c.cathode_voltage+gap;double ks=x.active*(w.dj+l.dj);double L=std::max(ks,G),sm=std::min(ks,G);out.sensitivity=(L>1e-12)?sm/(1+sm/L):0;out.ok=ok;return out;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,473,double sensitivity=0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,527,"double sum=std::accumulate(s.phi.begin(),s.phi.end(),0.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,528,"const double initial=sum/std::max<size_t>(g.N,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,530,"double rmin=1e300,rmax=-1e300;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,549,const double midpoint=.5*(low+high);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,565,"double totalW=0,totalL=0,total=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,606,double previous_current=.5*(boundary.r.rawA+boundary.r.rawC);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,607,"double dphi=1e300,dI=1e300;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,626,const double current=.5*(boundary.r.rawA+boundary.r.rawC);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,659,"static void masked_gradient(const std::vector<double>&f,const Grid&g,double h,std::vector<double>&gx,std::vector<double>&gy){gx.assign(g.N,0);gy.assign(g.N,0);int n=g.n;for(int r=0;r<n;r++)for(int c=0;c<n;c++){size_t i=g.id(r,c);if(!g.prop[i])continue;bool e=c+1<n&&g.prop[i+1],w=c>0&&g.prop[i-1],nn=r+1<n&&g.prop[i+n],ss=r>0&&g.prop[i-n];if(e&&w)gx[i]=(f[i+1]-f[i-1])/(2*h);else if(e)gx[i]=(f[i+1]-f[i])/h;else if(w)gx[i]=(f[i]-f[i-1])/h;if(nn&&ss)gy[i]=(f[i+n]-f[i-n])/(2*h);else if(nn)gy[i]=(f[i+n]-f[i])/h;else if(ss)gy[i]=(f[i]-f[i-n])/h;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,660,"static void compute_current(const State&s,const Transport&t,const Grid&g,const Config&c,double h,Electrical&e){std::vector<double>px,py,cpx,cpy,cmx,cmy;masked_gradient(s.phi,g,h,px,py);masked_gradient(s.cp,g,h,cpx,cpy);masked_gradient(s.cm,g,h,cmx,cmy);for(size_t i=0;i<g.N;i++){if(!g.prop[i])continue;e.Ex[i]=-px[i];e.Ey[i]=-py[i];e.Jdx[i]=c.diffusion_potential?-c.F*(c.zplus*t.Dp[i]*cpx[i]+c.zminus*t.Dm[i]*cmx[i]):0;e.Jdy[i]=c.diffusion_potential?-c.F*(c.zplus*t.Dp[i]*cpy[i]+c.zminus*t.Dm[i]*cmy[i]):0;e.Jox[i]=t.sig[i]*e.Ex[i];e.Joy[i]=t.sig[i]*e.Ey[i];e.Jx[i]=e.Jox[i]+e.Jdx[i];e.Jy[i]=e.Joy[i]+e.Jdy[i];e.Jmag[i]=std::hypot(e.Jx[i],e.Jy[i]);e.qj[i]=std::max(e.Jox[i]*e.Ex[i]+e.Joy[i]*e.Ey[i],0.0);double Em=std::hypot(e.Ex[i],e.Ey[i]),ii=t.sigi[i]*Em,ie=t.sige[i]*Em;e.ionicFrac[i]=ii/std::max(ii+ie,c.current_density_floor);}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,662,"static double lap_at(const std::vector<double>&f,int n,int r,int c,double h){auto at=[&](int rr,int cc){rr=std::max(0,std::min(n-1,rr));cc=std::max(0,std::min(n-1,cc));return f[size_t(rr)*n+cc];};return (at(r,c+1)+at(r,c-1)+at(r+1,c)+at(r-1,c)-4*at(r,c))/(h*h);}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,663,"static void flux_div_charged(const std::vector<double>&conc,const std::vector<double>&D,const State&s,const Grid&g,const Config&c,double h,double z,std::vector<double>&div){int n=g.n;std::vector<double>fx(size_t(n)*(n+1),0),fy(size_t(n+1)*n,0);for(int r=0;r<n;r++)for(int col=0;col<n-1;col++){size_t a=g.id(r,col),b=g.id(r,col+1);if(g.prop[a]&&g.prop[b]){double df=harmonic(D[a],D[b]),cf=.5*(conc[a]+conc[b]),Tf=std::max(.5*(s.T[a]+s.T[b]),1.0);fx[size_t(r)*(n+1)+col+1]=-df*(conc[b]-conc[a])/h-z*df*c.F/(c.R*Tf)*cf*(s.phi[b]-s.phi[a])/h;}}for(int r=0;r<n-1;r++)for(int col=0;col<n;col++){size_t a=g.id(r,col),b=g.id(r+1,col);if(g.prop[a]&&g.prop[b]){double df=harmonic(D[a],D[b]),cf=.5*(conc[a]+conc[b]),Tf=std::max(.5*(s.T[a]+s.T[b]),1.0);fy[size_t(r+1)*n+col]=-df*(conc[b]-conc[a])/h-z*df*c.F/(c.R*Tf)*cf*(s.phi[b]-s.phi[a])/h;}}div.assign(g.N,0);for(int r=0;r<n;r++)for(int col=0;col<n;col++){size_t i=g.id(r,col);if(g.prop[i])div[i]=(fx[size_t(r)*(n+1)+col+1]-fx[size_t(r)*(n+1)+col])/h+(fy[size_t(r+1)*n+col]-fy[size_t(r)*n+col])/h;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,664,"static void flux_div_neutral(const std::vector<double>&conc,const std::vector<double>&D,const Grid&g,double h,std::vector<double>&div){int n=g.n;std::vector<double>fx(size_t(n)*(n+1),0),fy(size_t(n+1)*n,0);for(int r=0;r<n;r++)for(int col=0;col<n-1;col++){size_t a=g.id(r,col),b=g.id(r,col+1);if(g.prop[a]&&g.prop[b])fx[size_t(r)*(n+1)+col+1]=-harmonic(D[a],D[b])*(conc[b]-conc[a])/h;}for(int r=0;r<n-1;r++)for(int col=0;col<n;col++){size_t a=g.id(r,col),b=g.id(r+1,col);if(g.prop[a]&&g.prop[b])fy[size_t(r+1)*n+col]=-harmonic(D[a],D[b])*(conc[b]-conc[a])/h;}div.assign(g.N,0);for(int r=0;r<n;r++)for(int col=0;col<n;col++){size_t i=g.id(r,col);if(g.prop[i])div[i]=(fx[size_t(r)*(n+1)+col+1]-fx[size_t(r)*(n+1)+col])/h+(fy[size_t(r+1)*n+col]-fy[size_t(r)*n+col])/h;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,665,"static bool limited_update(double&field,double rate,double dt,double ref,const Config&c){double raw=dt*rate,lim=c.max_relative_concentration_change*std::max(field,ref*c.concentration_min_fraction),ld=clampd(raw,-lim,lim);double rawu=field+ld,lo=ref*c.concentration_min_fraction,hi=ref*c.concentration_max_multiple,up=clampd(rawu,lo,hi);bool l=std::abs(ld-raw)>1e-12+1e-7*std::max({std::abs(raw),std::abs(ld),std::abs(field),lo})||std::abs(up-rawu)>1e-12+1e-7*std::max({std::abs(up),std::abs(rawu),lo});field=up;return l;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,666,"static double update_species(State&s,Transport&t,const Reaction&r,const std::vector<double>&chem,const Grid&g,const Config&c,double h,double dt){int subs=std::max(1,c.species_substeps);double limiter=0;size_t propcnt=std::count(g.prop.begin(),g.prop.end(),uint8_t(1));for(int sub=0;sub<subs;sub++){if(sub>0)transport_fields(s,g,c,t);std::vector<double>dc,dm,dw;if(c.full_np){flux_div_charged(s.cp,t.Dp,s,g,c,h,c.zplus,dc);flux_div_charged(s.cm,t.Dm,s,g,c,h,c.zminus,dm);flux_div_neutral(s.water,t.Dw,g,h,dw);}else{dc.assign(g.N,0);dm.assign(g.N,0);dw.assign(g.N,0);}size_t limcount=0;for(size_t i=0;i<g.N;i++)if(g.prop[i]){double cs=chem[i]*c.lp0*c.oxidizer_consume;double rc=-dc[i]-r.saltSink[i]-cs,rm=-dm[i]-r.saltSink[i]-cs,rw=-dw[i]-r.waterSink[i];bool a=limited_update(s.cp[i],rc,dt/subs,c.cation0,c),b=limited_update(s.cm[i],rm,dt/subs,c.anion0,c),d=limited_update(s.water[i],rw,dt/subs,c.water0,c);double neutral=.5*(s.cp[i]+s.cm[i]);s.cp[i]=(1-c.electroneutral_relax)*s.cp[i]+c.electroneutral_relax*neutral;s.cm[i]=(1-c.electroneutral_relax)*s.cm[i]+c.electroneutral_relax*neutral;if(a||b||d)limcount++;}limiter+=double(limcount)/std::max<size_t>(propcnt,1);}return limiter/subs;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,667,"static void update_blocking(State&s,const Reaction&r,const Grid&g,const Config&c,double dt){for(size_t i=0;i<g.N;i++){bool zone=r.anodeZone[i]||r.cathodeZone[i];if(!zone||!g.prop[i]){s.pass[i]=s.coverage[i]=0;continue;}double jt=r.jwa[i]+r.jla[i]+r.jwc[i]+r.jlc[i];if(c.passivation_enabled){double gate=sigmoid((s.T[i]-c.pass_T0)/std::max(c.pass_Tw,1e-12));double form=c.pass_form*std::pow(std::max(jt/c.pass_jref,0.0),c.pass_jexp)*gate*(1-s.pass[i]);s.pass[i]=clampd(s.pass[i]+dt*(form-c.pass_remove*s.pass[i]),0,1);}if(c.gas_coverage_enabled){double source=std::max(r.gasSource[i]/c.gas_source_ref,0.0);double form=c.gas_cov_form*source*(1-s.coverage[i]);s.coverage[i]=clampd(s.coverage[i]+dt*(form-c.gas_cov_detach*s.coverage[i]),0,1);}}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,669,"static double percentile99(std::vector<double> v){if(v.empty())return 0;std::sort(v.begin(),v.end());double pos=.99*(v.size()-1),lo=std::floor(pos),hi=std::ceil(pos),w=pos-lo;return v[size_t(lo)]*(1-w)+v[size_t(hi)]*w;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,672,double undecomp=1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,673,double energy_at_eval=0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,675,"double congestion=0.0,peakT=0.0,peakI=0.0,finalR=0.0,solver_res=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,679,"double wall=0.0,max_species_limiter=0.0,max_temp_cap=0.0,max_gas_cap=0.0,max_chem_cap=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,680,double simulated_time=0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,691,"double h=c.domain/std::max(g.n-1,1),alphaT=c.k/(c.density*c.cp);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,705,double meanJ=0.0; size_t pcnt=0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,708,"double congestion=percentile99(Jvals)/std::max(meanJ,c.current_density_floor);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,710,"double energy=0.0,prev_power=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,712,"double eval_undecomp=1.0,eval_energy=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,716,double time=(step+1)*c.dt;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,735,"double ox=std::min(s.cp[i],s.cm[i])/std::max(c.lp0,1e-12);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,736,double gate=sigmoid((s.T[i]-c.chem_activation_T)/20.0);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,737,"double rate=c.chem_A*std::exp(-c.chem_Ea/(c.R*std::max(s.T[i],1.0)))",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,747,"double maxT=0.0,sumAlpha=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,755,double leq=1/(1+std::exp(-(oldT[i]-c.effective_softening_T)/c.transition_width));,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,757,"double chemgas=c.density*c.gas_yield_mass*chem[i]/std::max(c.gas_molar_mass,1e-30);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,760,"double convfac=clampd(1-c.gas_thermal_insulation*s.coverage[i],0.05,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,786,"double undecomp=1-sumAlpha/std::max<size_t>(pcnt,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,815,"const double invN=1.0/std::max<size_t>(g.N,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,816,"const double anode_fraction=std::count(g.anode.begin(),g.anode.end(),uint8_t(1))*invN;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,817,"const double cathode_fraction=std::count(g.cathode.begin(),g.cathode.end(),uint8_t(1))*invN;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/ecsp_cpp_solver_hybrid.cpp,883,"transport_fields(s,g,c,t); double h=c.domain/std::max(g.n-1,1); int gi=0; double go=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,22,double domain = 0.020;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,23,double layer = 0.001;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,24,double voltage = 260.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,25,double cathode_voltage = 0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,26,double dt = 2.5e-4;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,27,double end_time = 2.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,28,double eval_time = 2.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,29,double electrical_interval = 2.5e-3;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,30,double ignition_T = 622.15;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,31,double ignition_progress_guard = 0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,32,double ignition_rate_guard = 0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,36,double density = 1261.36;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,37,double cation0 = 3000.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,38,double anion0 = 3000.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,39,double water0 = 30000.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,40,double lp0 = 3000.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,41,double glycerol_pva_ratio = 0.5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,42,double boric_pva_ratio = 0.1;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,43,double effective_softening_T = 355.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,46,double R = 8.314462618;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,47,double F = 96485.33212;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,48,double zplus = 1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,49,double zminus = -1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,50,"double Dp_dry = 5e-15, Dm_dry = 3e-15;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,51,"double Dp_wet = 2e-13, Dm_wet = 1.5e-13;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,52,double Dw0 = 2e-10;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,53,"double Ea_Dp = 22000.0, Ea_Dm = 25000.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,54,double Tref = 298.15;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,55,double liquid_D_gain = 120.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,56,double water_activity_exp = 1.2;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,57,double glycerol_gain = 1.5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,58,double crosslink_penalty = 0.8;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,59,double concentration_min_fraction = 1e-6;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,60,double concentration_max_multiple = 2.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,61,double electroneutral_relax = 1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,62,double max_relative_concentration_change = 0.05;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,66,double sigma_e0 = 0.001;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,67,double sigma_e_temp_coeff = 0.006;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,68,double sigma_e_liquid_suppression = 0.98;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,69,"double sigma_min = 1e-4, sigma_max = 0.5;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,73,double transition_width = 15.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,74,double phase_relax_time = 0.08;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,75,double latent_heat = 0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,76,double fast_ion_liquid_threshold = 0.1;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,82,double diffusion_layer = 3e-5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,83,double reaction_layer_min = 3e-5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,84,double contact_normal_length = 3e-5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,85,double initial_contact_drop = 5.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,89,double activation_heat_fraction = 1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,90,double exp_limit = 45.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,91,double liquid_kinetics_gain = 40.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,92,double min_active_area = 0.02;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,95,"double Eeq=0, j0=1, alpha=0.5, reverse=1, n=1, km=1e-5;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,96,"double dH=0, water_stoich=0, salt_stoich=0, gas_yield=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,97,"double ref_activity=1, nernst_exp=-1;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,101,double activity_floor = 1e-6;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,102,"double activity_A = 0.2, activity_B = 1.0, activity_linear = 0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,103,double max_log10_gamma = 0.5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,104,double max_nernst_shift = 0.25;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,108,"double pass_form = 0.02, pass_remove=0.005, pass_jref=1000.0, pass_jexp=1.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,109,"double pass_T0=360.0, pass_Tw=25.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,111,"double gas_cov_form=0.2, gas_cov_detach=1.0, gas_source_ref=100.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,112,double gas_thermal_insulation=0.5;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,116,"double robin_phi_tol=0.01, robin_current_tol=0.005, robin_balance_tol=0.005;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,117,double robin_relax=0.35;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,118,double robin_balance_abs=1e-12;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,119,"double gauge_margin=25.0, gauge_max_step=65.0, gauge_deriv_floor=1e-14;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,121,double gauge_relax=1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,123,"double local_abs_tol=0.01, local_rel_tol=1e-4;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,127,"double chem_A=5e9, chem_Ea=110000.0, chem_order=1.0, oxidizer_order=0.5;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,128,"double oxidizer_consume=0.25, chem_max_rate=50.0, chem_heat=200000.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,129,"double gas_molar_mass=0.03, gas_yield_mass=0.35, chem_activation_T=430.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,132,"double cp=2200.0, k=0.4, T0=298.15, Tamb=298.15, hconv=12.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,133,"double emissivity=0.85, sigma_sb=5.670374419e-8, Tmin=250.0, Tmax=2500.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,134,"double gas_D=3e-6, gas_loss=1.0, gas_max=5000.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,138,"double pcg_rtol_static=1e-10, pcg_rtol_coupled=1e-9, pcg_atol=1e-12;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,139,"double current_floor=1e-15, current_density_floor=1e-12;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,174,"auto legacy_rtol=m.find(""pcg_rtol"");if(legacy_rtol!=m.end()){std::istringstream ss(legacy_rtol->second);double v=0;ss>>v;if(v>0){c.pcg_rtol_static=v;c.pcg_rtol_coupled=v;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,263,"struct Transport {std::vector<double> Dp,Dm,Dw,sigi,sige,sig,waterAct,fast; explicit Transport(size_t N=0):Dp(N),Dm(N),Dw(N),sigi(N),sige(N),sig(N),waterAct(N),fast(N){}};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,264,"struct Electrical {std::vector<double> Ex,Ey,Jx,Jy,Jmag,Jox,Joy,Jdx,Jdy,qj,ionicFrac; explicit Electrical(size_t N=0):Ex(N),Ey(N),Jx(N),Jy(N),Jmag(N),Jox(N),Joy(N),Jdx(N),Jdy(N),qj(N),ionicFrac(N){}};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,268,"double rawA=0,rawC=0,totalI=0,mismatch=0,waterFrac=0,lpFrac=0,utilization=0,maxNernstShift=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,269,"int outerIters=0,gaugeIters=0,linearSolves=0; long long linearIterations=0; double gaugeOffset=0,balanceCombined=0; bool converged=false;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,272,"struct SolverDiag {int iterations=0; double relres=0; bool converged=false; std::string method=""cpp_fp64_pcg_jacobi_surface_contact"";};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,275,"static inline double harmonic(double a,double b){double sum=a+b; return (a>0&&b>0&&sum>0)?2*a*b/sum:0.0;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,276,static inline double sigmoid(double x){ if(x>=0){double e=std::exp(-x);return 1/(1+e);} double e=std::exp(x);return e/(1+e); },C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,279,"double sr=0.0, sc=0.0, count=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,293,"const double norm2=std::max(vr*vr+vc*vc,1e-20);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,294,"const double available=std::max((c.voltage-c.cathode_voltage)-2.0*c.initial_contact_drop,0.1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,297,const double projection=((r-cc.first)*vr+(col-cc.second)*vc)/norm2;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,298,"const double xi=clampd(projection,0.0,1.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,314,"const double T=std::max(s.T[i],1.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,315,"const double wa=clampd(s.water[i]/std::max(c.water0,1e-12),0,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,319,const double pa=std::exp(-c.Ea_Dp/c.R*(1/T-1/c.Tref));,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,320,const double ma=std::exp(-c.Ea_Dm/c.R*(1/T-1/c.Tref));,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,321,"const double fast=clampd((s.liquid[i]-c.fast_ion_liquid_threshold)/std::max(1-c.fast_ion_liquid_threshold,1e-30),0,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,322,const double phase_gain=1+c.liquid_D_gain*fast;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,323,const double plasticizer=1+c.glycerol_gain*c.glycerol_pva_ratio;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,324,const double crosslink=1/(1+c.crosslink_penalty*c.boric_pva_ratio);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,327,const double Dw=c.Dw0*std::exp(-12000/c.R*(1/T-1/c.Tref))*(1+4*fast);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,328,"const double sigi=c.F*c.F/(c.R*T)*(c.zplus*c.zplus*Dp*std::max(s.cp[i],0.0)+c.zminus*c.zminus*Dm*std::max(s.cm[i],0.0));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,329,"const double solid=std::max(1-c.sigma_e_liquid_suppression*s.liquid[i],0.01);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,330,const double sige=c.sigma_e0*std::exp(c.sigma_e_temp_coeff*(T-c.T0))*solid;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,355,"for(int r=0;r<n;r++)for(int col=0;col<n-1;col++){size_t a=g.id(r,col),b=g.id(r,col+1);if(g.prop[a]&&g.prop[b]){double dp=harmonic(t.Dp[a],t.Dp[b]),dm=harmonic(t.Dm[a],t.Dm[b]);double j=-c.F*(c.zplus*dp*(s.cp[b]-s.cp[a])/h+c.zminus*dm*(s.cm[b]-s.cm[a])/h);fx[size_t(r)*(n+1)+col+1]=j;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,356,"for(int r=0;r<n-1;r++)for(int col=0;col<n;col++){size_t a=g.id(r,col),b=g.id(r+1,col);if(g.prop[a]&&g.prop[b]){double dp=harmonic(t.Dp[a],t.Dp[b]),dm=harmonic(t.Dm[a],t.Dm[b]);double j=-c.F*(c.zplus*dp*(s.cp[b]-s.cp[a])/h+c.zminus*dm*(s.cm[b]-s.cm[a])/h);fy[size_t(r+1)*n+col]=j;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,374,"const double surface_scale=h*h/std::max(c.layer,1e-30);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,391,"const double ka=std::max(contact->anodeSlope[i],0.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,392,"const double kc=std::max(contact->cathodeSlope[i],0.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,406,"static void apply_A(const LinearSystem& A,const std::vector<double>& x,std::vector<double>& y){int n=A.n;y.assign(A.N,0);for(int r=1;r<n-1;r++)for(int c=1;c<n-1;c++){size_t i=size_t(r)*n+c;if(!A.active[i])continue;double v=A.diag[i]*x[i];if(A.active[i+1])v-=A.ce[i]*x[i+1];if(A.active[i-1])v-=A.cw[i]*x[i-1];if(A.active[i+n])v-=A.cn[i]*x[i+n];if(A.active[i-n])v-=A.cs[i]*x[i-n];y[i]=v;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,407,"static double dot_active(const LinearSystem&A,const std::vector<double>&a,const std::vector<double>&b){double s0=0,s1=0,s2=0,s3=0;for(size_t i=0;i<A.N;i++)if(A.active[i]){double v=a[i]*b[i];switch(i&3u){case 0:s0+=v;break;case 1:s1+=v;break;case 2:s2+=v;break;default:s3+=v;break;}}return (s0+s1)+(s2+s3);}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,409,"std::vector<double> Ax,r,z,p,Ap;apply_A(A,x,Ax);r.assign(A.N,0);z.assign(A.N,0);p.assign(A.N,0);for(size_t i=0;i<A.N;i++)if(A.active[i]){r[i]=A.b[i]-Ax[i];z[i]=r[i]/A.diag[i];p[i]=z[i];}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,410,"double bnorm=std::sqrt(std::max(dot_active(A,A.b,A.b),0.0)), thr=std::max(relative_tolerance*std::max(bnorm,1.0),c.pcg_atol);double rz=dot_active(A,r,z);SolverDiag d;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,411,"for(int it=0;it<c.pcg_max_iter;it++){double rn=std::sqrt(std::max(dot_active(A,r,r),0.0));if(rn<=thr){d.iterations=it;d.relres=rn/std::max(bnorm,1.0);d.converged=true;return d;}apply_A(A,p,Ap);double pap=dot_active(A,p,Ap);if(!(pap>0)&&std::isfinite(pap))break;if(!std::isfinite(pap)||std::abs(pap)<1e-300)break;double alpha=rz/pap;for(size_t i=0;i<A.N;i++)if(A.active[i]){x[i]+=alpha*p[i];r[i]-=alpha*Ap[i];z[i]=r[i]/A.diag[i];}double rz2=dot_active(A,r,z);if(!std::isfinite(rz2)||rz<=0)break;double beta=rz2/rz;for(size_t i=0;i<A.N;i++)if(A.active[i])p[i]=z[i]+beta*p[i];rz=rz2;d.iterations=it+1;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,412,"apply_A(A,x,Ax);for(size_t i=0;i<A.N;i++)if(A.active[i])r[i]=A.b[i]-Ax[i];double rn=std::sqrt(std::max(dot_active(A,r,r),0.0));d.relres=rn/std::max(bnorm,1.0);d.converged=rn<=thr;return d;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,425,double maxchg=0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,443,"const double bn=std::sqrt(std::max(dot_active(A,A.b,A.b),0.0));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,444,"const double rn=std::sqrt(std::max(dot_active(A,r,r),0.0));",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,457,"struct ChannelEval {double j=0,dj=0,eta=0,shift=0;};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,458,"static double activity_gamma(double salt,double /*T*/,const Config&c){double I=std::max(salt/1000.0,0.0),sq=std::sqrt(I);double lg=-c.activity_A*sq/std::max(1+c.activity_B*sq,1e-12)+c.activity_linear*I;lg=clampd(lg,-std::abs(c.max_log10_gamma),std::abs(c.max_log10_gamma));return std::pow(10.0,lg);}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,459,"static std::pair<double,double> eeq(const Config::Channel&ch,double activity,double T,const Config&c){double shift=0;if(c.nernst_enabled){double ratio=std::max(activity/std::max(ch.ref_activity,c.activity_floor),c.activity_floor);shift=c.R*T/(ch.n*c.F)*ch.nernst_exp*std::log(ratio);shift=clampd(shift,-std::abs(c.max_nernst_shift),std::abs(c.max_nernst_shift));}return {ch.Eeq+shift,shift};}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,460,"static ChannelEval channel_eval(const Config::Channel&ch,double cf,double conc,double D,double eta,double T,double kinetic,const Config&c){ChannelEval e;e.eta=std::max(eta,0.0);double kf=ch.alpha*ch.n*c.F/(c.R*T),kr=(1-ch.alpha)*ch.n*c.F/(c.R*T);double rf=kf*e.eta,rr=-kr*e.eta;double f=clampd(rf,-c.exp_limit,c.exp_limit),r=clampd(rr,-c.exp_limit,c.exp_limit);double pref=ch.j0*kinetic,ef=std::exp(f),er=std::exp(r);double raw=c.full_bv?pref*(cf*ef-ch.reverse*er):pref*cf*ef;double draw=0;if(raw>0&&e.eta>0){draw=c.full_bv?pref*(cf*ef*kf + ch.reverse*er*kr):pref*cf*ef*kf;}double jk=std::max(raw,0.0);if(c.mass_transfer_saturation){double km=c.derive_km?D/std::max(c.diffusion_layer,1e-30):ch.km;double jl=ch.n*c.F*km*std::max(conc,0.0);if(jl>c.current_density_floor){double inv=1/(1+jk/jl);e.j=jk*inv;e.dj=draw*inv*inv;}else e.j=e.dj=0;}else{e.j=jk;e.dj=draw;}if(!std::isfinite(e.j)||!std::isfinite(e.dj))e.j=e.dj=0;return e;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,463,"static CellContext context_at(size_t i,const State&s,const Transport&t,const Config&c){(void)t;CellContext x{};x.T=std::max(s.T[i],1.0);x.water_factor=clampd(s.water[i]/std::max(c.water0,1e-30),0,1);x.salt_conc=std::min(s.cp[i],s.cm[i]);x.salt_factor=clampd(x.salt_conc/std::max(c.lp0,1e-30),0,1);x.kinetic=1+c.liquid_kinetics_gain*clampd((s.liquid[i]-c.fast_ion_liquid_threshold)/std::max(1-c.fast_ion_liquid_threshold,1e-30),0,1);x.active=clampd((1-s.pass[i])*(1-s.coverage[i]),c.min_active_area,1.0);double wa=std::max(x.water_factor,c.activity_floor),sa=std::max(x.salt_factor*activity_gamma(x.salt_conc,x.T,c),c.activity_floor);auto a=eeq(c.water_a,wa,x.T,c),b=eeq(c.water_c,wa,x.T,c),d=eeq(c.lp_a,sa,x.T,c),e=eeq(c.lp_c,sa,x.T,c);x.eeq_wa=a.first;x.eeq_wc=b.first;x.eeq_la=d.first;x.eeq_lc=e.first;x.shiftmax=std::max({std::abs(a.second),std::abs(b.second),std::abs(d.second),std::abs(e.second)});return x;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,465,"struct LocalFace {double jw=0,jl=0,eta_w=0,eta_l=0,phi_face=0,sensitivity=0;bool ok=true;};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,466,"static LocalFace solve_face(size_t i,bool anode,double phi_cell,double sigma_face,const State&s,const Transport&t,const Config&c,double h){LocalFace out;CellContext x=context_at(i,s,t,c);double maxdrop=anode?std::max(c.voltage-phi_cell,0.0):std::max(phi_cell-c.cathode_voltage,0.0);if(maxdrop<=0){out.phi_face=anode?c.voltage:c.cathode_voltage;return out;}double G=std::max(sigma_face/h,c.sigma_min/h),lo=0,hi=maxdrop,gap=.5*maxdrop;auto eval=[&](double g,double&j,double&dj,double&residual,double&scale,double&ew,double&el){double eta_w=std::max(g-(anode?x.eeq_wa:x.eeq_wc),0.0),eta_l=std::max(g-(anode?x.eeq_la:x.eeq_lc),0.0);ChannelEval w=channel_eval(anode?c.water_a:c.water_c,x.water_factor,s.water[i],t.Dw[i],eta_w,x.T,1.0,c);double D=std::min(t.Dp[i],t.Dm[i]);ChannelEval l=channel_eval(anode?c.lp_a:c.lp_c,x.salt_factor,x.salt_conc,D,eta_l,x.T,x.kinetic,c);j=x.active*(w.j+l.j);dj=x.active*(w.dj+l.dj);double jb=G*std::max(maxdrop-g,0.0);residual=j-jb;scale=std::max({std::abs(j),std::abs(jb),1.0});ew=eta_w;el=eta_l;};",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,467,"double j=0,dj=0,sg=0,sc=1,ew=0,el=0;bool ok=false;for(int it=1;it<=c.local_max_iter;it++){eval(gap,j,dj,sg,sc,ew,el);if(it>=c.local_min_iter && std::abs(sg)<=std::min(c.local_abs_tol,c.local_rel_tol*sc)){ok=true;break;}if(sg<0)lo=gap;else hi=gap;gap=.5*(lo+hi);}for(int k=0;k<c.local_newton&&!ok;k++){eval(gap,j,dj,sg,sc,ew,el);double der=dj+G;if(std::isfinite(der)&&der>1e-12){double cand=clampd(gap-sg/der,lo,hi);gap=cand;eval(gap,j,dj,sg,sc,ew,el);if(sg<0)lo=gap;else hi=gap;if(std::abs(sg)<=std::min(c.local_abs_tol,c.local_rel_tol*sc))ok=true;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,468,"eval(gap,j,dj,sg,sc,ew,el);ChannelEval w=channel_eval(anode?c.water_a:c.water_c,x.water_factor,s.water[i],t.Dw[i],ew,x.T,1.0,c);ChannelEval l=channel_eval(anode?c.lp_a:c.lp_c,x.salt_factor,x.salt_conc,std::min(t.Dp[i],t.Dm[i]),el,x.T,x.kinetic,c);out.jw=x.active*w.j;out.jl=x.active*l.j;out.eta_w=ew;out.eta_l=el;out.phi_face=anode?c.voltage-gap:c.cathode_voltage+gap;double ks=x.active*(w.dj+l.dj);double L=std::max(ks,G),sm=std::min(ks,G);out.sensitivity=(L>1e-12)?sm/(1+sm/L):0;out.ok=ok;return out;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,473,double sensitivity=0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,527,"double sum=std::accumulate(s.phi.begin(),s.phi.end(),0.0);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,528,"const double initial=sum/std::max<size_t>(g.N,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,530,"double rmin=1e300,rmax=-1e300;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,549,const double midpoint=.5*(low+high);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,565,"double totalW=0,totalL=0,total=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,606,double previous_current=.5*(boundary.r.rawA+boundary.r.rawC);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,607,"double dphi=1e300,dI=1e300;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,626,const double current=.5*(boundary.r.rawA+boundary.r.rawC);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,659,"static void masked_gradient(const std::vector<double>&f,const Grid&g,double h,std::vector<double>&gx,std::vector<double>&gy){gx.assign(g.N,0);gy.assign(g.N,0);int n=g.n;for(int r=0;r<n;r++)for(int c=0;c<n;c++){size_t i=g.id(r,c);if(!g.prop[i])continue;bool e=c+1<n&&g.prop[i+1],w=c>0&&g.prop[i-1],nn=r+1<n&&g.prop[i+n],ss=r>0&&g.prop[i-n];if(e&&w)gx[i]=(f[i+1]-f[i-1])/(2*h);else if(e)gx[i]=(f[i+1]-f[i])/h;else if(w)gx[i]=(f[i]-f[i-1])/h;if(nn&&ss)gy[i]=(f[i+n]-f[i-n])/(2*h);else if(nn)gy[i]=(f[i+n]-f[i])/h;else if(ss)gy[i]=(f[i]-f[i-n])/h;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,660,"static void compute_current(const State&s,const Transport&t,const Grid&g,const Config&c,double h,Electrical&e){std::vector<double>px,py,cpx,cpy,cmx,cmy;masked_gradient(s.phi,g,h,px,py);masked_gradient(s.cp,g,h,cpx,cpy);masked_gradient(s.cm,g,h,cmx,cmy);for(size_t i=0;i<g.N;i++){if(!g.prop[i])continue;e.Ex[i]=-px[i];e.Ey[i]=-py[i];e.Jdx[i]=c.diffusion_potential?-c.F*(c.zplus*t.Dp[i]*cpx[i]+c.zminus*t.Dm[i]*cmx[i]):0;e.Jdy[i]=c.diffusion_potential?-c.F*(c.zplus*t.Dp[i]*cpy[i]+c.zminus*t.Dm[i]*cmy[i]):0;e.Jox[i]=t.sig[i]*e.Ex[i];e.Joy[i]=t.sig[i]*e.Ey[i];e.Jx[i]=e.Jox[i]+e.Jdx[i];e.Jy[i]=e.Joy[i]+e.Jdy[i];e.Jmag[i]=std::hypot(e.Jx[i],e.Jy[i]);e.qj[i]=std::max(e.Jox[i]*e.Ex[i]+e.Joy[i]*e.Ey[i],0.0);double Em=std::hypot(e.Ex[i],e.Ey[i]),ii=t.sigi[i]*Em,ie=t.sige[i]*Em;e.ionicFrac[i]=ii/std::max(ii+ie,c.current_density_floor);}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,662,"static double lap_at(const std::vector<double>&f,int n,int r,int c,double h){auto at=[&](int rr,int cc){rr=std::max(0,std::min(n-1,rr));cc=std::max(0,std::min(n-1,cc));return f[size_t(rr)*n+cc];};return (at(r,c+1)+at(r,c-1)+at(r+1,c)+at(r-1,c)-4*at(r,c))/(h*h);}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,663,"static void flux_div_charged(const std::vector<double>&conc,const std::vector<double>&D,const State&s,const Grid&g,const Config&c,double h,double z,std::vector<double>&div){int n=g.n;std::vector<double>fx(size_t(n)*(n+1),0),fy(size_t(n+1)*n,0);for(int r=0;r<n;r++)for(int col=0;col<n-1;col++){size_t a=g.id(r,col),b=g.id(r,col+1);if(g.prop[a]&&g.prop[b]){double df=harmonic(D[a],D[b]),cf=.5*(conc[a]+conc[b]),Tf=std::max(.5*(s.T[a]+s.T[b]),1.0);fx[size_t(r)*(n+1)+col+1]=-df*(conc[b]-conc[a])/h-z*df*c.F/(c.R*Tf)*cf*(s.phi[b]-s.phi[a])/h;}}for(int r=0;r<n-1;r++)for(int col=0;col<n;col++){size_t a=g.id(r,col),b=g.id(r+1,col);if(g.prop[a]&&g.prop[b]){double df=harmonic(D[a],D[b]),cf=.5*(conc[a]+conc[b]),Tf=std::max(.5*(s.T[a]+s.T[b]),1.0);fy[size_t(r+1)*n+col]=-df*(conc[b]-conc[a])/h-z*df*c.F/(c.R*Tf)*cf*(s.phi[b]-s.phi[a])/h;}}div.assign(g.N,0);for(int r=0;r<n;r++)for(int col=0;col<n;col++){size_t i=g.id(r,col);if(g.prop[i])div[i]=(fx[size_t(r)*(n+1)+col+1]-fx[size_t(r)*(n+1)+col])/h+(fy[size_t(r+1)*n+col]-fy[size_t(r)*n+col])/h;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,664,"static void flux_div_neutral(const std::vector<double>&conc,const std::vector<double>&D,const Grid&g,double h,std::vector<double>&div){int n=g.n;std::vector<double>fx(size_t(n)*(n+1),0),fy(size_t(n+1)*n,0);for(int r=0;r<n;r++)for(int col=0;col<n-1;col++){size_t a=g.id(r,col),b=g.id(r,col+1);if(g.prop[a]&&g.prop[b])fx[size_t(r)*(n+1)+col+1]=-harmonic(D[a],D[b])*(conc[b]-conc[a])/h;}for(int r=0;r<n-1;r++)for(int col=0;col<n;col++){size_t a=g.id(r,col),b=g.id(r+1,col);if(g.prop[a]&&g.prop[b])fy[size_t(r+1)*n+col]=-harmonic(D[a],D[b])*(conc[b]-conc[a])/h;}div.assign(g.N,0);for(int r=0;r<n;r++)for(int col=0;col<n;col++){size_t i=g.id(r,col);if(g.prop[i])div[i]=(fx[size_t(r)*(n+1)+col+1]-fx[size_t(r)*(n+1)+col])/h+(fy[size_t(r+1)*n+col]-fy[size_t(r)*n+col])/h;}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,665,"static bool limited_update(double&field,double rate,double dt,double ref,const Config&c){double raw=dt*rate,lim=c.max_relative_concentration_change*std::max(field,ref*c.concentration_min_fraction),ld=clampd(raw,-lim,lim);double rawu=field+ld,lo=ref*c.concentration_min_fraction,hi=ref*c.concentration_max_multiple,up=clampd(rawu,lo,hi);bool l=std::abs(ld-raw)>1e-12+1e-7*std::max({std::abs(raw),std::abs(ld),std::abs(field),lo})||std::abs(up-rawu)>1e-12+1e-7*std::max({std::abs(up),std::abs(rawu),lo});field=up;return l;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,666,"static double update_species(State&s,Transport&t,const Reaction&r,const std::vector<double>&chem,const Grid&g,const Config&c,double h,double dt){int subs=std::max(1,c.species_substeps);double limiter=0;size_t propcnt=std::count(g.prop.begin(),g.prop.end(),uint8_t(1));for(int sub=0;sub<subs;sub++){if(sub>0)transport_fields(s,g,c,t);std::vector<double>dc,dm,dw;if(c.full_np){flux_div_charged(s.cp,t.Dp,s,g,c,h,c.zplus,dc);flux_div_charged(s.cm,t.Dm,s,g,c,h,c.zminus,dm);flux_div_neutral(s.water,t.Dw,g,h,dw);}else{dc.assign(g.N,0);dm.assign(g.N,0);dw.assign(g.N,0);}size_t limcount=0;for(size_t i=0;i<g.N;i++)if(g.prop[i]){double cs=chem[i]*c.lp0*c.oxidizer_consume;double rc=-dc[i]-r.saltSink[i]-cs,rm=-dm[i]-r.saltSink[i]-cs,rw=-dw[i]-r.waterSink[i];bool a=limited_update(s.cp[i],rc,dt/subs,c.cation0,c),b=limited_update(s.cm[i],rm,dt/subs,c.anion0,c),d=limited_update(s.water[i],rw,dt/subs,c.water0,c);double neutral=.5*(s.cp[i]+s.cm[i]);s.cp[i]=(1-c.electroneutral_relax)*s.cp[i]+c.electroneutral_relax*neutral;s.cm[i]=(1-c.electroneutral_relax)*s.cm[i]+c.electroneutral_relax*neutral;if(a||b||d)limcount++;}limiter+=double(limcount)/std::max<size_t>(propcnt,1);}return limiter/subs;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,667,"static void update_blocking(State&s,const Reaction&r,const Grid&g,const Config&c,double dt){for(size_t i=0;i<g.N;i++){bool zone=r.anodeZone[i]||r.cathodeZone[i];if(!zone||!g.prop[i]){s.pass[i]=s.coverage[i]=0;continue;}double jt=r.jwa[i]+r.jla[i]+r.jwc[i]+r.jlc[i];if(c.passivation_enabled){double gate=sigmoid((s.T[i]-c.pass_T0)/std::max(c.pass_Tw,1e-12));double form=c.pass_form*std::pow(std::max(jt/c.pass_jref,0.0),c.pass_jexp)*gate*(1-s.pass[i]);s.pass[i]=clampd(s.pass[i]+dt*(form-c.pass_remove*s.pass[i]),0,1);}if(c.gas_coverage_enabled){double source=std::max(r.gasSource[i]/c.gas_source_ref,0.0);double form=c.gas_cov_form*source*(1-s.coverage[i]);s.coverage[i]=clampd(s.coverage[i]+dt*(form-c.gas_cov_detach*s.coverage[i]),0,1);}}}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,669,"static double percentile99(std::vector<double> v){if(v.empty())return 0;std::sort(v.begin(),v.end());double pos=.99*(v.size()-1),lo=std::floor(pos),hi=std::ceil(pos),w=pos-lo;return v[size_t(lo)]*(1-w)+v[size_t(hi)]*w;}",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,672,double undecomp=1.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,673,double energy_at_eval=0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,675,"double congestion=0.0,peakT=0.0,peakI=0.0,finalR=0.0,solver_res=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,679,"double wall=0.0,max_species_limiter=0.0,max_temp_cap=0.0,max_gas_cap=0.0,max_chem_cap=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,680,double simulated_time=0.0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,691,"double h=c.domain/std::max(g.n-1,1),alphaT=c.k/(c.density*c.cp);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,705,double meanJ=0.0; size_t pcnt=0;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,708,"double congestion=percentile99(Jvals)/std::max(meanJ,c.current_density_floor);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,710,"double energy=0.0,prev_power=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,712,"double eval_undecomp=1.0,eval_energy=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,716,double time=(step+1)*c.dt;,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,735,"double ox=std::min(s.cp[i],s.cm[i])/std::max(c.lp0,1e-12);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,736,double gate=sigmoid((s.T[i]-c.chem_activation_T)/20.0);,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,737,"double rate=c.chem_A*std::exp(-c.chem_Ea/(c.R*std::max(s.T[i],1.0)))",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,747,"double maxT=0.0,sumAlpha=0.0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,751,double leq=1/(1+std::exp(-(s.T[i]-c.effective_softening_T)/c.transition_width));,C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,753,"double chemgas=c.density*c.gas_yield_mass*chem[i]/std::max(c.gas_molar_mass,1e-30);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,756,"double convfac=clampd(1-c.gas_thermal_insulation*s.coverage[i],0.05,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,782,"double undecomp=1-sumAlpha/std::max<size_t>(pcnt,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,811,"const double invN=1.0/std::max<size_t>(g.N,1);",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,812,"const double anode_fraction=std::count(g.anode.begin(),g.anode.end(),uint8_t(1))*invN;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,813,"const double cathode_fraction=std::count(g.cathode.begin(),g.cathode.end(),uint8_t(1))*invN;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님
+cpp/reference/ecsp_cpp_solver_v7_9_4_reference.cpp,879,"transport_fields(s,g,c,t); double h=c.domain/std::max(g.n-1,1); int gi=0; double go=0;",C++ 선언/조회 정규식 인덱스; 모든 C++ 표현식의 의미 분석은 아님

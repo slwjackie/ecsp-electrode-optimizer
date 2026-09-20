@@ -1,0 +1,26 @@
+# Geometry and all physics remain sourced from --config (existing experiment).
+phidl_doe:
+  topology_count: 100
+  stage1_variants: 3
+  selected_topologies: 30
+  stage2_variants: 10
+  final_count: 20
+  fraction_1a1c: 0.5
+  topology_style: hybrid_interdigitated
+  # Exactly 5 of 100 topologies use staggered/interdigitated electrodes.
+  interdigitated_fraction: 0.05
+  # The remaining 95 are allocated by these relative weights.
+  # Fractions need not sum to 1; they are normalized deterministically.
+  shape_family_fractions:
+    lattice: 0.55
+    wave: 0.15
+    spiral: 0.15
+    circle: 0.15
+  interdigitated_reach_fraction: 0.78
+  interdigitated_curve_scale: 0.20
+  require_opposed_active_edges: true
+  minimum_opposed_edge_fraction: 0.45
+  representative_iou_threshold: 0.80
+  maximum_topology_attempts: 20000
+  maximum_attempts_per_topology: 1000
+  maximum_width_adjustment_fraction: 0.15

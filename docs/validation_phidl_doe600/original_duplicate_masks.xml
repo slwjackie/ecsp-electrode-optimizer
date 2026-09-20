@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="324.953" timestamp="2026-09-16T02:48:39.943377+09:00" hostname="gimjiin-ui-MacBookPro.local"><testcase classname="python.tests.test_geometry_safe_bootstrap" name="test_duplicate_masks_do_not_fill_a_topology_quota" time="324.687"><failure message="assert 0 == 1">tmp_path = PosixPath('/private/var/folders/pv/jh7w35ys4qn40jk0vn8xxdrr0000gn/T/pytest-of-kimjiin/pytest-599/test_duplicate_masks_do_not_fi0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x104ded810&gt;
+
+    def test_duplicate_masks_do_not_fill_a_topology_quota(tmp_path,monkeypatch):
+        import ecsp_nsga2.bootstrap as module
+        original=module.instantiate_variant
+        monkeypatch.setattr(module,'instantiate_variant',lambda t,i,s,l:original(t,0,s,l))
+        c=small_config();c['optimization']['bootstrap_max_attempts_per_topology']=3
+        with pytest.raises(BootstrapGeometryError):
+            build_bootstrap(c,physics_grid_size=193,audit_dir=tmp_path/'duplicate',verbose=False)
+        report=json.loads((tmp_path/'duplicate/geometry_bootstrap_report.json').read_text())
+&gt;       assert report['accepted_count']==1
+E       assert 0 == 1
+
+python/tests/test_geometry_safe_bootstrap.py:154: AssertionError</failure></testcase></testsuite></testsuites>

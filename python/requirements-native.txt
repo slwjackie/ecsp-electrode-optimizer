@@ -1,0 +1,3 @@
+-r requirements-dev.txt
+ninja>=1.11
+filelock>=3.13

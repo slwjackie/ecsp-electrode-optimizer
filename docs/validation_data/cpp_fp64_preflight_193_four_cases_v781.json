@@ -1,0 +1,52 @@
+{
+  "status": "passed",
+  "environment": "x86_64 Linux validation container",
+  "grid_size": 193,
+  "time_step_s": 0.00025,
+  "successful": 4,
+  "rejected": 0,
+  "aggregate_parallel_wall_s": 27.0,
+  "cases": [
+    {
+      "geometry_id": "G000_T00_b5964f_V000",
+      "finalElectricalConverged": true,
+      "finalElectricalRelativeResidual": 9.695723815527008e-10,
+      "finalAnodeCathodeCurrentMismatch": 0.0038392792899648994,
+      "finalNonlinearRobinCurrentBalanceCombinedResidual": 0.7678558579929798,
+      "wallClockTime_s": 24.318652843,
+      "totalLinearIterations": 42731,
+      "totalNonlinearRobinOuterIterations": 92
+    },
+    {
+      "geometry_id": "G000_T00_b5964f_V001",
+      "finalElectricalConverged": true,
+      "finalElectricalRelativeResidual": 9.334417627832537e-10,
+      "finalAnodeCathodeCurrentMismatch": 0.004156546484856794,
+      "finalNonlinearRobinCurrentBalanceCombinedResidual": 0.8313092969713588,
+      "wallClockTime_s": 24.009418127,
+      "totalLinearIterations": 41167,
+      "totalNonlinearRobinOuterIterations": 87
+    },
+    {
+      "geometry_id": "G000_T00_b5964f_V002",
+      "finalElectricalConverged": true,
+      "finalElectricalRelativeResidual": 9.953215909774856e-10,
+      "finalAnodeCathodeCurrentMismatch": 0.0002228350415007398,
+      "finalNonlinearRobinCurrentBalanceCombinedResidual": 0.04456700830014796,
+      "wallClockTime_s": 25.121361525,
+      "totalLinearIterations": 46364,
+      "totalNonlinearRobinOuterIterations": 104
+    },
+    {
+      "geometry_id": "G000_T00_b5964f_V003",
+      "finalElectricalConverged": true,
+      "finalElectricalRelativeResidual": 9.788677069011226e-10,
+      "finalAnodeCathodeCurrentMismatch": 0.0018595799007869189,
+      "finalNonlinearRobinCurrentBalanceCombinedResidual": 0.37191598015738375,
+      "wallClockTime_s": 19.685170848,
+      "totalLinearIterations": 31591,
+      "totalNonlinearRobinOuterIterations": 60
+    }
+  ],
+  "note": "M2 arm64 native runtime must be confirmed with tools/run_m2_cpp_fp64_preflight.sh."
+}

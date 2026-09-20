@@ -1,0 +1,84 @@
+schema_version: 1
+purpose: literature provenance and validation targets for the non-metallized LP/PVA/GLY/BA model
+
+user_formulation_wet_mass_fraction:
+  lithium_perchlorate: {value: 0.291, status: user_specified}
+  water: {value: 0.539, status: user_specified}
+  pva: {value: 0.100, status: user_specified}
+  glycerol: {value: 0.050, status: user_specified}
+  boric_acid: {value: 0.020, status: user_specified}
+  tungsten: {value: 0.000, status: user_specified}
+
+closest_non_metallized_M0_wet_formulation:
+  lithium_perchlorate: {value: 0.2947, unit: mass_fraction, status: reported}
+  water: {value: 0.5453, unit: mass_fraction, status: reported}
+  pva: {value: 0.1000, unit: mass_fraction, status: reported}
+  glycerol: {value: 0.0400, unit: mass_fraction, status: reported}
+  boric_acid: {value: 0.0200, unit: mass_fraction, status: reported}
+  tungsten: {value: 0.0000, unit: mass_fraction, status: reported}
+  transfer_note: >-
+    The user formulation differs mainly by +1 mass-% glycerol. The M0 network is a
+    defensible prior, but its effective rates must be validated for the user's cure
+    state and retained water.
+
+reported_non_metallized_validation_targets:
+  decomposition_onset:
+    value: 349
+    unit: degC
+    value_K: 622.15
+    status: reported_in_primary_thermal_kinetics_study
+    use_in_solver: validation_target_only
+  overall_heat_release:
+    value: 2043
+    unit: J_per_g
+    value_SI: 2043000
+    unit_SI: J_per_kg
+    status: reported_in_primary_thermal_kinetics_study
+    use_in_solver: validation_target_only
+  decomposition_description:
+    value: three_stage_global_decomposition_with_overlapping_primary_secondary_and_residual_LP_processes
+    status: reported_mechanistic_interpretation
+  extended_mechanistic_network:
+    value: five_stage_twelve_reaction_non_metallized_pathway
+    status: reported_mechanistic_interpretation
+
+arrhenius_parameter_policy:
+  complete_per_reaction_A_Ea_n_set_in_cited_non_metallized_papers:
+    value: false
+    status: not_reported_as_a_complete_CFD_ready_set
+  action: >-
+    Preserve the existing v7.7.2 nominal solid kinetics, label them nominal_unvalidated,
+    and validate/calibrate against multi-rate TGA/DSC. Do not invent missing A, Ea, n,
+    species yields, or reaction enthalpies.
+
+values_not_safely_transferable_without_measurement:
+  - retained_water_fraction_after_curing
+  - temperature_dependent_ionic_conductivity
+  - Li_and_ClO4_diffusivities
+  - Butler_Volmer_exchange_current_density
+  - electrode_specific_transfer_coefficients
+  - individual_stage_pre_exponential_factors
+  - individual_stage_reaction_orders
+  - individual_stage_enthalpies
+  - gas_species_yields
+
+primary_sources:
+  - key: gnanaprakash_yang_yoh_thermal_kinetics
+    title: Thermal decomposition behaviour and chemical kinetics of tungsten based electrically controlled solid propellants
+    journal: Combustion and Flame
+    pii: S0010218021004958
+    url: https://www.sciencedirect.com/science/article/pii/S0010218021004958
+    role: non_metallized_M0_thermal_decomposition_and_effective_kinetics
+  - key: yang_effect_tungsten_size
+    title: Effect of tungsten size on thermal analysis and mechanism of lithium perchlorate-based electrically controlled solid propellant
+    journal: Case Studies in Thermal Engineering
+    year: 2023
+    pii: S2214157X23004410
+    url: https://www.sciencedirect.com/science/article/pii/S2214157X23004410
+    role: non_metallized_five_stage_twelve_reaction_pathway_and_metal_comparison
+  - key: gnanaprakash_yoh_pyroelectric
+    title: Understanding the pyroelectric combustion behaviour of metallized electrically controlled solid propellants
+    journal: Proceedings of the Combustion Institute
+    pii: S1540748922000669
+    url: https://www.sciencedirect.com/science/article/pii/S1540748922000669
+    role: M0_formulation_and_pyroelectric_combustion_mechanism

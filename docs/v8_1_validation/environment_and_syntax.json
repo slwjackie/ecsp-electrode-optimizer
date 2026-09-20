@@ -1,0 +1,10 @@
+{
+  "python_compile_files": 68,
+  "shell_syntax_files": 32,
+  "python": "3.13.5 (main, Jul 15 2026, 20:25:40) [GCC 14.2.0]",
+  "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+  "torch": "2.10.0+cpu",
+  "cuda": null,
+  "gpu": false,
+  "compiler": "g++ (Debian 14.2.0-19) 14.2.0"
+}

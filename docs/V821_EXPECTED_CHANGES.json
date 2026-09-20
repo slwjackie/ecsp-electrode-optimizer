@@ -1,0 +1,39 @@
+{
+  "baseline_release": "8.2.0-P0P1Fixed-BCNative-Hybrid-A100-CPU8",
+  "baseline_archive_sha256": "799cfd001a8e28143e16e33f32424a9545584f2c95691370943c804f210832a6",
+  "target_release": "8.2.1-P0P1Fixed-BCNative-Hybrid-A100-CPU8",
+  "allowed_modified": {
+    "PACKAGE_MANIFEST.txt": "Regenerated at final packaging with the v8.2.1 version, schema and complete payload inventory.",
+    "PACKAGE_SHA256_MANIFEST.txt": "Regenerated as the byte-identical generic alias of the v8.2.1 authoritative manifest while the historical v8.2.0 authoritative manifest remains payload.",
+    "README_KR.md": "Makes the v8.2.1 maintenance guide the active entry point and retains the v8.2.0 and older documentation as historical context.",
+    "VERSION.json": "Advances the patch version and release directory, records immutable-v8.2.0 lineage, resets validation claims and describes the v8.2.1 mask/native hardening contract.",
+    "cpp/bc_native/bc_engine.cpp": "Canonicalises bool contact storage at the direct native entry point, rejects non-finite raw temperature updates, and uses overflow-safe finite PCG convergence checks.",
+    "cpp/bc_native/bc_ops_cpu.cpp": "Validates contact/state/property shapes and owns the immutable Params block in the ATen parallel task closure.",
+    "cpp/bc_native/bc_scalar.h": "Uses portable host/device math wrappers and makes species/thermal limiting fail closed when any input or intermediate is non-finite.",
+    "cpp/bc_native/bindings.cpp": "Reports the v8.2.1 native extension protocol version.",
+    "cpp/bc_native/standalone.cpp": "Reports the v8.2.1 standalone executable version while retaining the protocol and C++ standard metadata.",
+    "python/ecsp_cuda/solver.py": "Canonicalises every batched CUDA contact mask through uint8 value comparison so Pillow mode-1 0xff truth bytes become owned 0/1 bool storage before Torch transfer.",
+    "python/ecsp_native/adapter.py": "Canonicalises every native geometry bool mask through its byte representation, validates device consistency and packages results with the canonical full-domain mask.",
+    "python/ecsp_nsga2/bc_native.py": "Classifies only explicit typed candidate exceptions as recoverable candidate failures; unexpected numerical/runtime failures abort the optimisation instead of being inferred from message substrings.",
+    "python/ecsp_nsga2/geometry.py": "Converts Pillow mode-1 raster output through uint8 so generated NumPy masks own canonical 0/1 bool bytes.",
+    "python/ecsp_v6/physics/numerics.py": "Canonicalises nearest-neighbour resize inputs by byte value before indexing so 0xff truth storage cannot survive into Torch/native paths.",
+    "python/ecsp_v6/physics/potential.py": "Uses scaled finite L2 norms and finite convergence predicates so squared-residual overflow cannot be reported as PCG, fallback, BiCG, direct or SOR convergence.",
+    "python/ecsp_v6/physics/species.py": "Matches the native fail-closed limiter contract and rejects non-finite inputs/intermediates instead of hiding overflow through clipping.",
+    "python/tests/test_bc_native_release.py": "Adds Pillow 0xff mask generation/resize, adapter/direct-binding equality, host/CUDA finite-helper, CPU contact validation, fail-closed overflow, typed-error and v8.2.1 standalone-version regressions.",
+    "python/verify_release_manifest.py": "Derives patch-level authoritative manifest names for nonzero patch releases while preserving verification of v8.2.0's historical V8_2 name.",
+    "tools/build_release.sh": "Builds only the exact v8.2.1 directory, requires the immutable v8.2.0 ZIP, invokes the v8.2.1 validator and publishes the patch-level manifest/archive atomically.",
+    "python/tests/test_release_validation_gate.py": "Updates release-gate fixtures and assertions from the v8.1-to-v8.2 transition to the v8.2.0-to-v8.2.1 patch contract.",
+    "python/tests/test_v82_release_contract.py": "Extends release metadata, manifest-name and builder assertions for the v8.2.1 patch while retaining the v8.2 physics-contract tests."
+  },
+  "allowed_added": {
+    "PACKAGE_SHA256_MANIFEST_V8_2_1.txt": "Generated final v8.2.1 per-file SHA-256 manifest; the v8.2.0 V8_2 manifest remains historical payload.",
+    "README_V8_2_1_KR.md": "Documents the v8.2.1 baseline, mask/native maintenance scope, validation limits and release procedure.",
+    "docs/CHANGELOG_V8_2_1_KR.md": "Records the v8.2.1 mask-storage/native portability fixes and release-lineage changes.",
+    "docs/V820_BASELINE_MANIFEST.json": "Embeds the verified 269-file immutable v8.2.0 archive inventory for patch preservation audits.",
+    "docs/V821_EXPECTED_CHANGES.json": "Declares every allowed v8.2.0-to-v8.2.1 modification and addition.",
+    "docs/V8_2_1_VALIDATION_REPORT_KR.md": "Separates pending and final v8.2.1 validation from historical v8.2.0 results and keeps A100 status explicit.",
+    "python/audit_v820_preservation.py": "Audits the patch tree against the immutable v8.2.0 ZIP and permits only declared v8.2.1 changes.",
+    "tools/validate_v8_2_1_cpu.sh": "Runs the full v8.2.1 CPU/native/parity/pipeline/manifest gate with immutable-v8.2.0 preservation evidence."
+  },
+  "allowed_deleted": {}
+}

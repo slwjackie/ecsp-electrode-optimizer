@@ -1,0 +1,23 @@
+﻿채널,alpha,E_J_per_mol,ln_Af_per_s,Q_J_per_kg,w,출처표시,검증상태
+1,0.0,85000,13.0,881000.0,0.6666666666666666,approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+1,0.1,85000,13.0,881000.0,0.6666666666666666,approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+1,0.2,91000,14.5,881000.0,0.6666666666666666,approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+1,0.3,98000,15.5,881000.0,0.6666666666666666,approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+1,0.4,105000,16.5,881000.0,0.6666666666666666,approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+1,0.5,112000,18.0,881000.0,0.6666666666666666,approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+1,0.6,119000,19.0,881000.0,0.6666666666666666,approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+1,0.7,127000,20.0,881000.0,0.6666666666666666,approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+1,0.8,136000,21.0,881000.0,0.6666666666666666,approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+1,0.9,150000,23.8,881000.0,0.6666666666666666,approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+1,1.0,150000,23.8,881000.0,0.6666666666666666,approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+2,0.0,150000,19.0,1162000.0,0.3333333333333333,approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+2,0.1,150000,19.0,1162000.0,0.3333333333333333,approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+2,0.2,145000,18.5,1162000.0,0.3333333333333333,approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+2,0.3,140000,18.0,1162000.0,0.3333333333333333,approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+2,0.4,140000,18.0,1162000.0,0.3333333333333333,approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+2,0.5,150000,20.0,1162000.0,0.3333333333333333,approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+2,0.6,190000,26.0,1162000.0,0.3333333333333333,approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+2,0.7,220000,29.9,1162000.0,0.3333333333333333,approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+2,0.8,190000,26.0,1162000.0,0.3333333333333333,approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+2,0.9,150000,18.0,1162000.0,0.3333333333333333,approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음
+2,1.0,150000,18.0,1162000.0,0.3333333333333333,approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data,원시 좌표 독립검증 미완료; 시료보정 없음

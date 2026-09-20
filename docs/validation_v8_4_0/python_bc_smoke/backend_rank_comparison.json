@@ -1,0 +1,172 @@
+{
+  "status": "complete",
+  "pair_count": 4,
+  "spearman_utopia_rank": null,
+  "normalization": "joint_range_of_both_backends_same_8_objectives",
+  "uncalibrated_model_comparison_not_experimental_validation": true,
+  "baseline_staggered_excluded_from_optimization_ranks": true,
+  "rows": [
+    {
+      "geometry_id": "G000_T00_1A1C_f430c6_V000",
+      "condensed_utopia_rank": 2.5,
+      "reactive_utopia_rank": 2.5,
+      "condensed_pareto_front": 0,
+      "reactive_pareto_front": 0,
+      "rank_changed": false
+    },
+    {
+      "geometry_id": "G000_T01_1A2C_64e3cb_V001",
+      "condensed_utopia_rank": 2.5,
+      "reactive_utopia_rank": 2.5,
+      "condensed_pareto_front": 0,
+      "reactive_pareto_front": 0,
+      "rank_changed": false
+    },
+    {
+      "geometry_id": "G000_T00_1A1C_f430c6_V001",
+      "condensed_utopia_rank": 2.5,
+      "reactive_utopia_rank": 2.5,
+      "condensed_pareto_front": 0,
+      "reactive_pareto_front": 0,
+      "rank_changed": false
+    },
+    {
+      "geometry_id": "G000_T01_1A2C_64e3cb_V000",
+      "condensed_utopia_rank": 2.5,
+      "reactive_utopia_rank": 2.5,
+      "condensed_pareto_front": 0,
+      "reactive_pareto_front": 0,
+      "rank_changed": false
+    }
+  ],
+  "per_objective": [
+    {
+      "objective_index": 0,
+      "spearman": null,
+      "condensed_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ],
+      "reactive_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ]
+    },
+    {
+      "objective_index": 1,
+      "spearman": null,
+      "condensed_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ],
+      "reactive_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ]
+    },
+    {
+      "objective_index": 2,
+      "spearman": null,
+      "condensed_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ],
+      "reactive_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ]
+    },
+    {
+      "objective_index": 3,
+      "spearman": null,
+      "condensed_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ],
+      "reactive_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ]
+    },
+    {
+      "objective_index": 4,
+      "spearman": null,
+      "condensed_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ],
+      "reactive_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ]
+    },
+    {
+      "objective_index": 5,
+      "spearman": null,
+      "condensed_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ],
+      "reactive_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ]
+    },
+    {
+      "objective_index": 6,
+      "spearman": null,
+      "condensed_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ],
+      "reactive_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ]
+    },
+    {
+      "objective_index": 7,
+      "spearman": null,
+      "condensed_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ],
+      "reactive_ranks": [
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ]
+    }
+  ]
+}

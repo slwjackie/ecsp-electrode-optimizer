@@ -1,0 +1,112 @@
+"""Exactly the BC two conversion-dependent channels and inventory convention.
+
+U[:6] = rho, rho*u, rho*v, rho*E, rho*alpha1, rho*alpha2.
+Other components are *conservative* molar inventories (mol/m3), not two extra
+Euler densities and not gas sources. Product water is not mobile BV water.
+"""
+from __future__ import annotations
+import math
+import numpy as np
+from ecsp_nsga2.propagation import (_kinetic_rate, PropagationConfigurationError,
+                                   PropagationCandidateNumericalError)
+
+RHO, MX, MY, ENERGY, A1, A2 = range(6)
+CATION, ANION, WATER, PVA, PRODUCT_WATER, EC_LP = range(6, 12)
+NCONS = 12
+STATE_NAMES = ("rho_kg_per_m3", "rho_u", "rho_v", "rho_E_J_per_m3", "rho_alpha1", "rho_alpha2",
+               "cation_mol_per_m3", "anion_mol_per_m3", "mobile_water_mol_per_m3",
+               "pva_repeat_mol_per_m3", "generated_water_product_mol_per_m3", "ec_lp_consumed_mol_per_m3")
+
+
+class BCTwoChannelChemistry:
+    def __init__(self, config, handoff, rho_bc, gas_constant):
+        kinetics = config["kinetics"]
+        self.channels = list(kinetics["channels"])
+        self.weights = np.asarray(kinetics["mass_conversion_weights"], dtype=np.float64)
+        self.maximum_rate = float(kinetics.get("maximum_rate_per_s", 1e6))
+        self.R = float(gas_constant)
+        self.rho_bc = float(rho_bc)
+        self.xi_per_kg = float(handoff["xiMax_mol_per_m3"]) / self.rho_bc
+        self.initial_lp_per_kg = float(handoff["initialMobileLP_mol_per_m3"]) / self.rho_bc
+        self.initial_pva_per_kg = float(handoff["initialPVARepeat_mol_per_m3"]) / self.rho_bc
+        self.initial_water_per_kg = float(handoff["initialMobileWater_mol_per_m3"]) / self.rho_bc
+        self.m_lp = float(handoff["molarMassLP_kg_per_mol"])
+        self.m_pva = float(handoff["molarMassPVARepeat_kg_per_mol"])
+        if (len(self.channels)!=2 or self.weights.shape!=(2,) or not np.isfinite(self.weights).all()
+                or np.any(self.weights<0) or abs(self.weights.sum()-1)>1e-12
+                or not math.isfinite(self.maximum_rate) or self.maximum_rate<=0 or self.R<=0):
+            raise PropagationConfigurationError("Exactly two BC channels and normalized mass_conversion_weights are required")
+        basis = kinetics.get("heat_release_basis", "per_initial_bulk_propellant_channel_contribution")
+        if basis != "per_initial_bulk_propellant_channel_contribution":
+            raise PropagationConfigurationError("Q1/Q2 must be per-initial-bulk channel contributions, not weighted twice")
+        for ch in self.channels:
+            a = np.asarray(ch["alpha_grid"], dtype=np.float64)
+            ea = np.asarray(ch["activation_energy_J_per_mol"], dtype=np.float64)
+            l = np.asarray(ch["ln_Af_per_s"], dtype=np.float64)
+            q = float(ch["heat_release_J_per_kg"])
+            if (a.ndim!=1 or a.size<2 or ea.shape!=a.shape or l.shape!=a.shape
+                    or not all(np.isfinite(v).all() for v in (a,ea,l))
+                    or np.any(np.diff(a)<=0) or a[0]!=0 or a[-1]!=1 or np.any(ea<0)
+                    or not math.isfinite(q) or q<0):
+                raise PropagationConfigurationError("Invalid BC channel table")
+        self.Q = np.asarray([ch["heat_release_J_per_kg"] for ch in self.channels], dtype=np.float64)
+
+    def progress(self, U):
+        return (self.weights[0]*U[...,A1]+self.weights[1]*U[...,A2])/U[...,RHO]
+
+    def raw_rates(self, U, temperature):
+        # Deliberately call the baseline implementation. No new A/E/n/Q fit.
+        return np.stack([_kinetic_rate(U[...,A1+i]/U[...,RHO], temperature, self.channels[i], self.R)
+                         for i in range(2)], axis=-1)
+
+    def source(self, U, temperature, dt, *, available=None, concentration_floor=0.0, allowed_rate_cap_fraction=0.0):
+        """Return accepted conservative source, with one common resource limiter.
+
+        available is the forward-Euler inventory after NP/Faradaic transport;
+        it permits source splitting within one SSP stage without double use.
+        Heat equals exactly Q1*delta(rho alpha1)+Q2*delta(rho alpha2).
+        """
+        rho = U[...,RHO]
+        alpha = U[...,A1:A2+1]/rho[...,None]
+        rates = self.raw_rates(U, temperature)
+        cap_fraction = float(np.mean(np.any(rates>self.maximum_rate, axis=-1)))
+        if cap_fraction > allowed_rate_cap_fraction+1e-15:
+            raise PropagationCandidateNumericalError("BC chemical rate cap would change the model; candidate rejected")
+        delta = np.minimum(np.maximum(1-alpha,0), dt*np.minimum(rates,self.maximum_rate))
+        proposed_xi = rho*self.xi_per_kg*(delta @ self.weights)
+        resources = U if available is None else available
+        if available is not None:
+            capacity = np.maximum(resources[...,RHO,None]-resources[...,A1:A2+1],0) / rho[...,None]
+            delta = np.minimum(delta,capacity)
+            proposed_xi = rho*self.xi_per_kg*(delta @ self.weights)
+        salt = .5*(resources[...,CATION]+resources[...,ANION])
+        maximum_xi = np.minimum(np.maximum(salt-concentration_floor,0)/1.45,
+                                np.maximum(resources[...,PVA],0))
+        scale = np.ones_like(rho)
+        positive = proposed_xi>0
+        scale[positive] = np.minimum(1,maximum_xi[positive]/proposed_xi[positive])
+        delta *= scale[...,None]
+        d_rho_alpha = rho[...,None]*delta
+        d_xi = self.xi_per_kg*(d_rho_alpha @ self.weights)
+        S = np.zeros_like(U)
+        S[...,A1:A2+1] = d_rho_alpha/dt
+        S[...,ENERGY] = (d_rho_alpha @ self.Q)/dt
+        S[...,CATION] = S[...,ANION] = -1.45*d_xi/dt
+        S[...,PVA] = -d_xi/dt
+        S[...,PRODUCT_WATER] = 2*d_xi/dt
+        return S, {"chemical_rate_cap_fraction":cap_fraction,
+                   "inventory_limiter_fraction":float(np.mean(scale<1-1e-14)),
+                   "maximum_raw_rate_per_s":float(np.max(rates))}
+
+    def conserved_inventory_residuals(self, U):
+        rho = U[...,RHO]
+        extent = self.xi_per_kg*(self.weights[0]*U[...,A1]+self.weights[1]*U[...,A2])
+        return {
+            "pva_plus_extent":U[...,PVA]+extent-rho*self.initial_pva_per_kg,
+            "product_water_minus_extent":U[...,PRODUCT_WATER]-2*extent,
+            # Salt redistributes by NP, so this is an integrated invariant.
+            "salt_plus_ec_plus_extent":.5*(U[...,CATION]+U[...,ANION])+U[...,EC_LP]+1.45*extent-rho*self.initial_lp_per_kg,
+        }
+
+    def chemical_reservoir(self, U):
+        return self.Q[0]*(U[...,RHO]-U[...,A1])+self.Q[1]*(U[...,RHO]-U[...,A2])

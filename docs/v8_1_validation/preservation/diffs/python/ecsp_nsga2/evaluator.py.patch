@@ -1,0 +1,74 @@
+--- v8.0.0/python/ecsp_nsga2/evaluator.py
++++ v8.1.0/python/ecsp_nsga2/evaluator.py
+@@ -974,27 +974,35 @@
+     def _to_python(value: Any, index: int) -> Any:
+         return DirectCondensedV772NoFEvaluator._tensor_scalar(value, index)
+ 
++    def _run_physics(self, geometry, voltage, *, save_handoff=False, stop_on_onset=False):
++        """Reference dispatch. Native subclass replaces only the numerical engine.
++
++        Original reference backend deliberately retains full-horizon semantics.
++        """
++        from ecsp_v6.physics.bc_global import run_bc_global_batch
++        if stop_on_onset:
++            raise EvaluatorError("Onset-only trials require the explicit native backend")
++        return run_bc_global_batch(geometry, self.config, self.composition,
++                                   float(voltage), self.dtype,
++                                   save_fields=save_handoff, save_handoff=save_handoff)
++
+     def _run_model(
+         self,
+         items: Sequence[tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]],
+-        voltage: float,
++        voltage: Any,
+         *,
+         save_handoff: bool = False,
+         write_metrics: bool = True,
++        stop_on_onset: bool = False,
+     ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+         import torch
+         from ecsp_v6.physics.bc_global import run_bc_global_batch
+ 
+         geometry = self._build_geometry_batch(items)
+         with torch.inference_mode():
+-            output = run_bc_global_batch(
+-                geometry,
+-                self.config,
+-                self.composition,
+-                float(voltage),
+-                self.dtype,
+-                save_fields=save_handoff,
+-                save_handoff=save_handoff,
++            output = self._run_physics(
++                geometry, voltage, save_handoff=save_handoff,
++                stop_on_onset=stop_on_onset,
+             )
+         solver_rows = output["solverDiagnostics"].to_cpu_dicts()
+         scalar_keys = [
+@@ -1074,6 +1082,13 @@
+                     "paperEquationUse": output["paperEquationUse"],
+                 }
+             )
++            if "nativeExecution" in output:
++                row["nativeExecution"] = {
++                    k: self._to_python(v, i) if hasattr(v, "ndim") else v
++                    for k, v in output["nativeExecution"].items()
++                }
++                row["backend"] = "bc_global_native"
++                row["solverRevision"] = "v8_1_compiled_fp64_np_local_bv_global_chemistry"
+             if write_metrics:
+                 output_dir.mkdir(parents=True, exist_ok=True)
+                 (output_dir / "condensed_metrics.json").write_text(
+@@ -2647,6 +2662,12 @@
+     allow_debug: bool,
+ ):
+     backend = str(evaluator_config.get("backend", "auto_v772")).lower()
++    if backend in {"bc_global_native", "bc_native_cpu", "bc_native_cuda"}:
++        from .bc_native import NativeBCGlobalEvaluator
++        return NativeBCGlobalEvaluator(package_root, evaluator_config, workdir)
++    if backend in {"bc_global_native_hybrid", "bc_native_cpu_pool", "bc_global_native_cpu_pool"}:
++        from .bc_native import NativeBCHybridEvaluator
++        return NativeBCHybridEvaluator(package_root, evaluator_config, workdir)
+     if backend == "analytic_debug":
+         if not allow_debug:
+             raise EvaluatorError(

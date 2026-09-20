@@ -1,0 +1,444 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="2" time="617.518" timestamp="2026-09-16T02:39:31.618213+09:00" hostname="gimjiin-ui-MacBookPro.local"><testcase classname="python.tests.test_geometry_safe_bootstrap" name="test_fitted_primitives_reproduce_masks_and_do_not_refit_on_reload" time="0.341"><failure message="AssertionError: assert 9.645042786631185 &lt;= 1e-12&#10; +  where 9.645042786631185 = RasterizedGeometry(anode_mask=array([[False, False, False, ..., False, False, False],\n       [False, False, False, ......mum_width_mm': 5.0, 'area_error_pixels': 744.8, 'evaluated_rasters': 221}}, 'fitted_geometry_is_authoritative': True}}).constraint_violation">tmp_path = PosixPath('/private/var/folders/pv/jh7w35ys4qn40jk0vn8xxdrr0000gn/T/pytest-of-kimjiin/pytest-592/test_fitted_primitives_reprodu0')
+
+    def test_fitted_primitives_reproduce_masks_and_do_not_refit_on_reload(tmp_path):
+        c=config();limits=GeometryLimits(**c['geometry'])
+        template=make_topology_templates(20,c['project']['seed'],limits)[3]
+        g=instantiate_variant(template,0,c['project']['seed'],limits)
+        raw=copy.deepcopy(g)
+        r=rasterize_and_validate(g,limits)
+        assert g==raw, 'rasterization must not mutate caller-owned genome'
+&gt;       assert r.constraint_violation&lt;=1e-12
+E       AssertionError: assert 9.645042786631185 &lt;= 1e-12
+E        +  where 9.645042786631185 = RasterizedGeometry(anode_mask=array([[False, False, False, ..., False, False, False],\n       [False, False, False, ......mum_width_mm': 5.0, 'area_error_pixels': 744.8, 'evaluated_rasters': 221}}, 'fitted_geometry_is_authoritative': True}}).constraint_violation
+
+python/tests/test_geometry_safe_bootstrap.py:86: AssertionError</failure></testcase><testcase classname="python.tests.test_geometry_safe_bootstrap" name="test_all_20_topologies_have_unique_feasible_small_quotas" time="577.973"><failure message="ecsp_nsga2.bootstrap.BootstrapGeometryError: T07_e_fork_bus: neither 1A1C nor 2A2C filled 2 unique feasible designs">tmp_path = PosixPath('/private/var/folders/pv/jh7w35ys4qn40jk0vn8xxdrr0000gn/T/pytest-of-kimjiin/pytest-592/test_all_20_topologies_have_un0')
+
+    def test_all_20_topologies_have_unique_feasible_small_quotas(tmp_path):
+        c=config();c['optimization'].update(population_size=40,variants_per_topology=2)
+&gt;       entries,report=build_bootstrap(c,physics_grid_size=193,audit_dir=tmp_path/'audit',verbose=False)
+
+python/tests/test_geometry_safe_bootstrap.py:115: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+config = {'project': {'name': 'ECSP_v8_4_2_Reactive_A100CPU8_5mm_Area1pct_PowerOff', 'seed': 20260904, 'device': 'cuda', 'calib...ogies': 20, ...}, 'geometry': {'domain_mm': 20.0, 'grid_size': 96, 'margin_mm': 0.75, 'minimum_gap_mm': 0.5, ...}, ...}
+physics_grid_size = 193
+audit_dir = PosixPath('/private/var/folders/pv/jh7w35ys4qn40jk0vn8xxdrr0000gn/T/pytest-of-kimjiin/pytest-592/test_all_20_topologies_have_un0/audit')
+cache_dir = None, verbose = False
+
+    def build_bootstrap(
+        config,
+        *,
+        physics_grid_size:int,
+        audit_dir:Path|None=None,
+        cache_dir:Path|None=None,
+        verbose:bool=True,
+    ):
+        from .geometry_families import TOPOLOGY_FAMILIES
+        import math
+    
+        if cache_dir is not None:
+            raise BootstrapGeometryError(
+                "Adaptive symmetric bootstrap requires a fresh G0; "
+                "do not reuse a legacy bootstrap cache."
+            )
+    
+        contract=geometry_contract(config,physics_grid_size)
+        limits=GeometryLimits(**contract["limits"])
+    
+        seed=contract["seed"]
+        nt=contract["initial_topologies"]
+        nv=contract["variants_per_topology"]
+    
+        if nt&lt;=0 or nv&lt;=0 or nt*nv!=contract["population_size"]:
+            raise ValueError(
+                "Generation 0 requires "
+                "initial_topologies * variants_per_topology = population_size"
+            )
+    
+        if nt&gt;len(TOPOLOGY_FAMILIES):
+            raise ValueError(
+                f"Requested {nt} topologies but only "
+                f"{len(TOPOLOGY_FAMILIES)} families exist"
+            )
+    
+        opt=config.get("optimization",{})
+    
+        probe_attempts=int(
+            opt.get("bootstrap_1a1c_probe_attempts",200)
+        )
+    
+        probe_min_accepts=int(
+            opt.get("bootstrap_1a1c_probe_min_accepts",3)
+        )
+    
+        projection_safety=float(
+            opt.get(
+                "bootstrap_1a1c_probe_projection_safety_factor",
+                1.5,
+            )
+        )
+    
+        max_projected_additional=int(
+            opt.get(
+                "bootstrap_1a1c_probe_max_projected_additional_attempts",
+                800,
+            )
+        )
+    
+        selected_pair_max_attempts=int(
+            opt.get(
+                "bootstrap_selected_pair_max_attempts",
+                1500,
+            )
+        )
+    
+        if probe_attempts&lt;=0:
+            raise ValueError("bootstrap_1a1c_probe_attempts must be positive")
+    
+        if selected_pair_max_attempts &lt; probe_attempts:
+            raise ValueError(
+                "bootstrap_selected_pair_max_attempts must be &gt;= "
+                "bootstrap_1a1c_probe_attempts"
+            )
+    
+        within_iou=float(
+            opt.get("bootstrap_within_topology_max_iou",0.92)
+        )
+    
+        cross_iou=float(
+            opt.get("bootstrap_cross_topology_max_iou",0.75)
+        )
+    
+        cross_refs=max(
+            1,
+            int(opt.get("bootstrap_cross_topology_reference_count",5)),
+        )
+    
+        contract["pair_policy"]={
+            "order":["1A1C","2A2C"],
+            "probe_1A1C_attempts":probe_attempts,
+            "probe_min_accepts":probe_min_accepts,
+            "projection_safety_factor":projection_safety,
+            "maximum_projected_additional_attempts":
+                max_projected_additional,
+            "selected_pair_max_attempts":
+                selected_pair_max_attempts,
+            "mix_pairs_within_family":False,
+        }
+    
+        started=time.perf_counter()
+    
+        report=dict(
+            schema=BOOTSTRAP_SCHEMA,
+            status="in_progress",
+            contract=contract,
+            contract_sha256=_digest(contract),
+            requested_count=nt*nv,
+            accepted_count=0,
+            all_candidates_feasible_before_physics=False,
+            independently_tested_on_actual_A100=False,
+            physical_ignition_validation=False,
+            topologies=[],
+            reused_cache=False,
+        )
+    
+        population=[]
+        rows=[]
+        design_seen=set()
+        physics_seen=set()
+        cross_bank=[]
+    
+        for ti,family in enumerate(TOPOLOGY_FAMILIES[:nt]):
+    
+            rejected=Counter()
+    
+            def run_pair(
+                pair,
+                *,
+                attempt_limit,
+                start_attempt=0,
+                stage=None,
+                local_masks=None,
+                local_design_seen=None,
+                local_physics_seen=None,
+            ):
+                stage=[] if stage is None else stage
+                local_masks=[] if local_masks is None else local_masks
+                local_design_seen=set() if local_design_seen is None else local_design_seen
+                local_physics_seen=set() if local_physics_seen is None else local_physics_seen
+    
+                template=_adaptive_family_template(
+                    family,
+                    ti,
+                    pair,
+                )
+    
+                attempts=int(start_attempt)
+    
+                while len(stage)&lt;nv and attempts&lt;attempt_limit:
+    
+                    # Pair identity is already encoded in the template.
+                    # Keep variant numbering identical to standalone smoke tests.
+                    variant_index=attempts
+    
+                    g=instantiate_variant(
+                        template,
+                        variant_index,
+                        seed,
+                        limits,
+                    )
+    
+                    attempts+=1
+    
+                    r=rasterize_and_validate(g,limits)
+                    g=r.fitted_genome or g
+    
+                    if r.constraint_violation&gt;1e-12:
+                        for k,v in r.violation_details.items():
+                            if v&gt;1e-12:
+                                rejected[k]+=1
+                        continue
+    
+                    if topology_signature(g)!=topology_signature(template):
+                        raise BootstrapGeometryError(
+                            f"{family}/{pair}: area fitter changed "
+                            "requested graph topology"
+                        )
+    
+                    physical=validate_solver_grid(
+                        r.anode_mask,
+                        r.cathode_mask,
+                        g,
+                        limits,
+                        physics_grid_size,
+                    )
+    
+                    if physical["violations"]:
+                        rejected.update(physical["violations"])
+                        continue
+    
+                    dh=mask_pair_digest(
+                        r.anode_mask,
+                        r.cathode_mask,
+                    )
+    
+                    ph=physical["mask_sha256"]
+    
+                    if (
+                        dh in design_seen
+                        or ph in physics_seen
+                        or dh in local_design_seen
+                        or ph in local_physics_seen
+                    ):
+                        rejected["duplicate_mask"]+=1
+                        continue
+    
+                    if local_masks:
+                        maximum_iou=max(
+                            _adaptive_pair_iou(
+                                r.anode_mask,
+                                r.cathode_mask,
+                                a,
+                                c,
+                            )
+                            for a,c in local_masks
+                        )
+    
+                        # WAVE variants may remain visually similar while still
+                        # representing meaningful parameter variations.
+                        local_within_iou = (
+                            float(opt.get("bootstrap_wave_within_topology_max_iou", 0.98))
+                            if family == "wave"
+                            else within_iou
+                        )
+    
+                        if maximum_iou&gt;local_within_iou+1e-12:
+                            rejected[
+                                "within_topology_near_duplicate"
+                            ]+=1
+                            continue
+    
+                    if cross_bank:
+                        maximum_iou=max(
+                            _adaptive_pair_iou(
+                                r.anode_mask,
+                                r.cathode_mask,
+                                a,
+                                c,
+                            )
+                            for a,c in cross_bank
+                        )
+    
+                        if maximum_iou&gt;cross_iou+1e-12:
+                            rejected[
+                                "cross_topology_near_duplicate"
+                            ]+=1
+                            continue
+    
+                    mask_copy=(
+                        np.asarray(
+                            r.anode_mask,
+                            dtype=bool,
+                        ).copy(),
+                        np.asarray(
+                            r.cathode_mask,
+                            dtype=bool,
+                        ).copy(),
+                    )
+    
+                    stage.append(
+                        (g,r,physical,dh,ph,mask_copy)
+                    )
+    
+                    local_masks.append(mask_copy)
+                    local_design_seen.add(dh)
+                    local_physics_seen.add(ph)
+    
+                return (
+                    stage,
+                    attempts,
+                    local_masks,
+                    local_design_seen,
+                    local_physics_seen,
+                )
+    
+            # ---------------------------------------------------------------
+            # 1A1C PROBE
+            # ---------------------------------------------------------------
+            (
+                stage1,
+                attempts1,
+                masks1,
+                dseen1,
+                pseen1,
+            )=run_pair(
+                (1,1),
+                attempt_limit=probe_attempts,
+            )
+    
+            probe_accepts=len(stage1)
+    
+            projected_additional=None
+            promising=False
+    
+            if probe_accepts&gt;=nv:
+                promising=True
+    
+            elif probe_accepts&gt;=probe_min_accepts:
+    
+                observed_rate=probe_accepts/max(attempts1,1)
+    
+                projected_additional=int(
+                    math.ceil(
+                        projection_safety
+                        * (nv-probe_accepts)
+                        / max(observed_rate,1.0e-12)
+                    )
+                )
+    
+                promising=(
+                    projected_additional
+                    &lt;= max_projected_additional
+                    and attempts1+projected_additional
+                    &lt;= selected_pair_max_attempts
+                )
+    
+            selected_stage=None
+            selected_masks=None
+            selected_label=None
+    
+            # ---------------------------------------------------------------
+            # Continue 1A1C only if the probe predicts a practical completion.
+            # ---------------------------------------------------------------
+            if promising:
+    
+                if len(stage1)&lt;nv:
+    
+                    (
+                        stage1,
+                        attempts1,
+                        masks1,
+                        dseen1,
+                        pseen1,
+                    )=run_pair(
+                        (1,1),
+                        attempt_limit=selected_pair_max_attempts,
+                        start_attempt=attempts1,
+                        stage=stage1,
+                        local_masks=masks1,
+                        local_design_seen=dseen1,
+                        local_physics_seen=pseen1,
+                    )
+    
+                if len(stage1)&gt;=nv:
+                    selected_stage=stage1[:nv]
+                    selected_masks=masks1[:nv]
+                    selected_label="1A1C"
+    
+            # ---------------------------------------------------------------
+            # 1A1C not promising, or it failed despite a promising probe:
+            # discard it completely and restart this family as 2A2C.
+            # ---------------------------------------------------------------
+            attempts2=0
+    
+            if selected_stage is None:
+    
+                (
+                    stage2,
+                    attempts2,
+                    masks2,
+                    _dseen2,
+                    _pseen2,
+                )=run_pair(
+                    (2,2),
+                    attempt_limit=selected_pair_max_attempts,
+                )
+    
+                if len(stage2)&gt;=nv:
+                    selected_stage=stage2[:nv]
+                    selected_masks=masks2[:nv]
+                    selected_label="2A2C"
+    
+            attempts_total=attempts1+attempts2
+    
+            if selected_stage is None:
+    
+                summary=dict(
+                    topology_id=f"T{ti:02d}_{family}",
+                    family=family,
+                    accepted=0,
+                    required=nv,
+                    attempts=attempts_total,
+                    selected_pair=None,
+                    probe_1A1C=dict(
+                        attempts=attempts1,
+                        accepted=probe_accepts,
+                        projected_additional_attempts=
+                            projected_additional,
+                        promising=bool(promising),
+                    ),
+                    pair_attempts=dict(
+                        oneAoneC=attempts1,
+                        twoAtwoC=attempts2,
+                    ),
+                    rejections=dict(rejected),
+                    status="failed",
+                )
+    
+                report["topologies"].append(summary)
+                report["elapsed_s"]=time.perf_counter()-started
+                report["status"]="failed"
+    
+                _write_reports(
+                    audit_dir,
+                    report,
+                    rows,
+                )
+    
+&gt;               raise BootstrapGeometryError(
+                    f"T{ti:02d}_{family}: neither 1A1C nor 2A2C "
+                    f"filled {nv} unique feasible designs"
+                )
+E               ecsp_nsga2.bootstrap.BootstrapGeometryError: T07_e_fork_bus: neither 1A1C nor 2A2C filled 2 unique feasible designs
+
+python/ecsp_nsga2/bootstrap.py:747: BootstrapGeometryError</failure></testcase><testcase time="0.001" /></testsuite></testsuites>

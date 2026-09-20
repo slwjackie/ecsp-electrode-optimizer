@@ -1,0 +1,41 @@
+{
+  "status": "passed",
+  "device": "cpu",
+  "dtype": "float32",
+  "torch_version": "2.10.0+cpu",
+  "grid_size": 193,
+  "unknown_count": 30589,
+  "anode_area_fraction": 0.07908937335014343,
+  "cathode_area_fraction": 0.07908937335014343,
+  "conductivity_minimum_S_per_m": 9.99999901978299e-05,
+  "conductivity_maximum_S_per_m": 0.5,
+  "symmetry_absolute_error": 1.52587890625e-05,
+  "symmetry_relative_error": 3.772456693695858e-07,
+  "symmetry_tolerance": 0.4505380094051361,
+  "minimum_random_probe_rayleigh_quotient": 0.0925738587975502,
+  "maximum_equilibrated_diagonal_error": 0.0,
+  "known_solution": {
+    "method": "pcg_symmetric_equilibrated_correction_fp32_true_residual",
+    "iterations": 210,
+    "restarts": 3,
+    "refinement_rounds": 2,
+    "fallback_used": false,
+    "true_relative_residual": 5.074650744063547e-07,
+    "maximum_solution_error_V": 2.3908913135528564e-05,
+    "rms_solution_error_V": 3.6241560792404925e-06
+  },
+  "operation_smoke": {
+    "int64_batch_sum": true,
+    "float_batch_sum": true,
+    "batch_amax": true,
+    "fixed_shape_quantile": true
+  },
+  "gates": {
+    "symmetry": true,
+    "spd": true,
+    "equilibrated_unit_diagonal": true,
+    "known_solution_pcg": true,
+    "actual_method_is_pcg": true,
+    "mps_sensitive_operations": true
+  }
+}

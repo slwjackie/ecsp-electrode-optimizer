@@ -1,0 +1,68 @@
+# ECSP_DEBUG_SPAWN_GUARD_V1
+def main():
+    import os
+    import json
+    import copy
+    import traceback
+    from pathlib import Path
+    import numpy as np
+    import yaml
+    from ecsp_nsga2.post_onset import run_post_onset
+    run = Path(os.environ['RUN'])
+    cfg_path = Path(os.environ['CFG'])
+    gid = os.environ['ID']
+    out = Path(os.environ['OUT'])
+    horizon = float(os.environ['HORIZON'])
+    cfg = yaml.safe_load(cfg_path.read_text())
+    post = copy.deepcopy(cfg['post_onset'])
+    prop = copy.deepcopy(cfg['propagation_refinement'])
+    prop['duration_s'] = horizon
+    hdir = run / 'final' / 'propagation_candidates' / gid / 'bc_handoff'
+    meta_path = hdir / 'bc_handoff_metadata.json'
+    field_path = hdir / 'bc_handoff_fields.npz'
+    meta = json.loads(meta_path.read_text())
+    with np.load(field_path, allow_pickle=False) as z:
+        fields = {k: z[k].copy() for k in z.files}
+    handoff = dict(meta)
+    handoff.update(fields)
+    prop['density_kg_per_m3'] = float(meta['condensedDensity_kg_per_m3'])
+    prop['domain_size_m'] = float(meta['domainSize_m'])
+    prop['surface_layer_thickness_m'] = float(meta['surfaceLayerThickness_m'])
+    from ecsp_reactive.reaction import UNIVERSAL_GAS_CONSTANT_J_PER_MOL_K
+    prop['gas_constant_J_per_molK'] = float(UNIVERSAL_GAS_CONSTANT_J_PER_MOL_K)
+    print(f"[debug] gas constant={prop['gas_constant_J_per_molK']} (ecsp_reactive.reaction canonical constant)", flush=True)
+    effective = None
+    for p in (run / 'effective_config.json', run / 'resolved_config.json'):
+        if p.exists():
+            effective = json.loads(p.read_text())
+            print(f'[debug] effective config={p}', flush=True)
+            break
+    if effective is not None:
+        bc = effective.get('bcGlobal', effective.get('bc_global'))
+    else:
+        bc = cfg['bc_global']
+    if bc is None:
+        raise RuntimeError('Resolved bcGlobal config not found')
+    case_out = out / gid
+    case_out.mkdir(parents=True, exist_ok=True)
+    print(f'[debug] candidate={gid}', flush=True)
+    print(f'[debug] horizon={horizon}', flush=True)
+    print(f"[debug] density={prop['density_kg_per_m3']}", flush=True)
+    print(f"[debug] domain={prop['domain_size_m']}", flush=True)
+    print(f"[debug] thickness={prop['surface_layer_thickness_m']}", flush=True)
+    print(f"[debug] gas_constant={prop['gas_constant_J_per_molK']}", flush=True)
+    print(f'[debug] arrays={len(fields)}', flush=True)
+    try:
+        result = run_post_onset(handoff, prop, bc, case_out, post_onset_config=post, full_bc_config=effective if effective is not None else cfg)
+        print('\n========== SUCCESS ==========', flush=True)
+        print(result, flush=True)
+    except Exception as exc:
+        print('\n========== FAILURE ==========', flush=True)
+        print('TYPE:', type(exc).__name__, flush=True)
+        print('MESSAGE:', str(exc), flush=True)
+        traceback.print_exc()
+        raise
+if __name__ == '__main__':
+    import multiprocessing as _mp
+    _mp.freeze_support()
+    main()

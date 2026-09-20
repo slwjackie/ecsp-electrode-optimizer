@@ -1,0 +1,70 @@
+{
+  "backup_directory": "/Users/kimjiin/Desktop/ECSP_v8_4_2_A100CPU8_GeometrySafe/.codex_backups/model_validity_20260913_193958",
+  "changed_files": [
+    "python/ecsp_nsga2/propagation.py",
+    "python/ecsp_nsga2/post_onset.py",
+    "python/ecsp_nsga2/post_onset_batch.py",
+    "python/ecsp_nsga2/workflow.py",
+    "python/ecsp_reactive/condensed/chemistry.py",
+    "python/ecsp_reactive/condensed/solver.py",
+    "python/ecsp_reactive/condensed/tensor_math.py",
+    "python/ecsp_reactive/condensed/tensor_solver.py"
+  ],
+  "added_files": [
+    "python/tests/test_post_onset_model_validity.py"
+  ],
+  "before": {
+    "python/ecsp_nsga2/propagation.py": {
+      "size": 89468,
+      "mtime_ns": 1789067419746209573,
+      "sha256": "7754f12b54a3bf41773732769ac26d8a8666bac3d445f4df912980c3191c5f15"
+    },
+    "python/ecsp_nsga2/post_onset.py": {
+      "size": 11368,
+      "mtime_ns": 1789067419728928593,
+      "sha256": "451835542a38f7352a65d76d6365cfa3dce3b859157b38e8332759140fa4f3a1"
+    },
+    "python/ecsp_nsga2/post_onset_batch.py": {
+      "size": 9530,
+      "mtime_ns": 1789223839726909934,
+      "sha256": "3bcb41b4d3dbb819a87a0a8a3649a180bbd4189be172006ddb089a07216a9e06"
+    },
+    "python/ecsp_nsga2/workflow.py": {
+      "size": 85094,
+      "mtime_ns": 1789287010188425008,
+      "sha256": "5be2cc7aa848f12f4a63d9ad82c32f0b45c208bbf2ec0e116b710ddaecb5bbec"
+    },
+    "python/ecsp_reactive/condensed/chemistry.py": {
+      "size": 168960,
+      "mtime_ns": 1789282764091329117,
+      "sha256": "dc3bbe90828b24c03a4dde47d6f38b4d69f48674a19da2461aaaccbd3c570f79"
+    },
+    "python/ecsp_reactive/condensed/solver.py": {
+      "size": 97084,
+      "mtime_ns": 1789222213249016057,
+      "sha256": "fa2e9d36f664ab494b61a5e696520f70d3fb686b36a86770359f5d0322613c17"
+    },
+    "python/ecsp_reactive/condensed/tensor_math.py": {
+      "size": 168431,
+      "mtime_ns": 1789223130368738539,
+      "sha256": "33bceabd55bd0f982e6e91a04dc3a923e2ce45e25f314b0f4519095a07f62e27"
+    },
+    "python/ecsp_reactive/condensed/tensor_solver.py": {
+      "size": 24922,
+      "mtime_ns": 1789222213059071585,
+      "sha256": "26c74eb3879a343df3d681be5258a065d3647b5138c5aeb6f47c3f5ccd83985b"
+    }
+  },
+  "after_sha256": {
+    "python/ecsp_nsga2/propagation.py": "f5a96ad0794022c91881841a7fd15100be98d4d81a6926bef2967044ee796562",
+    "python/ecsp_nsga2/post_onset.py": "5fa725fda670394084935befef8a7497cdd4d419e53d32b516a4b7b07196f53d",
+    "python/ecsp_nsga2/post_onset_batch.py": "c49d9167e5be17215316835004f5e78dd07f8516db53013c7cae1312d9658e89",
+    "python/ecsp_nsga2/workflow.py": "438865e803785108de4d5f55b190aeee8534fec728dc8474a65a47d1fef70cdc",
+    "python/ecsp_reactive/condensed/chemistry.py": "c7c7d5541ecbb0b454e2843ee693048d2884eb6969f36df4c168710cc1816aa2",
+    "python/ecsp_reactive/condensed/solver.py": "4e783f7deb5b436e5ef6f07bd3de64cc6129615289268781bbcbdb1f1f4d85f5",
+    "python/ecsp_reactive/condensed/tensor_math.py": "2a0a5e48808789f94bdf5d30e6cca89d765c7eb773dd4615d5dea09bfc43e6d1",
+    "python/ecsp_reactive/condensed/tensor_solver.py": "2ba622755e6ef59605607ab4b1e6035b6814d55abf78728d4657f682f05e32f2",
+    "python/tests/test_post_onset_model_validity.py": "2533fda9a8858a50c7beb2796d07bdb675fb0394d3e6b918c7e3ef729ee016f0"
+  },
+  "config_handoff_or_run_files_written": false
+}

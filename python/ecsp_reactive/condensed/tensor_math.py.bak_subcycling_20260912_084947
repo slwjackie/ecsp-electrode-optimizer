@@ -1,0 +1,392 @@
+"""Device-resident FP64 operators for batched, two-channel condensed Euler.
+
+All arrays have shape [case, y, x, conserved_component]. This is an arithmetic
+port of the NumPy reference, not a learned surrogate or a reduced chemistry.
+No .item(), .numpy(), or host decisions on evolving fields occur in this module.
+The caller transfers only a small per-case acceptance/report table each trial.
+"""
+from __future__ import annotations
+import math
+import numpy as np
+import torch
+from .chemistry import RHO, MX, MY, ENERGY, A1, A2, CATION, ANION, WATER, PVA, PRODUCT_WATER, EC_LP, NCONS
+from ecsp_nsga2.propagation import PropagationConfigurationError, _table_property
+
+SPATIAL = (1, 2)
+RECORD_NAMES = (
+    "time_after_onset_s", "unreacted_area_fraction", "mean_global_progress", "maximum_temperature_K",
+    "maximum_speed_m_per_s", "minimum_pressure_Pa", "maximum_pressure_Pa", "mass_kg", "total_energy_J",
+    "chemical_reservoir_J", "mass_budget_residual_kg", "mass_budget_relative_residual", "energy_budget_residual_J",
+    "energy_budget_relative_residual", "energy_plus_chemical_budget_residual_J", "joule_energy_J",
+    "electrochemical_energy_J", "chemical_energy_J", "heat_loss_J", "net_conduction_energy_J",
+    "boundary_mass_in_kg", "boundary_energy_in_J", "maximum_local_inventory_residual_mol_per_m3",
+    "integrated_lp_inventory_residual_mol",
+)
+
+
+def interp(x: torch.Tensor, grid: torch.Tensor, values: torch.Tensor) -> torch.Tensor:
+    """Piecewise linear, with constant extrapolation, matching np.interp."""
+    xc = torch.clamp(x, min=grid[0], max=grid[-1])
+    i = torch.clamp(torch.searchsorted(grid, xc.contiguous(), right=True)-1, 0, grid.numel()-2)
+    return values[i] + (xc-grid[i])*(values[i+1]-values[i])/(grid[i+1]-grid[i])
+
+
+def harmonic(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    lo, hi = torch.minimum(a,b), torch.maximum(a,b)
+    return torch.where(hi>0, 2*lo/(1+lo/torch.clamp(hi,min=1e-300)), torch.zeros_like(lo))
+
+
+def conduction_and_diagonal(T: torch.Tensor, k: torch.Tensor, dx: float):
+    """No-flux FV Fourier operator AND its actual positive row sum [W/m3/K]."""
+    kx,ky = harmonic(k[:,:,:-1],k[:,:,1:]),harmonic(k[:,:-1,:],k[:,1:,:])
+    fx=kx*(T[:,:,1:]-T[:,:,:-1])/dx**2
+    fy=ky*(T[:,1:,:]-T[:,:-1,:])/dx**2
+    zc=torch.zeros_like(T[:,:,:1]);zr=torch.zeros_like(T[:,:1,:])
+    q=(torch.cat((fx,zc),2)-torch.cat((zc,fx),2)
+       +torch.cat((fy,zr),1)-torch.cat((zr,fy),1))
+    diagonal=(torch.cat((kx,zc),2)+torch.cat((zc,kx),2)
+              +torch.cat((ky,zr),1)+torch.cat((zr,ky),1))/dx**2
+    return q,diagonal
+
+
+class TensorCondensedKernel:
+    """Static model data + pure tensor RHS/trial/diagnostic functions.
+
+    Only the runner chooses CPU versus CUDA. All physical coefficients come
+    from the already-validated BC handoff and resolved configuration.
+    """
+    def __init__(self, solvers, device):
+        self.device=torch.device(device)
+        self.B=len(solvers); s=solvers[0]; self.s=s
+        self.ny,self.nx=s.U.shape[:2]
+        self.dx=s.a.dx;self.vol=s.vol;self.depth=s.a.thickness
+        self.boundary=s.boundary;self.kind=s.riemann;self.epsilon=s.epsilon
+        self.fast=s.fast and self.kind=="hllc"
+        self.stationary_all=bool(self.fast and all(np.all(v.U[...,1:3]==0) and np.all(v.U[...,0]==v.U[0,0,0]) for v in solvers))
+        self.electrical=None
+        self.A,self.B_tait,self.N,self.rho0=s.thermo.A,s.thermo.B,s.thermo.N,s.thermo.rho0
+        self.tmin,self.tmax=s.thermo.tmin,s.thermo.tmax
+        self.R=s.chem.R;self.weights=self.tensor(s.chem.weights);self.Q=self.tensor(s.chem.Q)
+        self.maxrate=s.chem.maximum_rate;self.allowed_cap=s.allowed_cap;self.floor=s.concentration_floor
+        self.heat_grid=self.tensor(s.thermo.heat.grid);self.heat_values=self.tensor(s.thermo.heat.values)
+        self.heat_slopes=self.tensor(s.thermo.heat.slopes);self.heat_integrals=self.tensor(s.thermo.heat.integrals)
+        self.heat_offset=s.thermo.heat.offset
+        self.channels=[(self.tensor(ch['alpha_grid']), self.tensor(ch['activation_energy_J_per_mol']),
+                        self.tensor(ch['ln_Af_per_s'])) for ch in s.chem.channels]
+        raw=s.thermal['thermal_conductivity']
+        # Validate table/law on the CPU once, not inside every GPU stage.
+        _table_property(np.asarray([s.ambient]),raw,self.R)
+        if isinstance(raw,(float,int)):
+            self.kmode='constant';self.kvalue=float(raw)
+        else:
+            self.kmode=str(raw.get('mode','table')).lower()
+            if self.kmode=='constant': self.kvalue=float(raw['value'])
+            elif self.kmode=='table':
+                self.kgrid=self.tensor(raw['temperature_K']);self.kvalues=self.tensor(raw['values'])
+            else:
+                self.kvalue=float(raw['reference_value']);self.ktref=float(raw['reference_temperature_K'])
+                self.kea=float(raw.get('activation_energy_J_per_mol',0.))
+        self.xi=self.tensor([v.chem.xi_per_kg for v in solvers])[:,None,None]
+        self.lp0=self.tensor([v.chem.initial_lp_per_kg for v in solvers])[:,None,None]
+        self.pva0=self.tensor([v.chem.initial_pva_per_kg for v in solvers])[:,None,None]
+        self.m_lp=s.chem.m_lp;self.m_pva=s.chem.m_pva
+        self.contacts=self.tensor(np.stack([v.a.anode_mask|v.a.cathode_mask for v in solvers]),dtype=torch.bool)
+        self.initial=self.tensor(np.stack([v.U for v in solvers]))
+        self.initial_sums=self.initial.sum(SPATIAL)*self.vol
+        self.reservoir0=self.reservoir(self.initial).sum(SPATIAL)*self.vol
+
+    def tensor(self, v, dtype=torch.float64):
+        return torch.as_tensor(np.asarray(v),dtype=dtype,device=self.device).clone()
+
+    def pressure(self,rho):
+        return self.A+self.B_tait*torch.expm1(self.N*torch.log(rho/self.rho0))
+
+    def sound(self,rho):
+        return torch.sqrt(self.B_tait*self.N/self.rho0*(rho/self.rho0)**(self.N-1))
+
+    def cold(self,rho):
+        lr=torch.log(rho/self.rho0)
+        term=lr if self.N==1. else torch.expm1((self.N-1)*lr)/(self.N-1)
+        return self.B_tait/self.rho0*term+(self.A-self.B_tait)/self.rho0*(-torch.expm1(-lr))
+
+    def sensible(self,T):
+        g,v,H,m=self.heat_grid,self.heat_values,self.heat_integrals,self.heat_slopes
+        i=torch.clamp(torch.searchsorted(g,T.contiguous(),right=True)-1,0,g.numel()-2)
+        d=T-g[i]
+        h=H[i]+v[i]*d+.5*m[i]*d*d
+        h=torch.where(T<=g[0],v[0]*(T-g[0]),h)
+        h=torch.where(T>=g[-1],H[-1]+v[-1]*(T-g[-1]),h)
+        return h-self.heat_offset
+
+    def temperature(self,rho,e):
+        g,v,H,m=self.heat_grid,self.heat_values,self.heat_integrals,self.heat_slopes
+        h=e-self.cold(rho)+self.heat_offset
+        i=torch.clamp(torch.searchsorted(H,h.contiguous(),right=True)-1,0,g.numel()-2)
+        y=torch.clamp(h,min=H[0],max=H[-1])-H[i]
+        root=torch.sqrt(torch.clamp(v[i]**2+2*m[i]*y,min=0.))
+        T=g[i]+2*y/(v[i]+root)
+        T=torch.where(h<=0,g[0]+h/v[0],T)
+        return torch.where(h>=H[-1],g[-1]+(h-H[-1])/v[-1],T)
+
+    def primitive(self,U):
+        rho=U[...,0];P=U/rho[...,None]
+        e=P[...,3]-.5*(P[...,1]**2+P[...,2]**2)
+        return torch.cat((rho[...,None],P[...,1:3],self.temperature(rho,e)[...,None],P[...,4:]),-1)
+
+    def conservative(self,P):
+        rho=P[...,0];U=P*rho[...,None]
+        energy=rho*(self.cold(rho)+self.sensible(P[...,3])+.5*(P[...,1]**2+P[...,2]**2))
+        return torch.cat((rho[...,None],U[...,1:3],energy[...,None],U[...,4:]),-1)
+
+    def valid(self,P):
+        p=self.pressure(P[...,0])
+        return (torch.isfinite(P).all(-1)&(P[...,0]>0)&torch.isfinite(p)&(p>0)
+                &(P[...,3]>=self.tmin-1e-10)&(P[...,3]<=self.tmax+1e-10)
+                &(P[...,4:6]>=-1e-12).all(-1)&(P[...,4:6]<=1+1e-12).all(-1)
+                &(P[...,6:]>=-1e-12).all(-1))
+
+    def progress(self,U):
+        return (self.weights[0]*U[...,4]+self.weights[1]*U[...,5])/U[...,0]
+
+    def rates(self,U,T):
+        values=[]
+        for i,(a,e,l) in enumerate(self.channels):
+            alpha=U[...,4+i]/U[...,0]
+            rate=torch.exp(torch.clamp(interp(alpha,a,l)-interp(alpha,a,e)/(self.R*torch.clamp(T,min=1.)),min=-100.,max=60.))
+            values.append(torch.where(alpha<1,rate,torch.zeros_like(rate)))
+        return torch.stack(values,-1)
+
+    def chemistry(self,U,T,dt,available):
+        rho=U[...,0];alpha=U[...,4:6]/rho[...,None];rates=self.rates(U,T)
+        cap=(rates>self.maxrate).any(-1).double().mean(SPATIAL)
+        delta=torch.minimum(torch.clamp(1-alpha,min=0.),dt[:,None,None,None]*torch.clamp(rates,max=self.maxrate))
+        capacity=torch.clamp(available[...,0,None]-available[...,4:6],min=0.)/rho[...,None]
+        delta=torch.minimum(delta,capacity)
+        proposed=rho*self.xi*(delta*self.weights).sum(-1)
+        salt=.5*(available[...,6]+available[...,7])
+        maximum=torch.minimum(torch.clamp(salt-self.floor,min=0.)/1.45,torch.clamp(available[...,9],min=0.))
+        scale=torch.where(proposed>0,torch.minimum(torch.ones_like(rho),maximum/torch.clamp(proposed,min=1e-300)),torch.ones_like(rho))
+        dalpha=rho[...,None]*delta*scale[...,None]
+        safe_dt=torch.clamp(dt,min=1e-300)[:,None,None]
+        extent=self.xi*(dalpha*self.weights).sum(-1)/safe_dt
+        q=(dalpha*self.Q).sum(-1)/safe_dt
+        zero=torch.zeros_like(rho)
+        S=torch.stack((zero,zero,zero,q,dalpha[...,0]/safe_dt,dalpha[...,1]/safe_dt,
+                       -1.45*extent,-1.45*extent,zero,-extent,2*extent,zero),-1)
+        limiter=(scale<1-1e-14).double().mean(SPATIAL)
+        return S,cap,limiter
+
+    def reservoir(self,U):
+        return self.Q[0]*(U[...,0]-U[...,4])+self.Q[1]*(U[...,0]-U[...,5])
+
+    def thermal(self,U):
+        P=self.primitive(U);T=P[...,3];cp=interp(T,self.heat_grid,self.heat_values)
+        if self.kmode=='constant': k=torch.full_like(T,self.kvalue)
+        elif self.kmode=='table': k=interp(T,self.kgrid,self.kvalues)
+        else: k=self.kvalue*torch.exp(-self.kea/self.R*(1/torch.clamp(T,min=1.)-1/self.ktref))
+        conduction,diagonal=conduction_and_diagonal(T,k,self.dx)
+        s=self.s
+        loss=s.h/self.depth*(T-s.ambient)+s.emissivity*s.sigma_sb/self.depth*(T**4-s.ambient**4)
+        return P,cp,k,conduction,loss,diagonal
+
+    def step_size(self,U,remaining):
+        P,cp,k,q,loss,diag=self.thermal(U);T=P[...,3];s=self.s
+        loss_jac=s.h/self.depth+4*s.emissivity*s.sigma_sb/self.depth*torch.maximum(T,torch.full_like(T,s.ambient))**3
+        inv=((diag+loss_jac)/(P[...,0]*cp)).amax(SPATIAL)
+        thermal=s.thermal_cfl/torch.clamp(inv,min=1e-300)
+        if self.stationary_all:
+            acoustic=torch.full_like(remaining,math.inf)
+        else:
+            speed=(abs(P[...,1])+abs(P[...,2])+2*self.sound(P[...,0]))/self.dx
+            acoustic=s.cfl/torch.clamp(speed.amax(SPATIAL),min=1e-300)
+            if self.fast:
+                stationary=((U[...,1:3]==0).all((1,2,3))&(U[...,0]==U[:,0:1,0:1,0]).all(SPATIAL))
+                acoustic=torch.where(stationary,torch.full_like(acoustic,math.inf),acoustic)
+        # Shared-reagent depletion makes both accepted rates zero, not a stiff ODE.
+        rates=self.rates(U,T)
+        has_stock=(.5*(U[...,6]+U[...,7])>self.floor)&(U[...,9]>0)
+        # Match the rate actually used by chemistry(): maximum_rate_per_s.
+        effective_rates=torch.clamp(rates,max=self.maxrate)
+        active_rates=torch.where(has_stock[...,None],effective_rates,torch.zeros_like(rates))
+        reaction=s.alpha_step/torch.clamp(active_rates.amax((1,2,3)),min=1e-300)
+        return torch.minimum(torch.minimum(torch.minimum(thermal,acoustic),reaction),torch.clamp(remaining,max=s.dtmax))
+
+    def _pad(self,P,axis):
+        n=P.shape[axis]
+        if self.boundary=='periodic':
+            ids=torch.arange(-3,n+3,device=P.device)%n
+            return P.index_select(axis,ids)
+        if self.boundary=='transmissive':
+            ids=torch.clamp(torch.arange(-3,n+3,device=P.device),min=0,max=n-1)
+            return P.index_select(axis,ids)
+        left=P.narrow(axis,0,3).flip((axis,)).clone()
+        right=P.narrow(axis,n-3,3).flip((axis,)).clone()
+        normal=1 if axis==2 else 2
+        left[...,normal]=-left[...,normal];right[...,normal]=-right[...,normal]
+        return torch.cat((left,P,right),axis)
+
+    def _trace(self,a,b,c,d,e):
+        center=(a+b+c+d+e)/5
+        scale=torch.stack([abs(v-center) for v in (a,b,c,d,e)]).amax(0)
+        scale=torch.where(scale>0,scale,torch.ones_like(scale))
+        aa,bb,cc,dd,ee=[(v-center)/scale for v in (a,b,c,d,e)]
+        betas=[13/12*(aa-2*bb+cc)**2+.25*(aa-4*bb+3*cc)**2,
+               13/12*(bb-2*cc+dd)**2+.25*(bb-dd)**2,
+               13/12*(cc-2*dd+ee)**2+.25*(3*cc-4*dd+ee)**2]
+        betas=[torch.cat((b[...,:4],b[...,4:].amax(-1,keepdim=True).expand_as(b[...,4:])), -1) for b in betas]
+        den=torch.stack(betas)+self.epsilon
+        scale=den.amin(0)
+        weights=torch.stack((.1*(scale/den[0])**2,.6*(scale/den[1])**2,.3*(scale/den[2])**2))
+        weights=weights/weights.sum(0)
+        return weights[0]*(2*a-7*b+11*c)/6+weights[1]*(-b+5*c+2*d)/6+weights[2]*(2*c+5*d-e)/6
+
+    def reconstruct(self,P,axis,first_order):
+        pad=self._pad(P,axis);n=P.shape[axis]
+        vals=[pad.narrow(axis,i,n+1) for i in range(6)]
+        left=self._trace(*vals[:5]);right=self._trace(*list(reversed(vals[1:6])))
+        invalid=~(self.valid(left)&self.valid(right))
+        fallback=invalid|first_order[:,None,None]
+        left=torch.where(fallback[...,None],vals[2],left)
+        right=torch.where(fallback[...,None],vals[3],right)
+        count=(invalid&~first_order[:,None,None]).sum(SPATIAL)
+        return left,right,count
+
+    def physical_flux(self,U,P,p,normal):
+        F=U*P[...,normal,None]
+        F[...,normal]=F[...,normal]+p
+        F[...,3]=F[...,3]+p*P[...,normal]
+        return F
+
+    def riemann(self,L,R,normal):
+        UL,UR=self.conservative(L),self.conservative(R)
+        rl,rr=L[...,0],R[...,0];ul,ur=L[...,normal],R[...,normal]
+        pl,pr=self.pressure(rl),self.pressure(rr)
+        cl,cr=self.sound(rl),self.sound(rr)
+        sl=torch.minimum(ul-cl,ur-cr);sr=torch.maximum(ul+cl,ur+cr)
+        FL,FR=self.physical_flux(UL,L,pl,normal),self.physical_flux(UR,R,pr,normal)
+        H=(sr[...,None]*FL-sl[...,None]*FR+(sl*sr)[...,None]*(UR-UL))/(sr-sl)[...,None]
+        H=torch.where((sl>=0)[...,None],FL,torch.where((sr<=0)[...,None],FR,H))
+        if self.kind=='hll': return H,torch.zeros(self.B,dtype=torch.int64,device=UL.device)
+        dl,dr=rl*(sl-ul),rr*(sr-ur)
+        sm=(pr-pl+dl*ul-dr*ur)/(dl-dr);ps=pl+dl*(sm-ul)
+        def star(U,P,speed,p):
+            rho=P[...,0];vel=P[...,normal];den=speed-sm
+            safe=torch.where(abs(den)>1e-100,den,torch.full_like(den,1e-100))
+            factor=(speed-vel)/safe;V=U*factor[...,None]
+            V[...,normal]=rho*factor*sm
+            spden=rho*(speed-vel)
+            spden=torch.where(abs(spden)>1e-100,spden,torch.full_like(spden,1e-100))
+            energy=U[...,3]/rho+(sm-vel)*(sm+p/spden)
+            V[...,3]=rho*factor*energy
+            return V
+        USL,USR=star(UL,L,sl,pl),star(UR,R,sr,pr)
+        bad=~torch.isfinite(sm)|~torch.isfinite(ps)|(ps<=0)|~(self.valid(self.primitive(USL))&self.valid(self.primitive(USR)))
+        fsl=FL+sl[...,None]*(USL-UL);fsr=FR+sr[...,None]*(USR-UR)
+        result=torch.where((sl>=0)[...,None],FL,torch.where((sr<=0)[...,None],FR,torch.where((sm>=0)[...,None],fsl,fsr)))
+        result=torch.where(bad[...,None],H,result)
+        contact=(ul==0)&(ur==0)&(pl==pr)
+        exact=torch.zeros_like(result);exact[...,normal]=pl
+        return torch.where(contact[...,None],exact,result),bad.sum(SPATIAL)
+
+    def hydro(self,U,first_order):
+        if self.stationary_all:
+            z=torch.zeros(self.B,device=U.device,dtype=torch.float64)
+            return torch.zeros_like(U),torch.zeros((self.B,NCONS),device=U.device,dtype=torch.float64),torch.stack((z,z,z,z+1),-1)
+        P=self.primitive(U);fluxes=[]
+        fallback=torch.zeros(self.B,device=U.device,dtype=torch.float64);star=fallback.clone();faces=0
+        for axis,normal in ((2,1),(1,2)):
+            l,r,fb=self.reconstruct(P,axis,first_order)
+            F,sb=self.riemann(l,r,normal)
+            if self.boundary=='periodic':
+                if axis==2:F[:,:,-1,:]=F[:,:,0,:]
+                else:F[:,-1,:,:]=F[:,0,:,:]
+            elif self.boundary=='reflective':
+                for end in (0,-1):
+                    f=F[:,:,end,:] if axis==2 else F[:,end,:,:]
+                    keep=f[...,normal].clone();f.zero_();f[...,normal]=keep
+            fluxes.append(F);fallback+=fb;star+=sb;faces+=l.shape[1]*l.shape[2]
+        fx,fy=fluxes
+        rhs=-(torch.diff(fx,dim=2)+torch.diff(fy,dim=1))/self.dx
+        bound=-((fx[:,:,-1,:]-fx[:,:,0,:]).sum(1)+(fy[:,-1,:,:]-fy[:,0,:,:]).sum(1))*self.dx*self.depth
+        skip=torch.zeros_like(fallback,dtype=torch.bool)
+        if self.fast:
+            skip=(U[...,1:3]==0).all((1,2,3))&(U[...,0]==U[:,0:1,0:1,0]).all(SPATIAL)
+            rhs=torch.where(skip[:,None,None,None],torch.zeros_like(rhs),rhs)
+            bound=torch.where(skip[:,None],torch.zeros_like(bound),bound)
+        return rhs,bound,torch.stack((torch.where(skip,0.,fallback),torch.where(skip,0.,fallback*0+faces),
+                                      torch.where(skip,0.,star),skip.double()),-1)
+
+    def rhs(self,U,dt,first_order):
+        hydro,bound,fd=self.hydro(U,first_order)
+        P,cp,k,qcond,loss,diagonal=self.thermal(U);T=P[...,3]
+        if self.electrical is None:
+            electric=torch.zeros_like(U);qj=torch.zeros_like(T);qe=qj
+            electrical_ok=torch.ones(self.B,device=U.device,dtype=torch.bool)
+        else:
+            electric,qj,qe,electrical_ok=self.electrical.evaluate(U,T,dt)
+        available=U+dt[:,None,None,None]*(hydro+electric)
+        availability_ok=(available[...,6:10]>=-1e-9).all((1,2,3))
+        chem,cap,limiter=self.chemistry(U,T,dt,available)
+        derivative=hydro+electric+chem
+        derivative[...,3]=derivative[...,3]+qcond-loss
+        # Validate actual row sum at EACH RK stage, not only the start of a step.
+        jac=self.s.h/self.depth+4*self.s.emissivity*self.s.sigma_sb/self.depth*torch.maximum(T,torch.full_like(T,self.s.ambient))**3
+        cfl=((diagonal+jac)/(P[...,0]*cp)*dt[:,None,None]).amax(SPATIAL)
+        thermal_ok=torch.isfinite(k).all(SPATIAL)&(k>=0).all(SPATIAL)&(cfl<=self.s.thermal_cfl*(1+1e-12))
+        fields=torch.stack((qj,qe,chem[...,3],loss,qcond),-1)
+        ledger=torch.cat((bound,fields.sum(SPATIAL)*self.vol),-1)
+        # Convert the continuous cap tolerance to the nearest representable
+        # whole-cell count on this grid.
+        allowed_cap_cells = math.floor(
+            self.allowed_cap * self.ny * self.nx + 0.5
+        )
+        allowed_cap_discrete = allowed_cap_cells / (self.ny * self.nx)
+        ok=availability_ok&electrical_ok&thermal_ok&torch.isfinite(derivative).all((1,2,3))&(cap<=allowed_cap_discrete+1e-15)
+        return derivative,ledger,torch.cat((fd,cap[:,None],limiter[:,None]),-1),fields,ok
+
+    def trial(self,U,dt,first_order):
+        d=dt[:,None,None,None]
+        k0,l0,g0,f0,v0=self.rhs(U,dt,first_order)
+        u1=U+d*k0;p1=self.primitive(u1);ok1=self.valid(p1).all(SPATIAL)
+        # Invalid attempts must not feed NaN/negative values to later table/EOS
+        # stages. The whole attempt remains invalid and will be retried.
+        u1safe=torch.where(ok1[:,None,None,None],u1,U)
+        k1,l1,g1,f1,v1=self.rhs(u1safe,dt,first_order)
+        u2=.75*U+.25*(u1safe+d*k1);ok2=self.valid(self.primitive(u2)).all(SPATIAL)
+        u2safe=torch.where(ok2[:,None,None,None],u2,U)
+        k2,l2,g2,f2,v2=self.rhs(u2safe,dt,first_order)
+        result=U/3+(2/3)*(u2safe+d*k2)
+        skip=(g0[:,3]>0)&(g1[:,3]>0)&(g2[:,3]>0)
+        result[...,:3]=torch.where(skip[:,None,None,None],U[...,:3],result[...,:3])
+        valid=v0&v1&v2&ok1&ok2&self.valid(self.primitive(result)).all(SPATIAL)
+        return result,dt[:,None]*(l0/6+l1/6+2*l2/3),torch.stack((g0,g1,g2),1),f0/6+f1/6+2*f2/3,valid
+
+    def record(self,t,U,budget):
+        P=self.primitive(U);X=self.progress(U)
+        sums=U.sum(SPATIAL)*self.vol;b=budget[:,:NCONS]
+        qj,qe,qc,loss,cond=budget[:,NCONS:].unbind(-1)
+        mass=sums[:,0]-self.initial_sums[:,0]-b[:,0]
+        energy=sums[:,3]-self.initial_sums[:,3]-b[:,3]-qj-qe-qc+loss-cond
+        scale=torch.stack((abs(self.initial_sums[:,3]),abs(sums[:,3]),abs(qj)+abs(qe)+abs(qc)+abs(loss),torch.ones_like(qj))).amax(0)
+        massrel=abs(mass)/torch.clamp(abs(self.initial_sums[:,0]),min=1e-300);energyrel=abs(energy)/scale
+        reservoir=self.reservoir(U).sum(SPATIAL)*self.vol
+        rb=self.Q.sum()*b[:,0]-self.Q[0]*b[:,4]-self.Q[1]*b[:,5]
+        total=(sums[:,3]+reservoir)-(self.initial_sums[:,3]+self.reservoir0)-b[:,3]-rb-qj-qe+loss-cond
+        extent=self.xi*(self.weights[0]*U[...,4]+self.weights[1]*U[...,5])
+        rp=U[...,9]+extent-U[...,0]*self.pva0
+        rw=U[...,10]-2*extent
+        rs=.5*(U[...,6]+U[...,7])+U[...,11]+1.45*extent-U[...,0]*self.lp0
+        local=torch.maximum(abs(rp).amax(SPATIAL),abs(rw).amax(SPATIAL))
+        sb=(.5*(b[:,6]+b[:,7])+b[:,11]+1.45*self.xi[:,0,0]*(self.weights[0]*b[:,4]+self.weights[1]*b[:,5])-self.lp0[:,0,0]*b[:,0])
+        salt=rs.sum(SPATIAL)*self.vol-sb
+        stock=torch.clamp(U[...,0].amax(SPATIAL)*self.lp0[:,0,0],min=1.)
+        pressure=self.pressure(P[...,0])
+        record=torch.stack((t,(X<self.s.front_threshold).double().mean(SPATIAL),X.mean(SPATIAL),P[...,3].amax(SPATIAL),
+                 torch.hypot(P[...,1],P[...,2]).amax(SPATIAL),pressure.amin(SPATIAL),pressure.amax(SPATIAL),sums[:,0],sums[:,3],
+                 reservoir,mass,massrel,energy,energyrel,total,qj,qe,qc,loss,cond,b[:,0],b[:,3],local,salt),-1)
+        valid=(massrel<=self.s.mass_tolerance)&(energyrel<=self.s.energy_tolerance)&(local<=1e-8*stock)&(abs(salt)<=1e-8*stock*self.ny*self.nx*self.vol)&torch.isfinite(record).all(-1)
+        return record,valid
+
+    def front_edges(self,X):
+        m=X<self.s.front_threshold
+        return (m[:,:,1:]!=m[:,:,:-1]).sum(SPATIAL)+(m[:,1:,:]!=m[:,:-1,:]).sum(SPATIAL)

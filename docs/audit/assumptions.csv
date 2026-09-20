@@ -1,0 +1,41 @@
+﻿ID,경로,가정_선택,분류,의미_한계,코드근거,검증_보정
+A01,BC/두 후속,고정 유효두께 1 mm의 평면 표면 해석,차원축약,깊이별 온도·전위·전극 열용량 미해석,python/ecsp_v6/physics/electrochem.py:2811-3052,실제 두께·접촉면·열조건 고정; 3D/두께 민감도
+A02,BC/두 후속,surface-contact overlay 전체 추진제 유지,기하 모델,전극 픽셀은 재료를 삭제하는 구멍이 아님,python/ecsp_v6/physics/geometry.py,제작 단면/실제 접촉 확인
+A03,전체,분리 전극 모두 hidden bus로 동일 전압,경계 가정,배선 저항/발열/전압강하/floating island 미해석,config/nsga2_bc_reactive_a100_cpu8.yaml geometry,배선 제작성/도통 확인
+A04,BC,두 단가 이온·전기중성 투영,전해질 축약,Poisson/double-layer를 공간 해상하지 않음,python/ecsp_v6/physics/species.py,전류수지·이온수지·EIS 점검
+A05,BC,Nernst–Einstein 이상 이온수송,구성 가정,농축고분자 전해질의 activity/ion correlation 미보정,python/ecsp_v6/physics/bc_global.py:401-474,온도별 전도도; 필요시 transference
+A06,BC,"σ∈[1e−4,0.5] S/m",수치/구성 cap,발동하면 실제 수송 관계 변경. 미작동이라고 가정 금지,python/ecsp_v6/physics/bc_global.py:401-474,cap 민감도·발동분율·전류 순위
+A07,BC,"BV η와 j 비음수, 역반응 availability=1",방향 제한,가역 BV 전체를 푸는 것과 다름,python/ecsp_v6/physics/electrochem.py:1210-1272,극성별 I–V 및 기준전위 검증
+A08,BC,"4개 반응채널 Eeq,n,ΔH 선택",반응 모델,보편 상수 대신 선택 반응의 가정; 물 1.23 V를 각 극에 적용한 기준 확인,python/ecsp_v6/physics/electrochem.py:3055-3327,반응 정의/전위 기준/생성물 확인
+A09,BC,"계면 ΔH 양수, 발열 음수 절삭; jη 추가열 OFF",열분배 가정,전체 열역학적 전기일·엔탈피 분배 검증 필요,python/ecsp_v6/physics/electrochem.py:855-867,I(t)+IR/열량계로 net interface heat 확인
+A10,BC,접촉 법선 전도길이 30 µm,유효 길이,1 mm 체적화 두께와 다름,python/ecsp_v6/physics/electrochem.py:3329-3458,계면 전압강하/접촉저항 보정
+A11,BC/두 후속,단일 global stoichiometry + 2단계 반응,화학 축약,두 채널이 상세 elementary chemistry가 아님,python/ecsp_v6/physics/bc_global.py:643-757,다중 가열 DSC/TGA 및 생성물 정보
+A12,BC/두 후속,"그림에서 근사 추출한 E(α),L(α)와 문헌 열량",문헌 prior,첨부 논문 두 편에 해당 LUT 원시값이 모두 있지 않음,config/nsga2_bc_reactive_a100_cpu8.yaml bc_global.kinetics,원 데이터 입수/동일 조성 DSC/TGA 보정
+A13,BC/두 후속,"Q1,Q2는 initial bulk의 채널 기여량",단위·기준 가정,w를 다시 곱하지 않음; 조성 바뀌면 전이 검증 필요,python/ecsp_reactive/condensed/chemistry.py:62-99,DSC 누적열과 단위 기준 확인
+A14,BC/두 후속,두 채널이 같은 LP/PVA 재고를 공유,resource closure,시약 부족 시 공통 scale로 α와 q 동시 제한,python/ecsp_reactive/condensed/chemistry.py:62-99,재고수지/열수지; 이 자체가 elementary 반응 추정은 아님
+A15,BC/두 후속,생성수는 mobile BV water와 분리,화학 bookkeeping,분해 생성수가 즉시 재전기분해되는 모델 아님,python/ecsp_reactive/condensed/chemistry.py,수분 수송/생성수 가용성 민감도
+A16,조성,경화 후 물 20 wt.%,nominal 초기조건,투입수 20% 잔존과 다름; 코드상 잔존율 약17.7936%,config/nsga2_bc_reactive_a100_cpu8.yaml physics,경화 질량수지/물특이적 분석
+A17,조성,부피가산 밀도·완전 해리,혼합물 근사,기공·경화수축·농축계 해리 미고려,python/ecsp_v6/composition.py,경화 밀도·치수 측정
+A18,BC/두 후속,"cp,k 표 및 범위 밖 끝값 유지",물성 근사,T별 데이터 실측 아님; 잠열/기공/상변화 미포함,python/ecsp_v6/physics/bc_global.py:334-398,cp/열확산·냉각곡선
+A19,BC/두 후속,"대류 h=12,ε=.85 유효 열손실",경계 가정,기체 CFD/복사장/전극열전도 없음,python/ecsp_reactive/condensed/solver.py:105-113,IR 방사율 보정과 냉각곡선
+A20,후속 기본,onset 직후 전원 OFF,운영 정책,전압 유지 실험과 다른 문제,config/nsga2_bc_reactive_a100_cpu8.yaml propagation_refinement,시험 전원파형 일치; 유지시 recomputed+graph OFF
+A21,후속 ON,매 SSPRK stage NP/BV 재계산,분할 결합,전자기장을 연속 시간 implicit monolithic으로 푼 것은 아님,python/ecsp_reactive/condensed/electrical.py; python/ecsp_reactive/condensed/tensor_electrical.py,dt/결합 주기/수지 수렴
+A22,새 Reactive,"단일 응축상 Euler, 전단·점성 제외",역학 가정,응축상 유체형 연속체이지 고체 탄성파/손상 해석 아님,python/ecsp_reactive/condensed/finite_volume.py,실제 기계거동이 필요한지 판단
+A23,새 Reactive,barotropic Tait p=p(ρ),EOS 한계,동일ρ에서 가열은 p를 바꾸지 않음; 열팽창/열유도 압력파 없음,python/ecsp_reactive/condensed/thermo.py,A/B/N 음향·압축자료 보정 또는 다른 EOS 별도연구
+A24,새 Reactive,BC cp 적분 + Tait cold energy,추가 caloric closure,첨부 논문 직접식 아님; cp=cv와 열팽창0를 내포,python/ecsp_reactive/condensed/thermo.py,열역학적 적용범위 명시
+A25,새 Reactive,"초기 rho 균일,u=v=0",handoff 가정,"BC는 u,p를 계산하지 않아 초기 역학상태가 별도 가정",python/ecsp_reactive/condensed/handoff.py:45-176,초기유동/압력 자료 없음을 명시
+A26,새 Reactive,HLLC exact stationary fast path,정확 불변부분공간 최적화,이 EOS에서만 압력균일·정지 해는 역학이 안 변함; 인위적 감쇠 아님,python/ecsp_reactive/condensed/finite_volume.py:126-131,off/ON 결과대조; HLL은 절대 이 shortcut 적용 안 함
+A27,새 Reactive,질량·에너지 단일 장; 생성물 continuum 잔류,보존 모델,가스 분사/압력 배출/외곽 ablation 없음,python/ecsp_reactive/condensed/solver.py:136-164,고체→기체로 해석해서는 안 됨
+A28,새 Reactive,반응/미반응 영역 같은 Tait와 물성,material closure,서로 다른 EOS를 선택하는 active material-interface가 아님,python/ecsp_reactive/condensed/solver.py:297-379,외곽 경계/상전이와 내부 반응경계 구별
+A29,두 후속,"Xfront=.5, reacted area .5 established",운영상 문턱,물리 반응식이 아닌 위치·완료 판정; 문턱 민감도 필요,python/ecsp_nsga2/propagation.py:605-660,실험 영상과 동일한 전선 정의
+A30,BC,523.15K + X≥.01 + area≥.01 onset,분해 개시 proxy,가시 화염 점화/소화 판정 아님,config/nsga2_bc_reactive_a100_cpu8.yaml bc_global.onsetCriterion,I(t)/IR/영상 동시 검증
+A31,두 후속,면적/전선길이 속도와 arrival CV,평가 proxy,진짜 표면 후퇴율/국부 연소속도가 아님,python/ecsp_nsga2/propagation.py:557-602,질량감소·높이변화·전선속도를 별도구분
+A32,수치,"WENO5-JS+HLLC/HLL+SSPRK33, face positivity fallback",수치 선택,논문 B가 모든 구체적 flux/variant를 지정한 것은 아님,python/ecsp_reactive/condensed/finite_volume.py,격자/시간/fallback/보존 convergence
+A33,수치,"rate cap1000/s, exp clip[−100,60], temp bounds",수치 제한,raw-rate cap은 기본 후보거부; 명시 허용시 모델 변함,python/ecsp_reactive/condensed/chemistry.py:62-99; python/ecsp_nsga2/propagation.py:412-426,발동율·상한 민감도 기록
+A34,NSGA-II,정규화 utopia 추천·Vmin 벌점·전류혼잡,알고리즘 선호,지배방정식 아님. 새로운 전극 전체 최적성 보장 아님,python/ecsp_nsga2/workflow.py,독립형상 검증/seed/예산/정규화 민감도
+A35,기존 경로,연화 sigmoid·조성전도 승수·단일열분해 gate,경험 proxy,BC에서 비활성; 코드에 남아 있다고 활성으로 해석 금지,python/ecsp_v6/physics/electrochem.py:72-165,사용 경로 명시
+A36,기존 경로,passivation/gas coverage/activity proxy,경험 proxy,BC는 OFF. 실제 기포/박막 CFD 아님,python/ecsp_v6/physics/electrochem.py:610-663,사용시 별도 실험 보정
+A37,독립 reference,"별도 solid T,단일 λ,passive ψ",미결합 reference,이번 2-channel 통합에서는 실행하지 않음,python/ecsp_reactive/solver.py,논문재현용 실험 경로로 분리
+A38,GPU,"FP64, 독립 case dt, 같은 LUT·재고·경계",계산 구현,물리를 간소화하거나 정밀도를 줄인 최적화 아님,python/ecsp_reactive/condensed/tensor_math.py,CPU↔GPU parity는 target GPU preflight 필요
+A39,GPU,batch8·host2+worker6·graph 선택,운영 시작값,A100 실측 최적 batch/속도 아님,config/nsga2_bc_reactive_a100_cpu8.yaml post_onset.execution,동일 물리 benchmark 후 batch만 조정
+A40,검증,실험 없이 수치 시험으로 순위 인증하지 않음,검증 범위,unit pass ≠ 절대 점화/최적 형상 정확성,docs/VALIDATION_V8_4_1_KR.md,실측 보정+독립 형상 순위 검증

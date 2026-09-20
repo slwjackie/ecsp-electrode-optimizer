@@ -1,0 +1,40 @@
+{
+  "release": "8.1.0",
+  "status": "cpu_validated_cuda_target_validation_pending",
+  "source_base_version": "8.0.0",
+  "baseline_archive_sha256": "4ec475d5d03a739d28d25fe0073adf53acab2458e8f571d4188a578b54213e4e",
+  "tests": {
+    "passed": 80,
+    "skipped": 2,
+    "failures": 0,
+    "skip_reason": "CUDA device unavailable"
+  },
+  "original_baseline_tests": {
+    "passed": 56
+  },
+  "cpu_python_parity": {
+    "status": "passed",
+    "common_strict_tolerances": true,
+    "candidate_trajectories": 8,
+    "comparisons": 228,
+    "report": "native_python_parity_strict.json",
+    "default_tolerance_exploratory_mismatch_report": "native_python_parity_default_exploratory.json"
+  },
+  "preservation": {
+    "baseline_file_count": 173,
+    "byte_identical_count": 170,
+    "modified_count": 3,
+    "deleted_count": 0,
+    "unexpected_modified_count": 0
+  },
+  "native_cpu_extension": "compiled_and_executed",
+  "native_cpu_standalone": "compiled_and_executed",
+  "cuda_source_static_checks_passed": 7,
+  "cuda_compilation": "unverified_missing_nvcc_cuda_toolkit_cuda_pytorch",
+  "gpu_parity": "unverified_no_gpu",
+  "a100_throughput_and_memory": "unverified_no_gpu",
+  "physics_changes": "none_intended_original_nominal_BC_behavior_preserved",
+  "known_original_model_issue": "B/C excludes electrode mask cells despite original overlay metadata; explicitly preserved and disclosed",
+  "physical_validation": "not_claimed",
+  "full_production_1000x5_benchmark": "not_performed_not_a_test_suite_requirement"
+}

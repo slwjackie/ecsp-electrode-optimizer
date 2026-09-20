@@ -1,0 +1,5 @@
+﻿채널,극,Eeq_V,j0_A_m2,beta,n,reverse,DeltaH_J_mol,km_m_s,시약소모_mol_per_mol_e,gas_yield,BC활성,근거
+water,anode,1.23,8.0,0.5,2.0,1.0,25000.0,1e-05,0.5,0.75,"Eeq,j0,beta,n,reverse,ΔH,소모계수 활성; km/gasyield 미사용",config/default_lp_pva.yaml interface; 실제 시료 보정 없음
+water,cathode,1.23,10.0,0.5,2.0,1.0,20000.0,1.2e-05,0.5,0.75,"Eeq,j0,beta,n,reverse,ΔH,소모계수 활성; km/gasyield 미사용",config/default_lp_pva.yaml interface; 실제 시료 보정 없음
+lp,anode,3.0,1.0,0.5,1.0,1.0,80000.0,4e-06,1.0,0.4,"Eeq,j0,beta,n,reverse,ΔH,소모계수 활성; km/gasyield 미사용",config/default_lp_pva.yaml interface; 실제 시료 보정 없음
+lp,cathode,3.0,0.8,0.5,1.0,1.0,50000.0,3e-06,1.0,0.5,"Eeq,j0,beta,n,reverse,ΔH,소모계수 활성; km/gasyield 미사용",config/default_lp_pva.yaml interface; 실제 시료 보정 없음

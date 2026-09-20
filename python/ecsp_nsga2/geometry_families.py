@@ -1,0 +1,467 @@
+from __future__ import annotations
+
+"""Diverse ECSP electrode topology grammar.
+
+This module defines twenty deliberately different topology families.  It only
+creates topological skeletons.  geometry.py attaches metric parameters and the
+existing geometry_fit.py remains the manufacturing/area authority.
+"""
+
+from typing import Any
+
+TOPOLOGY_FAMILIES = (
+    "serpentine",
+    "zigzag",
+    "chevron",
+    "wave",
+    "bezier_sweep",
+    "spiral",
+    "double_spiral",
+    "e_fork_bus",
+    "fishbone",
+    "trident",
+    "h_tree",
+    "radial_fan",
+    "ladder",
+    "nested_u",
+    "loop",
+    "arc_chain",
+    "bow_tie",
+    "wave_branch",
+    "distributed_islands",
+    "asymmetric_hybrid",
+)
+
+# These are visible surface-contact components, not electrical terminals.
+# 2A2C is used for compact motifs because the 17.5%-per-polarity area target is
+# much easier to realise without over-wide traces; hidden-bus semantics are
+# unchanged.  A few families deliberately use other component counts.
+COMPONENT_PAIR_POOL = (
+    (1, 1),
+    (1, 2),
+    (2, 1),
+    (2, 2),
+    (3, 1),
+    (1, 3),
+)
+
+
+CENTERED_FAMILIES = {
+    "wave", "bezier_sweep", "spiral", "double_spiral", "trident", "h_tree",
+    "radial_fan", "loop", "arc_chain", "bow_tie", "wave_branch",
+    "distributed_islands", "asymmetric_hybrid",
+}
+
+
+def _n(typ: str, role: str, turn: float = 0.0, **extra: Any) -> dict[str, Any]:
+    d: dict[str, Any] = {
+        "type": typ,
+        "role": role,
+        "base_turn_deg": float(turn),
+        "children": [],
+    }
+    d.update(extra)
+    return d
+
+
+def _chain(specs: list[dict[str, Any]]) -> dict[str, Any]:
+    for a, b in zip(specs[:-1], specs[1:]):
+        a["children"] = [b]
+    return specs[0]
+
+
+def _branched_trunk(
+    *, count: int, branch_angles: list[float], branch_type: str,
+    branch_every: int = 1,
+) -> dict[str, Any]:
+    trunk = [_n("LINE", "trunk", 0.0) for _ in range(max(2, count))]
+    for a, b in zip(trunk[:-1], trunk[1:]):
+        a["children"] = [b]
+    for i, host in enumerate(trunk[:-1]):
+        if i % max(branch_every, 1) != 0:
+            continue
+        angle = branch_angles[i % len(branch_angles)]
+        branch = _n(branch_type, "branch", angle)
+        # Fold the tail back toward the host region instead of extending a long
+        # ray outside the manufacturing slot. This keeps high centreline length
+        # while remaining compact.
+        fold = -150.0 if angle >= 0.0 else 150.0
+        tail1 = _n("LINE", "branch_tail", fold)
+        tail2 = _n("ARC", "branch_tail", -55.0 if fold < 0 else 55.0)
+        tail1["children"] = [tail2]
+        branch["children"] = [tail1]
+        host["children"].append(branch)
+    return trunk[0]
+
+
+def _tree_like(*, right_angle: bool) -> dict[str, Any]:
+    """1A1C TREE/H_TREE with non-branching terminal extensions."""
+
+    if not right_angle:
+        # TREE:
+        #
+        #             ---- extension
+        #           /
+        # ---------<
+        #           \
+        #             ---- extension
+        #
+        # Three primary arms; each continues with one non-branching LINE.
+        root = _n("LINE", "tree_trunk", 0.0)
+
+        forward = _n("LINE", "tree_branch", 0.0)
+        upper   = _n("LINE", "tree_branch", 82.0)
+        lower   = _n("LINE", "tree_branch", -82.0)
+
+        forward["children"] = [_n("LINE", "tree_extension", 0.0)]
+        upper["children"]   = [_n("LINE", "tree_extension", 0.0)]
+        lower["children"]   = [_n("LINE", "tree_extension", 0.0)]
+
+        root["children"] = [forward, upper, lower]
+        return root
+
+    # H_TREE:
+    #
+    #       |---ext          |---ext
+    # ------+----------------+------
+    #       |---ext          |---ext
+    #
+    # Four orthogonal arms plus straight terminal extensions.
+    root = _n("LINE", "htree_trunk", 0.0)
+    trunk2 = _n("LINE", "htree_trunk", 0.0)
+
+    up1   = _n("LINE", "htree_branch", 90.0)
+    down1 = _n("LINE", "htree_branch", -90.0)
+    up2   = _n("LINE", "htree_branch", 90.0)
+    down2 = _n("LINE", "htree_branch", -90.0)
+
+    up1["children"]   = [_n("LINE", "htree_extension", 0.0)]
+    down1["children"] = [_n("LINE", "htree_extension", 0.0)]
+    up2["children"]   = [_n("LINE", "htree_extension", 0.0)]
+    down2["children"] = [_n("LINE", "htree_extension", 0.0)]
+
+    # Keeps up2/down2 as branches rather than using one as the main chain.
+    terminal = _n("LINE", "htree_extension", 0.0)
+
+    root["children"] = [
+        trunk2,
+        up1,
+        down1,
+    ]
+
+    trunk2["children"] = [
+        terminal,
+        up2,
+        down2,
+    ]
+
+    return root
+
+
+def _trident_component() -> dict[str, Any]:
+    """
+    Compact forked-bus / trident topology.
+
+    Instead of putting all three arms at one junction, the two side
+    branches are attached at different trunk locations. This reduces
+    stroke overlap and preserves usable centreline length.
+
+                    upper branch
+                         /
+        trunk ----------+-------- main arm
+                             \
+                              lower branch
+
+    The branch tails are continuations, not additional branch events.
+    """
+
+    # Main bus / main arm.
+    root = _n("LINE", "trunk", 0.0)
+    middle = _n("LINE", "trunk", 0.0)
+    forward = _n("LINE", "trunk", 0.0)
+
+    root["children"] = [middle]
+    middle["children"] = [forward]
+
+    # Upper branch at first station.
+    upper = _n("LINE", "branch", 68.0)
+    upper_tail = _n("LINE", "branch_tail", -12.0)
+    upper["children"] = [upper_tail]
+
+    # Lower branch at second station.
+    lower = _n("LINE", "branch", -68.0)
+    lower_tail = _n("LINE", "branch_tail", 12.0)
+    lower["children"] = [lower_tail]
+
+    # Important: branch junctions are spatially separated.
+    root["children"].append(upper)
+    middle["children"].append(lower)
+
+    return root
+
+
+def _hilbert_component() -> dict[str, Any]:
+    """
+    Low-order Hilbert / space-filling topology.
+
+    Order 2:
+      - 4 x 4 logical lattice
+      - 16 visited vertices
+      - 15 connected LINE segments
+      - no branch junction
+      - strong spatial coverage with one continuous path
+
+    Relative turn sequence preserves the Hilbert connectivity while
+    geometry.py adds only small manufacturing-scale perturbations.
+    """
+
+    turns = (
+         90.0,
+        -90.0,
+        -90.0,
+         90.0,
+          0.0,
+         90.0,
+         90.0,
+        -90.0,
+        -90.0,
+         90.0,
+         90.0,
+          0.0,
+         90.0,
+        -90.0,
+        -90.0,
+    )
+
+    return _chain([
+        _n("LINE", "hilbert", turn)
+        for turn in turns
+    ])
+
+
+
+def _e_fork_bus_component() -> dict[str, Any]:
+    """
+    Exact orthogonal E-fork-bus topology.
+
+    Outer vertical bus:
+        four serial trunk segments
+
+    Main fingers:
+        top    = two LINE segments
+        middle = pre + post LINE segments
+        bottom = two LINE segments
+
+    Inner fork:
+        branches from the midpoint of the middle finger,
+        then turns back inward to form the small internal E feature.
+
+    All turns are exactly 0 / +/-90 degrees.
+    """
+
+    # ------------------------------------------------------------
+    # Vertical outer bus: four serial pieces.
+    # Anode starts lower-left and runs upward.
+    # Cathode starts upper-right and mirrors automatically.
+    # ------------------------------------------------------------
+    trunk1 = _n("LINE", "e_bus_trunk", 90.0)
+    trunk2 = _n("LINE", "e_bus_trunk", 0.0)
+    trunk3 = _n("LINE", "e_bus_trunk", 0.0)
+    trunk4 = _n("LINE", "e_bus_trunk", 0.0)
+
+    trunk1["children"] = [trunk2]
+    trunk2["children"] = [trunk3]
+    trunk3["children"] = [trunk4]
+
+    # ------------------------------------------------------------
+    # Bottom long inward finger.
+    # -90 deg is inward for both mirrored polarities.
+    # ------------------------------------------------------------
+    bottom1 = _n("LINE", "e_bus_outer_finger", -90.0)
+    bottom2 = _n("LINE", "e_bus_outer_finger", 0.0)
+    bottom1["children"] = [bottom2]
+
+    # ------------------------------------------------------------
+    # Middle main finger.
+    # Split into pre/post so the inner fork originates at its midpoint.
+    # ------------------------------------------------------------
+    middle_pre = _n("LINE", "e_bus_middle_pre", -90.0)
+    middle_post = _n("LINE", "e_bus_middle_post", 0.0)
+
+    # Inner upper/lower stems from the middle-finger midpoint.
+    inner_up = _n("LINE", "e_bus_inner_stem", 90.0)
+    inner_down = _n("LINE", "e_bus_inner_stem", -90.0)
+
+    # Turn back in the same inward direction as the main finger.
+    inner_up_finger = _n("LINE", "e_bus_inner_finger", -90.0)
+    inner_down_finger = _n("LINE", "e_bus_inner_finger", 90.0)
+
+    inner_up["children"] = [inner_up_finger]
+    inner_down["children"] = [inner_down_finger]
+
+    middle_pre["children"] = [
+        middle_post,       # main continuation
+        inner_up,          # secondary upper branch
+        inner_down,        # secondary lower branch
+    ]
+
+    # ------------------------------------------------------------
+    # Top long inward finger.
+    # ------------------------------------------------------------
+    top1 = _n("LINE", "e_bus_outer_finger", -90.0)
+    top2 = _n("LINE", "e_bus_outer_finger", 0.0)
+    top1["children"] = [top2]
+
+    # Attach the three main fingers at separated bus stations.
+    trunk1["children"].append(bottom1)
+    trunk2["children"].append(middle_pre)
+    trunk4["children"].append(top1)
+
+    return trunk1
+
+
+def build_family_component(
+    family: str,
+    *, polarity: str,
+    component_index: int,
+    component_count_for_polarity: int,
+) -> dict[str, Any]:
+    del component_count_for_polarity
+    f = family
+
+    if f == "serpentine":
+        # Preserve one classic meander family as a reference, but no longer use
+        # it as the universal grammar.
+        nodes: list[dict[str, Any]] = [
+            _n("LINE", "horizontal", 0.0),
+            _n("LINE", "horizontal", 0.0),
+        ]
+        for i in range(1, 8):
+            sign = 1.0 if i % 2 else -1.0
+            nodes.extend([
+                _n("LINE", "connector", 90.0 * sign),
+                _n("LINE", "horizontal", 90.0 * sign),
+                _n("LINE", "horizontal", 0.0),
+            ])
+        root = _chain(nodes)
+        root["pass_count"] = 8
+        return root
+
+    if f == "zigzag":
+        turns = [0.0] + [58.0, -116.0] * 6
+        return _chain([_n("LINE", "zigzag", t) for t in turns])
+
+    if f == "chevron":
+        turns = [0.0] + [72.0, -144.0] * 6
+        return _chain([_n("LINE", "chevron", t) for t in turns])
+
+    if f == "wave":
+        # Two long connected waves rather than eight tightly packed waves.
+        # This preserves the 2A2C wave topology while avoiding severe
+        # self-overlap and allowing the area fitter to reach 17.5%.
+        return _chain([
+            _n("WAVE", "wave", 0.0),
+            _n("WAVE", "wave", 18.0),
+        ])
+
+    if f == "bezier_sweep":
+        return _chain([
+            _n("BEZIER", "bezier", t)
+            for t in (0.0, 28.0, -56.0, 56.0, -56.0, 56.0, -56.0, 28.0)
+        ])
+
+    if f == "spiral":
+        root = _n("SPIRAL", "spiral", 0.0)
+        root["spiral_direction_hint"] = 1.0 if component_index % 2 == 0 else -1.0
+        return root
+
+    if f == "double_spiral":
+        root = _n("SPIRAL", "spiral", 0.0)
+        root["spiral_direction_hint"] = -1.0 if component_index % 2 == 0 else 1.0
+        root["children"] = [_n("ARC", "spiral_tail", 35.0)]
+        return root
+
+    if f == "e_fork_bus":
+        return _e_fork_bus_component()
+
+
+    if f == "fishbone":
+        return _branched_trunk(count=7, branch_angles=[58.0, -58.0], branch_type="LINE", branch_every=1)
+
+    if f == "trident":
+        return _trident_component()
+
+    if f == "h_tree":
+        return _tree_like(right_angle=True)
+
+    if f == "radial_fan":
+        root = _n("LINE", "trunk", 0.0)
+        branches = []
+        for i, a in enumerate((-78.0, -48.0, -20.0, 20.0, 48.0, 78.0)):
+            b = _n("BEZIER" if i % 2 else "LINE", "branch", a)
+            fold = -135.0 if a > 0 else 135.0
+            b["children"] = [_n("LINE", "branch_tail", fold)]
+            branches.append(b)
+        root["children"] = branches
+        return root
+
+    if f == "ladder":
+        return _branched_trunk(count=7, branch_angles=[90.0, -90.0], branch_type="LINE", branch_every=1)
+
+    if f == "nested_u":
+        specs: list[dict[str, Any]] = []
+        for i in range(7):
+            specs.extend([
+                _n("LINE", "nested_u", 0.0),
+                _n("ARC", "connector", 150.0 if i % 2 == 0 else -150.0),
+            ])
+        return _chain(specs[:-1])
+
+    if f == "loop":
+        root = _n("ARC", "loop", 0.0, fixed_large_sweep=True)
+        root["children"] = [_n("BEZIER", "loop_tail", 20.0)]
+        return root
+
+    if f == "arc_chain":
+        return _chain([
+            _n("ARC", "arc_chain", t)
+            for t in (0.0, 48.0, -96.0, 96.0, -96.0, 96.0, -48.0)
+        ])
+
+    if f == "bow_tie":
+        root = _n("BEZIER", "bezier", 0.0)
+        left = _n("BEZIER", "branch", 62.0)
+        right = _n("BEZIER", "branch", -62.0)
+        left["children"] = [_n("BEZIER", "branch_tail", -35.0), _n("LINE", "branch", 35.0)]
+        right["children"] = [_n("BEZIER", "branch_tail", 35.0), _n("LINE", "branch", -35.0)]
+        root["children"] = [left, right]
+        return root
+
+    if f == "wave_branch":
+        root = _chain([
+            _n("WAVE", "wave", 0.0),
+            _n("WAVE", "wave", 24.0),
+            _n("WAVE", "wave", -48.0),
+        ])
+        tail = root["children"][0]["children"][0]
+        tail["children"] = [
+            _n("LINE", "branch", 58.0),
+            _n("ARC", "branch", -58.0),
+        ]
+        return root
+
+    if f == "distributed_islands":
+        if component_index % 2 == 0:
+            root = _n("ARC", "loop", 0.0, fixed_large_sweep=True)
+            root["children"] = [_n("LINE", "island_tail", 25.0)]
+            return root
+        return _chain([_n("WAVE", "wave", 0.0), _n("WAVE", "wave", 35.0)])
+
+    if f == "asymmetric_hybrid":
+        if polarity == "anode":
+            root = _n("SPIRAL", "spiral", 0.0)
+            root["spiral_direction_hint"] = 1.0 if component_index % 2 == 0 else -1.0
+            return root
+        return _branched_trunk(count=7, branch_angles=[55.0, -55.0], branch_type="BEZIER", branch_every=1)
+
+    raise ValueError(f"unknown topology family: {family}")

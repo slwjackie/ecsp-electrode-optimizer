@@ -1,0 +1,18 @@
+{
+  "handoff_policy": "single_continuum_identity_mass_and_energy_transfer_not_solid_to_gas",
+  "bc_config_sha256": "b481bfe7308f917b7fe6559a01bb4a4f41b76aab38823f3f9a2a22cb37521730",
+  "onset_time_s": 1.4640000000000002,
+  "density_source": "resolved_BC_bulk_density",
+  "velocity_initialization": "zero_BC_has_no_momentum",
+  "energy_definition": "rho*(BC_cp_integral+Tait_cold_energy+kinetic_energy)",
+  "temperature_roundtrip_max_error_K": 4.547473508864641e-13,
+  "channel1_roundtrip_max_error": 2.7755575615628914e-17,
+  "channel2_roundtrip_max_error": 1.1102230246251565e-16,
+  "initial_continuum_mass_kg": 0.0006661064771379416,
+  "initial_total_energy_J": 55.32886583551502,
+  "qj_onset_policy": "diagnostic_only_never_replayed",
+  "qe_onset_policy": "diagnostic_only_never_replayed",
+  "caloric_closure": "explicit_thermodynamic_completion_not_specified_in_attached_paper",
+  "same_eos_for_reactant_and_product": true,
+  "material_interface_scope": "unreacted_to_reacted_internal_front_not_gas_ablation_boundary"
+}

@@ -1,0 +1,23 @@
+{
+  "release": "8.4.0-BCReactive-Condensed-Experimental",
+  "test_counts": {
+    "full_suite": {
+      "tests": 521,
+      "passed": 519,
+      "skipped": 2,
+      "failures": 0
+    },
+    "bc_reactive_suite": {
+      "tests": 43,
+      "passed": 43,
+      "skipped": 0,
+      "failures": 0
+    }
+  },
+  "bound_source_file_count": 195,
+  "experimental_validation": false,
+  "cuda_hardware_tested": false,
+  "new_reactive_backend": "CPU FP64",
+  "historical_manifests": "retained_not_authoritative",
+  "authoritative_manifest": "PACKAGE_SHA256_MANIFEST_V8_4.txt"
+}

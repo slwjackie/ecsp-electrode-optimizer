@@ -1,0 +1,10 @@
+{
+  "total_tests": 521,
+  "passed": 519,
+  "skipped": 2,
+  "failures": 0,
+  "new_integration_tests_passed": 43,
+  "experimental_validation": false,
+  "cuda_hardware_tested": false,
+  "original_reactive_reference_preserved": true
+}

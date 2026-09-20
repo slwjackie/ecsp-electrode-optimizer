@@ -1,0 +1,33 @@
+{
+  "release": "8.4.1-A100CPU8-Reactive-Experimental",
+  "test_counts": {
+    "full_suite": {
+      "tests": 559,
+      "passed": 554,
+      "skipped": 5,
+      "failures": 0
+    },
+    "new_tensor_suite": {
+      "tests": 38,
+      "passed": 35,
+      "skipped": 3
+    }
+  },
+  "experimental_validation": false,
+  "cuda_hardware_tested": false,
+  "detected_cpu_count": 5,
+  "new_reactive_backend": "NumPy CPU + Torch CPU/CUDA FP64 batch; CUDA target tests not executed in build environment",
+  "authoritative_manifest": "PACKAGE_SHA256_MANIFEST_V8_4_1.txt",
+  "source_inventory": {
+    "config_files": 34,
+    "config_leaves": 8520,
+    "effective_rows": 578,
+    "python_defaults": 2086,
+    "python_numeric_literals": 7845,
+    "cpp_declarations": 600,
+    "source_files": 132,
+    "source_lines": 58314,
+    "python_functions": 1396,
+    "parse_errors": []
+  }
+}

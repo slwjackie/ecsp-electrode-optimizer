@@ -1,0 +1,251 @@
+"""Fail-closed, unique, all-topology geometry bootstrap before PDE evaluation."""
+from __future__ import annotations
+
+from collections import Counter
+from dataclasses import asdict
+import csv
+import hashlib
+import json
+from pathlib import Path
+import time
+from typing import Any, Mapping
+
+import numpy as np
+from scipy import ndimage
+
+from .geometry import (GeometryLimits, instantiate_variant, make_topology_templates,
+                       minimum_clear_gap_pixels, rasterize_and_validate,
+                       topology_signature)
+
+BOOTSTRAP_SCHEMA = "ecsp.validated_bootstrap/v1"
+
+
+class BootstrapGeometryError(RuntimeError):
+    pass
+
+
+def require_post_onset_power_off(config: Mapping[str, Any]) -> None:
+    """Validate rather than silently override physics. Pre-onset NP/BV stays on."""
+    for section, key in (("bc_global", "continuedElectricalHeatingAfterOnset"),
+                         ("propagation_refinement", "continued_electrical_heating")):
+        value = config.get(section, {}).get(key, False)
+        if type(value) is not bool or value:
+            raise ValueError(f"Power-OFF launch requires {section}.{key}: false (YAML boolean)")
+    mode = config.get("propagation_refinement", {}).get("electrical_heating_mode", "off")
+    if mode != "off":
+        raise ValueError("Power-OFF launch requires propagation_refinement.electrical_heating_mode: off")
+
+
+def resolved_physics_grid(config, package_root: Path) -> int:
+    evaluator = config.get("evaluator", {})
+    if evaluator.get("grid_size") is not None:
+        return int(evaluator["grid_size"])
+    base = evaluator.get("base_config")
+    if base:
+        import yaml
+        p=Path(base);p=p if p.is_absolute() else package_root/p
+        cfg=yaml.safe_load(p.read_text())
+        coupled=dict(cfg.get("coupled",{}))
+        coupled.update(evaluator.get("base_overrides",{}).get("coupled",{}))
+        return int(coupled.get("gridSize", config.get("geometry",{}).get("grid_size",96)))
+    return int(config.get("geometry",{}).get("grid_size",96))
+
+
+def geometry_contract(config, physics_grid_size: int) -> dict:
+    from . import geometry, geometry_fit
+    from ecsp_v6.physics import numerics
+    opt=config.get("optimization",{})
+    files=[Path(geometry.__file__),Path(geometry_fit.__file__),Path(__file__),Path(numerics.__file__)]
+    source={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
+    return dict(schema=BOOTSTRAP_SCHEMA,
+                seed=int(config.get("project",{}).get("seed",20260827)),
+                population_size=int(opt.get("population_size",1000)),
+                initial_topologies=int(opt.get("initial_topologies",20)),
+                variants_per_topology=int(opt.get("variants_per_topology",50)),
+                maximum_attempts_per_topology=int(opt.get("bootstrap_max_attempts_per_topology",
+                                                         int(opt.get("variants_per_topology",50))*100)),
+                limits=asdict(GeometryLimits(**config.get("geometry",{}))),
+                physics_grid_size=int(physics_grid_size),generator_sources=source,
+                area_rule="each_polarity_relative_to_target_and_polarity_imbalance",
+                unique_rule="ordered_anode_cathode_mask_pair_on_design_and_physics_grids")
+
+
+def _digest(data) -> str:
+    return hashlib.sha256(json.dumps(data,sort_keys=True,separators=(",",":"),allow_nan=False).encode()).hexdigest()
+
+
+def mask_pair_digest(anode,cathode) -> str:
+    h=hashlib.sha256()
+    h.update(str(anode.shape).encode())
+    h.update(np.asarray(anode,dtype=np.uint8).tobytes())
+    h.update(np.asarray(cathode,dtype=np.uint8).tobytes())
+    return h.hexdigest()
+
+
+def validate_solver_grid(anode,cathode,genome,limits:GeometryLimits,grid_size:int):
+    """Use the very same nearest-neighbour resizer as the B/C evaluator.
+
+    This gate checks physical cell-edge gaps, component ownership, per-polarity
+    area, margin and the evaluator's component-width test before accepting a
+    bootstrap candidate. No crop, pixel repair or tolerance relaxation is used.
+    """
+    from ecsp_v6.physics.numerics import resize_nearest_numpy
+    a=resize_nearest_numpy(anode,grid_size)
+    c=resize_nearest_numpy(cathode,grid_size)
+    cell=limits.domain_mm/grid_size
+    errors=[]
+    aa,cc=float(a.mean()),float(c.mean())
+    target=limits.target_area_fraction_per_polarity
+    ea,ec=abs(aa-target)/target,abs(cc-target)/target
+    imbalance=abs(aa-cc)/max(aa+cc,np.finfo(float).tiny)
+    if np.any(a&c):errors.append("physics_overlap")
+    if max(ea,ec)>limits.area_tolerance_fraction+1e-12:errors.append("physics_per_polarity_area")
+    if imbalance>limits.area_tolerance_fraction+1e-12:errors.append("physics_area_imbalance")
+    gap=minimum_clear_gap_pixels(a,c)*cell
+    if gap<limits.minimum_gap_mm-1e-12:errors.append("physics_opposite_polarity_gap")
+    counts={};same_gap=limits.domain_mm;min_component_width=limits.domain_mm
+    for p,m in (("anode",a),("cathode",c)):
+        labels,count=ndimage.label(m,structure=np.ones((3,3),dtype=np.uint8));counts[p]=int(count)
+        intended=len(genome[p]["components"])
+        if count!=intended:errors.append(f"physics_{p}_component_mismatch")
+        if count>limits.maximum_components_per_polarity:errors.append(f"physics_{p}_component_cap")
+        singles=[labels==i for i in range(1,count+1)]
+        for part in singles:
+            width=max(0.0,2.0*float(ndimage.distance_transform_edt(part).max())-1.0)*cell
+            min_component_width=min(min_component_width,width)
+        for i,mi in enumerate(singles):
+            for mj in singles[i+1:]:same_gap=min(same_gap,minimum_clear_gap_pixels(mi,mj)*cell)
+    if sum(counts.values())>limits.maximum_total_components:errors.append("physics_total_component_cap")
+    if min_component_width<limits.minimum_width_mm-1e-12:errors.append("physics_component_width")
+    if same_gap<limits.minimum_gap_mm-1e-12:errors.append("physics_same_polarity_gap")
+    yy,xx=np.nonzero(a|c)
+    margin=(min(int(xx.min()),int(yy.min()),grid_size-1-int(xx.max()),grid_size-1-int(yy.max()))*cell
+            if len(xx) else 0.0)
+    if margin<limits.margin_mm-1e-12:errors.append("physics_boundary_margin")
+    report=dict(grid_size=grid_size,anode_area_fraction=aa,cathode_area_fraction=cc,
+                anode_area_relative_error=ea,cathode_area_relative_error=ec,
+                polarity_imbalance=imbalance,minimum_gap_mm=gap,
+                minimum_same_polarity_gap_mm=same_gap,boundary_margin_mm=margin,
+                anode_components=counts["anode"],cathode_components=counts["cathode"],
+                component_inscribed_width_min_mm=min_component_width,
+                mask_sha256=mask_pair_digest(a,c),violations=errors)
+    return report
+
+
+def _write_reports(directory,report,rows,genomes=None):
+    if directory is None:return
+    directory=Path(directory);directory.mkdir(parents=True,exist_ok=True)
+    def write(name,data):
+        p=directory/name;tmp=directory/(name+".tmp")
+        tmp.write_text(json.dumps(data,indent=2,allow_nan=False)+"\n",encoding="utf-8")
+        tmp.replace(p)
+    write("geometry_bootstrap_report.json",report)
+    if rows:
+        with (directory/"geometry_bootstrap_candidates.csv").open("w",newline="",encoding="utf-8") as f:
+            writer=csv.DictWriter(f,fieldnames=list(rows[0]));writer.writeheader();writer.writerows(rows)
+    if genomes is not None:
+        write("bootstrap_genomes.json",dict(schema=BOOTSTRAP_SCHEMA,
+              contract_sha256=report["contract_sha256"],genomes=genomes))
+
+
+def _row(g,r,physics):
+    d=r.descriptors
+    return dict(geometry_id=g["geometry_id"],topology_id=g["topology_id"],
+        topology_index=g["topology_index"],variant_attempt=g["variant_index"],
+        intended_anode_components=len(g["anode"]["components"]),
+        intended_cathode_components=len(g["cathode"]["components"]),
+        design_grid_size=r.anode_mask.shape[0],physics_grid_size=physics["grid_size"],
+        design_anode_area_fraction=d["anode_area_fraction"],design_cathode_area_fraction=d["cathode_area_fraction"],
+        design_maximum_area_relative_error=d["maximum_per_polarity_area_relative_error"],
+        design_gap_mm=d["minimum_gap_mm"],design_margin_mm=d["boundary_margin_mm"],
+        maximum_effective_width_mm=d["maximum_effective_width_mm"],
+        anode_length_scale=d["anode_length_calibration_scale"],cathode_length_scale=d["cathode_length_calibration_scale"],
+        physics_anode_area_fraction=physics["anode_area_fraction"],physics_cathode_area_fraction=physics["cathode_area_fraction"],
+        physics_anode_area_relative_error=physics["anode_area_relative_error"],
+        physics_cathode_area_relative_error=physics["cathode_area_relative_error"],
+        physics_gap_mm=physics["minimum_gap_mm"],physics_margin_mm=physics["boundary_margin_mm"],
+        design_mask_sha256=mask_pair_digest(r.anode_mask,r.cathode_mask),
+        physics_mask_sha256=physics["mask_sha256"],constraint_violation=r.constraint_violation)
+
+
+def build_bootstrap(config, *, physics_grid_size:int, audit_dir:Path|None=None,
+                    cache_dir:Path|None=None, verbose:bool=True):
+    """Return [(fitted_genome, raster), ...] only after *all* quotas are full."""
+    contract=geometry_contract(config,physics_grid_size)
+    limits=GeometryLimits(**contract["limits"])
+    seed=contract["seed"];nt=contract["initial_topologies"];nv=contract["variants_per_topology"]
+    if nt<=0 or nv<=0 or nt*nv!=contract["population_size"]:
+        raise ValueError("Generation 0 requires initial_topologies * variants_per_topology = population_size")
+    if contract["maximum_attempts_per_topology"]<nv:
+        raise ValueError("bootstrap_max_attempts_per_topology must be >= variants_per_topology")
+    if not (0.0<limits.area_tolerance_fraction<1.0 and 0.0<limits.target_area_fraction_per_polarity<0.5):
+        raise ValueError("Invalid bootstrap area target/tolerance")
+    templates=make_topology_templates(nt,seed,limits)
+    started=time.perf_counter()
+    report=dict(schema=BOOTSTRAP_SCHEMA,status="in_progress",contract=contract,contract_sha256=_digest(contract),
+                requested_count=nt*nv,accepted_count=0,all_candidates_feasible_before_physics=False,
+                independently_tested_on_actual_A100=False,physical_ignition_validation=False,
+                topologies=[],reused_cache=cache_dir is not None)
+    population=[];rows=[];design_seen=set();physics_seen=set()
+    cached=None
+    if cache_dir is not None:
+        cached=json.loads((Path(cache_dir)/"bootstrap_genomes.json").read_text())
+        if cached.get("schema")!=BOOTSTRAP_SCHEMA or cached.get("contract_sha256")!=report["contract_sha256"]:
+            raise BootstrapGeometryError("Bootstrap cache is stale or its geometry/seed/grid/code contract differs")
+        cached=cached.get("genomes",[])
+        if len(cached)!=nt*nv:raise BootstrapGeometryError("Bootstrap cache has the wrong candidate count")
+    for ti,template in enumerate(templates):
+        accepted=0;attempt=0;rejected=Counter();local_rows=[]
+        maximum=nv if cached is not None else contract["maximum_attempts_per_topology"]
+        while accepted<nv and attempt<maximum:
+            if cached is None:
+                g=instantiate_variant(template,attempt,seed,limits)
+            else:
+                g=cached[ti*nv+attempt]
+                if g.get("topology_id")!=template["topology_id"] or topology_signature(g)!=topology_signature(template):
+                    raise BootstrapGeometryError("Bootstrap cache topology changed")
+            attempt+=1
+            r=rasterize_and_validate(g,limits)
+            g=r.fitted_genome or g
+            if r.constraint_violation>1e-12:
+                for k,v in r.violation_details.items():
+                    if v>1e-12:rejected[k]+=1
+                if cached is not None:raise BootstrapGeometryError("Cached design no longer passes geometry constraints")
+                continue
+            # The primitive fit must have changed only metric parameters, not its topology.
+            if topology_signature(g)!=topology_signature(template):
+                raise BootstrapGeometryError("Area fitter changed the requested topology")
+            physical=validate_solver_grid(r.anode_mask,r.cathode_mask,g,limits,physics_grid_size)
+            if physical["violations"]:
+                rejected.update(physical["violations"])
+                if cached is not None:raise BootstrapGeometryError("Cached design failed solver-grid revalidation")
+                continue
+            dh=mask_pair_digest(r.anode_mask,r.cathode_mask);ph=physical["mask_sha256"]
+            if dh in design_seen or ph in physics_seen:
+                rejected["duplicate_mask"]+=1
+                if cached is not None:raise BootstrapGeometryError("Cached bootstrap contains duplicate masks")
+                continue
+            g["geometry_id"]=f"G000_{template['topology_id']}_V{accepted:03d}"
+            population.append((g,r));design_seen.add(dh);physics_seen.add(ph)
+            row=_row(g,r,physical);rows.append(row);local_rows.append(row)
+            accepted+=1
+        summary=dict(topology_id=template["topology_id"],signature=topology_signature(template),
+                     component_pair=template["component_count_pair"],accepted=accepted,required=nv,
+                     attempts=attempt,rejections=dict(rejected),status="passed" if accepted==nv else "failed")
+        report["topologies"].append(summary);report["accepted_count"]=len(population)
+        report["elapsed_s"]=time.perf_counter()-started
+        if verbose:print(f"[geometry-bootstrap] {summary['topology_id']}: {accepted}/{nv} unique feasible; attempts={attempt}",flush=True)
+        if accepted<nv:
+            report["status"]="failed";_write_reports(audit_dir,report,rows)
+            raise BootstrapGeometryError(f"{template['topology_id']}: only {accepted}/{nv} unique feasible geometries after {attempt} attempts; no PDE evaluation started; no INVALID padding")
+    report.update(status="passed",all_candidates_feasible_before_physics=True,
+                  design_unique_count=len(design_seen),physics_unique_count=len(physics_seen),
+                  total_attempts=sum(t["attempts"] for t in report["topologies"]),
+                  elapsed_s=time.perf_counter()-started,
+                  maximum_design_area_relative_error=max(r["design_maximum_area_relative_error"] for r in rows),
+                  maximum_physics_area_relative_error=max(max(r["physics_anode_area_relative_error"],r["physics_cathode_area_relative_error"]) for r in rows),
+                  minimum_design_gap_mm=min(r["design_gap_mm"] for r in rows),
+                  minimum_physics_gap_mm=min(r["physics_gap_mm"] for r in rows),
+                  maximum_used_width_mm=max(r["maximum_effective_width_mm"] for r in rows))
+    _write_reports(audit_dir,report,rows,[g for g,r in population])
+    return population,report

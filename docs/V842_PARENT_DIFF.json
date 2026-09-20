@@ -1,0 +1,134 @@
+{
+  "direct_parent_archive": "ECSP_v8_4_1_A100CPU8.zip",
+  "direct_parent_sha256": "9d6faba40f66252e5930f9030096e2ecde51d942cb919c7a8dc3940345a09e59",
+  "original_file_count": 419,
+  "original_files_deleted": [],
+  "modified_original_files": [
+    {
+      "path": "PACKAGE_MANIFEST.txt",
+      "parent_sha256": "df56a760d55466abd1423b0420668c5128476d167c192b23bbf81a9a3cd87039",
+      "current_sha256": null,
+      "kind": "regenerated_manifest; excluded from diff digest to avoid a manifest/diff hash cycle"
+    },
+    {
+      "path": "PACKAGE_SHA256_MANIFEST.txt",
+      "parent_sha256": "da90e564f863b77db2cdd5019f92aa9fc566e7891497c6656638caec3e7c04ef",
+      "current_sha256": null,
+      "kind": "regenerated_manifest; excluded from diff digest to avoid a manifest/diff hash cycle"
+    },
+    {
+      "path": "README_KR.md",
+      "parent_sha256": "aa115311a2d0404e6ef5a7c1b20f259a010ba6a1a13c3199695f7bcf427d9aad",
+      "current_sha256": "7fed677ce2a255ef1defe516b0c2cfc032a04fd5c2a18daaf8a9cceeac821a57"
+    },
+    {
+      "path": "VERSION.json",
+      "parent_sha256": "848da7fefa64e1e64dd68040af4e876fdc1548b91b157bbb8217e50f573bf218",
+      "current_sha256": "60a312b645b2c577f02eacabd4e2bfe142b643ad25b9ee84e17251b55610d822"
+    },
+    {
+      "path": "config/nsga2_bc_dual_a100_cpu8.yaml",
+      "parent_sha256": "997f9033918c90a3f680be89f9982e0a9f1f9e6db58962f17de3b6b4bb415c76",
+      "current_sha256": "da850bd39d6a09a3ea60ff87be4c1c0f78559d7d7359922e5128c849dfca7237"
+    },
+    {
+      "path": "config/nsga2_bc_dual_backend_native_cpu8.yaml",
+      "parent_sha256": "015e0e1e4f59738af4b560c72b89a795664e474fa260edc1642996d225d54553",
+      "current_sha256": "5021c64f5fd54526f36b746d003ed4be368cd6cd782e0b4405798502011de8f9"
+    },
+    {
+      "path": "config/nsga2_bc_global_native_a100_batch32.yaml",
+      "parent_sha256": "d15a595d28353748e8244d76abdec0ec5dfc4c5bf07281398e0388fd649848fb",
+      "current_sha256": "53362366c57cf8fee42abd9ff3b38f3ef13549c01e8776fd3740b6d098c41798"
+    },
+    {
+      "path": "config/nsga2_bc_global_native_a100_batch64.yaml",
+      "parent_sha256": "1d57ff40dbf509c0deebce3724ffd7b5ba2b5bf03b5ff677619f556302b12405",
+      "current_sha256": "305e64992d8012d4dc93c5d43306060ac8391201745bd549607cd2a967e92802"
+    },
+    {
+      "path": "config/nsga2_bc_global_native_cpu8.yaml",
+      "parent_sha256": "7662bcd848a3cc4c7d1344040b482933669b3f895ee8cb1549696a0faf6e71de",
+      "current_sha256": "3a1ce3c922971aca5c55832151be3a8c020af0e917a622c25b5ddb1b764b1725"
+    },
+    {
+      "path": "config/nsga2_bc_global_preflame_propagation_a100.yaml",
+      "parent_sha256": "a424c783f8d00991e3bd6adc2c4505e198c84acddedad77738b8ebf41bde2016",
+      "current_sha256": "e49457768fd4fd701f2c281c3e6245528d19e1951d2ec3ff256abbb34d11fa90"
+    },
+    {
+      "path": "config/nsga2_bc_reactive_a100_cpu8.yaml",
+      "parent_sha256": "e73a6581b8e36e31b84f43ab86ad8da83af26a54ed8c3ee80644cfeef9e76026",
+      "current_sha256": "9a1cf2e7b90b5f86774db6bbdef407f70770357ec2342f128b158116f592df2f"
+    },
+    {
+      "path": "config/nsga2_bc_reactive_a100_cpu8_graph.yaml",
+      "parent_sha256": "e26c77137ae0f8bad560dba60d835498a12cec63499d50b06d2af067d7eb9617",
+      "current_sha256": "774640657f1b22eacdfb6a08eb783f24d102db43b8de4a5e2c18550f537cd8f3"
+    },
+    {
+      "path": "config/nsga2_bc_reactive_native_a100_batch64.yaml",
+      "parent_sha256": "d8ebd603ab232d24a7dd191400df5dbee045f9ac6e36605460a4b32dea762c59",
+      "current_sha256": "ef6763e541415b3b3ea311e63ffc8b9cf88aaae83d4f958803a651375defb4d1"
+    },
+    {
+      "path": "config/nsga2_bc_reactive_native_cpu8.yaml",
+      "parent_sha256": "deaf3ba2ea09c127da28a4d4013e6b302e3510b33e6f9ce35eacb4fee9e0a1d4",
+      "current_sha256": "e692a4e17534cdff43544ee3c2b81b5fc8d0dfb64bd46153798587da10041f09"
+    },
+    {
+      "path": "python/ecsp_nsga2/evaluator.py",
+      "parent_sha256": "b91057669eacdcbd59eeb85ab187ef19f1676fbf070e0ef0c74dd8e66e06d81b",
+      "current_sha256": "257f5de2ca0771e9e41d7c08bc73d12dc9cd950e49703dde1180adde9c276bc1"
+    },
+    {
+      "path": "python/ecsp_nsga2/geometry.py",
+      "parent_sha256": "0dcd3b35a360d7d8b14997022bd142a46733eeed5f1f2eb5194c5cd82229e2cd",
+      "current_sha256": "fdbd8c2622bb172c25ef6e076e90885f8180f03dcad2b6e6d4ba506ac49810be"
+    },
+    {
+      "path": "python/ecsp_nsga2/workflow.py",
+      "parent_sha256": "9dcaa43b500adb1c73b662faa75d9f1995aa4bdbcebc6de51d55efbbf58a5964",
+      "current_sha256": "a337b987780e99be2d9038d6e1d0afaccb01fa19e1698792350b986b736fa3b5"
+    },
+    {
+      "path": "python/run_nsga2_electrical_solid_loop.py",
+      "parent_sha256": "6e4f8907c21210de5d10ef4d70d7c5439e5f906789985d632e197d09e2844308",
+      "current_sha256": "1745d0f6b4672dd3e9701c0b709c79667c5a690fe0ca3a40020c71cf4c70cff6"
+    },
+    {
+      "path": "python/tests/test_v82_release_contract.py",
+      "parent_sha256": "215f192e770f93828c616d854594e4f8e961ea55add01eba9528c4b658273c57",
+      "current_sha256": "7ecbd10c4d0d847796874514a9362a6109574996ed9ea4810b6db9d3bf50be32"
+    },
+    {
+      "path": "tools/run_bc_reactive_a100_cpu8.sh",
+      "parent_sha256": "ee4593c1bc77adf6d144d15499ab392ef4a5a6f62e02f89d81a10b598a65111d",
+      "current_sha256": "07f8906a014e6fdacb08d533efdb198b2463a594e1e2c857d907bd7a92e70f82"
+    }
+  ],
+  "added_files": [
+    "PACKAGE_BUILD_METADATA_V8_4_2.json",
+    "PACKAGE_SHA256_MANIFEST_V8_4_2.txt",
+    "README_V8_4_2_KR.md",
+    "VALIDATION_V8_4_2_KR.md",
+    "config/nsga2_bc_reactive_a100_cpu8_poweroff.yaml",
+    "docs/V842_PARENT_DIFF.json",
+    "docs/archive/PRE_V842_PACKAGE_MANIFEST.txt",
+    "docs/archive/PRE_V842_PACKAGE_SHA256_MANIFEST.txt",
+    "docs/validation_v8_4_2/ACTUAL_ADAPTER_VERIFIED.json",
+    "docs/validation_v8_4_2/geometry_bootstrap_candidates.csv",
+    "docs/validation_v8_4_2/geometry_bootstrap_report.json",
+    "docs/validation_v8_4_2/geometry_representatives.png",
+    "docs/validation_v8_4_2/launcher_checks.json",
+    "docs/validation_v8_4_2/pytest.log",
+    "docs/validation_v8_4_2/pytest.xml",
+    "python/ecsp_nsga2/bootstrap.py",
+    "python/ecsp_nsga2/geometry_fit.py",
+    "python/tests/test_geometry_safe_bootstrap.py",
+    "python/validate_nsga2_geometry.py",
+    "tools/run_bc_reactive_a100_cpu8_poweroff.sh"
+  ],
+  "unchanged_original_count": 399,
+  "note": "Final generic manifests are regenerated; historical versioned manifests are preserved."
+}

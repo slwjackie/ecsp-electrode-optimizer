@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="4" time="2.828" timestamp="2026-09-16T02:48:39.942042+09:00" hostname="gimjiin-ui-MacBookPro.local"><testcase classname="python.tests.test_geometry_safe_bootstrap" name="test_bootstrap_cache_is_revalidated_and_bound_to_seed_and_grids" time="1.012"><failure message="ecsp_nsga2.bootstrap.BootstrapGeometryError: Adaptive symmetric bootstrap requires a fresh G0; do not reuse a legacy bootstrap cache.">tmp_path = PosixPath('/private/var/folders/pv/jh7w35ys4qn40jk0vn8xxdrr0000gn/T/pytest-of-kimjiin/pytest-601/test_bootstrap_cache_is_revali0')
+
+    def test_bootstrap_cache_is_revalidated_and_bound_to_seed_and_grids(tmp_path):
+        c=small_config()
+        entries,report=build_bootstrap(c,physics_grid_size=193,audit_dir=tmp_path/'cache',verbose=False)
+&gt;       reused,r=build_bootstrap(c,physics_grid_size=193,cache_dir=tmp_path/'cache',verbose=False)
+
+python/tests/test_geometry_safe_bootstrap.py:161: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+config = {'project': {'name': 'ECSP_v8_4_2_Reactive_A100CPU8_5mm_Area1pct_PowerOff', 'seed': 20260904, 'device': 'cuda', 'calib...logies': 1, ...}, 'geometry': {'domain_mm': 20.0, 'grid_size': 96, 'margin_mm': 0.75, 'minimum_gap_mm': 0.5, ...}, ...}
+physics_grid_size = 193, audit_dir = None
+cache_dir = PosixPath('/private/var/folders/pv/jh7w35ys4qn40jk0vn8xxdrr0000gn/T/pytest-of-kimjiin/pytest-601/test_bootstrap_cache_is_revali0/cache')
+verbose = False
+
+    def build_bootstrap(
+        config,
+        *,
+        physics_grid_size:int,
+        audit_dir:Path|None=None,
+        cache_dir:Path|None=None,
+        verbose:bool=True,
+    ):
+        from .geometry_families import TOPOLOGY_FAMILIES
+        import math
+    
+        if cache_dir is not None:
+&gt;           raise BootstrapGeometryError(
+                "Adaptive symmetric bootstrap requires a fresh G0; "
+                "do not reuse a legacy bootstrap cache."
+            )
+E           ecsp_nsga2.bootstrap.BootstrapGeometryError: Adaptive symmetric bootstrap requires a fresh G0; do not reuse a legacy bootstrap cache.
+
+python/ecsp_nsga2/bootstrap.py:349: BootstrapGeometryError</failure></testcase><testcase classname="python.tests.test_m2_post_onset_profile" name="test_production_preflame_sections_are_immutable[path0]" time="0.024"><failure message="AssertionError: assert 'd964d6ec1342...ca1848fefde0b' == '416134903da7...14eb0313efd63'&#10;  &#10;  - 416134903da7d345aae2a5f3e71b54021cbcce9c976f1dba03a14eb0313efd63&#10;  + d964d6ec1342700231ce9f851a2fc93a1686b1f7cce56bd5586ca1848fefde0b">path = PosixPath('/Users/kimjiin/Desktop/ECSP_v8_4_2_A100CPU8_GeometrySafe/config/nsga2_bc_reactive_m2cpu_200x3.yaml')
+
+    @pytest.mark.parametrize("path", [M2_CONFIG, A100_CONFIG])
+    def test_production_preflame_sections_are_immutable(path: Path) -&gt; None:
+        config = _load(path)
+        protected = {key: config[key] for key in PRE_FLAME_KEYS}
+    
+&gt;       assert _digest(protected) == EXPECTED_PRE_FLAME_SHA256[path.name]
+E       AssertionError: assert 'd964d6ec1342...ca1848fefde0b' == '416134903da7...14eb0313efd63'
+E         
+E         - 416134903da7d345aae2a5f3e71b54021cbcce9c976f1dba03a14eb0313efd63
+E         + d964d6ec1342700231ce9f851a2fc93a1686b1f7cce56bd5586ca1848fefde0b
+
+python/tests/test_m2_post_onset_profile.py:96: AssertionError</failure></testcase><testcase classname="python.tests.test_surface_contact_multicomponent_geometry" name="test_components_have_independent_poses_and_surface_contact_area" time="0.176"><failure message="assert 0.04121093749999999 &lt;= 0.012&#10; +  where 0.04121093749999999 = abs((0.1337890625 - 0.175))">def test_components_have_independent_poses_and_surface_contact_area():
+        limits = GeometryLimits()
+        template = next(
+            genome
+            for genome in make_topology_templates(20, 20260828, limits)
+            if _pair(genome) == (2, 2)
+        )
+        genome = instantiate_variant(template, 0, 101, limits)
+        for polarity in ("anode", "cathode"):
+            starts = [tuple(root["start"]) for root in genome[polarity]["components"]]
+            headings = [float(root["initial_heading_deg"]) for root in genome[polarity]["components"]]
+            assert len(set(starts)) == len(starts)
+            assert len(headings) == len(starts)
+        raster = rasterize_and_validate(genome, limits)
+        assert raster.descriptors["propellant_domain_area_fraction"] == 1.0
+&gt;       assert abs(raster.descriptors["anode_area_fraction"] - 0.175) &lt;= 0.012
+E       assert 0.04121093749999999 &lt;= 0.012
+E        +  where 0.04121093749999999 = abs((0.1337890625 - 0.175))
+
+python/tests/test_surface_contact_multicomponent_geometry.py:49: AssertionError</failure></testcase><testcase classname="python.tests.test_surface_contact_multicomponent_geometry" name="test_component_mutations_obey_caps_and_change_counts" time="0.002"><failure message="AssertionError: assert 4 == 3&#10; +  where 4 = sum((2, 2))&#10; +    where (2, 2) = _pair({'anode': {'components': [{'type': 'WAVE', 'role': 'wave', 'base_turn_deg': 0.0, 'children': [{'type': 'WAVE', 'role':...656, 2.753937648400953], 'initial_heading_deg': 154.05150429301827}, 'family': 'wave_branch', 'topology_index': 0, ...})">def test_component_mutations_obey_caps_and_change_counts():
+        limits = GeometryLimits()
+        base = instantiate_variant(
+            make_topology_templates(1, 17, limits)[0], 0, 19, limits
+        )
+        added = mutate_genome(base, random.Random(1), limits, operation="add_component")
+&gt;       assert sum(_pair(added)) == 3
+E       AssertionError: assert 4 == 3
+E        +  where 4 = sum((2, 2))
+E        +    where (2, 2) = _pair({'anode': {'components': [{'type': 'WAVE', 'role': 'wave', 'base_turn_deg': 0.0, 'children': [{'type': 'WAVE', 'role':...656, 2.753937648400953], 'initial_heading_deg': 154.05150429301827}, 'family': 'wave_branch', 'topology_index': 0, ...})
+
+python/tests/test_surface_contact_multicomponent_geometry.py:59: AssertionError</failure></testcase></testsuite></testsuites>

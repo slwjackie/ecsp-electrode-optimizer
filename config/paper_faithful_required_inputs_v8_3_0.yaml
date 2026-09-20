@@ -1,0 +1,62 @@
+schema: ecsp.paper-reactive/v1
+model_mode: paper_faithful
+strict_paper: true
+description: >-
+  Fail-closed paper preflight template. It intentionally does not run: the
+  article omits required closures and case values. Replace every UNRESOLVED
+  item with a measured, calibrated, paper-explicit, or cited-reference value
+  and complete the remaining schema before requesting a strict run.
+grid:
+  nx: {value: 100, unit: cells, provenance: PAPER, source: "paper p.34 selected 100x100 grid"}
+  ny: {value: 100, unit: cells, provenance: PAPER, source: "paper p.34 selected 100x100 grid"}
+  lx: {value: 0.01, unit: m, provenance: PAPER, source: "paper p.32, 10 mm square domain"}
+  ly: {value: 0.01, unit: m, provenance: PAPER, source: "paper p.32, 10 mm square domain"}
+time:
+  end: {value: 0.0, unit: s, provenance: UNRESOLVED, source: "paper end time is not stated"}
+  maximum_stage_retries: {value: 0, unit: attempts, provenance: UNRESOLVED, source: "paper rejected-stage retry policy is not stated"}
+
+output:
+  front_history_stride_steps: {value: 0, unit: steps, provenance: UNRESOLVED, source: "paper front-history output sampling policy is not stated"}
+  maximum_history_bytes: {value: 0, unit: bytes, provenance: UNRESOLVED, source: "paper front-history output memory budget is not stated"}
+  maximum_working_set_bytes: {value: 0, unit: bytes, provenance: UNRESOLVED, source: "paper solver/result working-set memory budget is not stated"}
+
+electrical:
+  butler_volmer_enabled: false
+  source_provider: {choice: PRESCRIBED_ARRAY_FIELDS, provenance: UNRESOLVED, source: "complete with measured conductivity/potential-derived source arrays and their provenance; paper arrays are not published"}
+
+numerics:
+  algorithms:
+    spatial_reconstruction: {choice: WENO5_JS, provenance: UNRESOLVED, source: "paper gives no WENO order/variant"}
+    riemann_solver: {choice: HLL, provenance: UNRESOLVED, source: "paper gives no Riemann solver or flux splitting"}
+    time_integrator: {choice: SSPRK33, provenance: UNRESOLVED, source: "paper says RK3 but gives no tableau"}
+    source_coupling: {choice: SSPRK_STAGE_COUPLED, provenance: UNRESOLVED, source: "paper gives no source-coupling algorithm"}
+    flow_boundary: {choice: OUTFLOW, provenance: UNRESOLVED, source: "paper Euler-flow boundary conditions are not stated"}
+    solid_boundary: {choice: OUTFLOW, provenance: UNRESOLVED, source: "paper condensed thermal boundary conditions are not stated"}
+    level_set_boundary_x: {choice: OUTFLOW, provenance: UNRESOLVED, source: "paper x-direction level-set boundary condition is not stated"}
+    level_set_boundary_y: {choice: OUTFLOW, provenance: UNRESOLVED, source: "paper y-direction level-set boundary condition is not stated"}
+    electrical_gradient_boundary: {choice: FIRST_ORDER_ONE_SIDED, provenance: UNRESOLVED, source: "paper prescribed-potential boundary gradient stencil is not stated"}
+    material_interface: {choice: PASSIVE_SINGLE_EOS, provenance: UNRESOLVED, source: "paper ghost-fluid jump conditions are not stated"}
+    level_set_gradient: {choice: WENO5_JS_UPWIND, provenance: UNRESOLVED, source: "paper gives no Hamilton-Jacobi WENO variant"}
+    level_set_reinitialization: {choice: NONE, provenance: UNRESOLVED, source: "paper gives no reinitialization equation or frequency"}
+    mpi_decomposition: {choice: SERIAL_SINGLE_PROCESS, provenance: UNRESOLVED, source: "paper gives no runnable process/decomposition contract"}
+
+unresolved_required_inputs:
+  - initial density, pressure/temperature, velocity, lambda and alpha fields
+  - every external and material-interface boundary condition
+  - Tait A, B, N and rho0
+  - caloric EOS needed to recover temperature from total energy
+  - flow reaction omega(lambda,T), Arrhenius constants and Q
+  - solid Eq.(2) A_alpha, E_alpha, f(alpha), Q_r and dimensionally consistent rate basis
+  - electric conductivity and potential fields or a potential PDE with boundary conditions
+  - dimensionally consistent electrochemical molar-rate source for the printed H term
+  - WENO order/variant, flux splitting or Riemann solver, RK3 tableau and CFL
+  - ghost-fluid jump conditions and material property assignment
+  - level-set reinitialization equation, pseudo-time and frequency
+  - MPI halo width, decomposition topology and corner exchange
+  - Species front contour, interpolation, correspondence and regression-fit interval
+  - numerical/experimental raw time series used for 3.6094 and 3.3696 mm/s
+
+paper_dimensional_conflicts:
+  - "Eq.(1) calls H J/mol but rho*H is not W/m^3 without a molar reaction rate"
+  - "Eq.(2) prints r_alpha=dalpha/dt yet lists a surface molar-rate unit; r_alpha*Q_r is not W/m^3 as printed"
+  - "Eq.(1) describes E ambiguously; conservation dimensions require specific total energy J/kg"

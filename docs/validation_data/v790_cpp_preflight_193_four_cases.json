@@ -1,0 +1,44 @@
+{
+  "status": "passed",
+  "grid_size": 193,
+  "successful": 4,
+  "rejected": 0,
+  "cases": [
+    {
+      "geometry_id": "G000_T00_1A1C_f430c6_V000",
+      "finalElectricalConverged": true,
+      "propellantDomainAreaFraction": 1.0,
+      "anodeContactAreaFraction": 0.17353485999624152,
+      "cathodeContactAreaFraction": 0.1738570162957395,
+      "finalAnodeCathodeCurrentMismatch": 1.2621313280236811e-05,
+      "finalElectricalRelativeResidual": 9.840292416116995e-10
+    },
+    {
+      "geometry_id": "G000_T00_1A1C_f430c6_V001",
+      "finalElectricalConverged": true,
+      "propellantDomainAreaFraction": 1.0,
+      "anodeContactAreaFraction": 0.1737496308625735,
+      "cathodeContactAreaFraction": 0.17353485999624152,
+      "finalAnodeCathodeCurrentMismatch": 1.0666026969034782e-05,
+      "finalElectricalRelativeResidual": 9.68650964308542e-10
+    },
+    {
+      "geometry_id": "G000_T00_1A1C_f430c6_V002",
+      "finalElectricalConverged": true,
+      "propellantDomainAreaFraction": 1.0,
+      "anodeContactAreaFraction": 0.17299793283041157,
+      "cathodeContactAreaFraction": 0.17380332357915648,
+      "finalAnodeCathodeCurrentMismatch": 1.5644495712372417e-05,
+      "finalElectricalRelativeResidual": 9.591913181822042e-10
+    },
+    {
+      "geometry_id": "G000_T00_1A1C_f430c6_V003",
+      "finalElectricalConverged": true,
+      "propellantDomainAreaFraction": 1.0,
+      "anodeContactAreaFraction": 0.1736422454294075,
+      "cathodeContactAreaFraction": 0.1726757765309136,
+      "finalAnodeCathodeCurrentMismatch": 8.381829362762398e-05,
+      "finalElectricalRelativeResidual": 9.56832142866191e-10
+    }
+  ]
+}

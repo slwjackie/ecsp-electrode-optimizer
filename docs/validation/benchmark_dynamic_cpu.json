@@ -1,0 +1,37 @@
+{
+  "schema": "ecsp.reactive-arithmetic-benchmark/v1",
+  "scope": "synthetic kernel-only excluding I/O scheduler and NP/BV",
+  "device": "cpu",
+  "cuda_graph": false,
+  "cpu_count": 5,
+  "python": "3.13.5",
+  "numpy": "2.3.5",
+  "torch": "2.10.0+cpu",
+  "torch_cuda": null,
+  "gpu_name": null,
+  "A100_hardware_tested": false,
+  "material_coefficients_calibrated": false,
+  "full_pipeline_speedup_measured": false,
+  "rows": [
+    {
+      "grid": 16,
+      "batch_size": 2,
+      "steps": 3,
+      "dynamic_mechanics": true,
+      "numpy_serial_cases_median_s": 0.07770454749993405,
+      "tensor_batch_median_s": 0.09203695599990169,
+      "kernel_only_numpy_serial_over_tensor_speed_ratio": 0.8442755049397446,
+      "max_absolute_state_difference": 0.0,
+      "max_scaled_state_difference": 0.0,
+      "peak_allocated_GPU_bytes": null,
+      "numpy_repeat_s": [
+        0.07749289000003046,
+        0.07791620499983765
+      ],
+      "tensor_repeat_s": [
+        0.08956218599996646,
+        0.09451172599983693
+      ]
+    }
+  ]
+}

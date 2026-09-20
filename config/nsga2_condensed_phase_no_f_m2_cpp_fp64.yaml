@@ -1,0 +1,126 @@
+project:
+  name: ECSP_NSGA2_CondensedPhase_NoF_M2_CPP_FP64
+  seed: 20260828
+  device: cpu
+workflow:
+  openfoam_enabled: false
+  gas_phase_cfd_enabled: false
+  flame_progress_enabled: false
+  evaluator_scope: electrochemical_solid_thermal_decomposition_only
+optimization:
+  algorithm: constrained_grammar_nsga2
+  population_size: 1000
+  generations: 5
+  initial_topologies: 20
+  variants_per_topology: 50
+  physics_batch_size: 4
+  mating_performance_count: 70
+  mating_topology_count: 20
+  mating_diversity_count: 10
+  offspring_fractions:
+    crossover: 0.6
+    mutation: 0.25
+    new_grammar: 0.15
+  offspring_generation_attempts: 40
+  objectives_minimise:
+  - ignition_delay_s
+  - area_undecomposed_fraction_at_2s
+  - minimum_ignition_voltage_V
+  - current_congestion
+  no_ignition_penalty_s: 2.0
+  early_stop_patience: 2
+  early_stop_min_improvement: 0.001
+  numerical_cap_thresholds:
+    temperature: 0.02
+    species: 0.02
+    gas: 0.02
+    chemical_rate: 0.02
+  no_ignition_constraint_violation: 1.0
+  continuous_ignition_constraint: true
+  minimum_no_ignition_violation: 1.0e-06
+  require_ignition_for_feasibility: true
+  vmin_invalid_search_constraint_violation: 1.0
+geometry:
+  domain_mm: 20.0
+  grid_size: 96
+  margin_mm: 0.75
+  minimum_gap_mm: 0.5
+  minimum_width_mm: 0.3
+  maximum_width_mm: 1.2
+  target_area_fraction_per_polarity: 0.175
+  area_tolerance_fraction: 0.035
+  maximum_components_per_polarity: 3
+  maximum_total_components: 4
+  disconnected_component_powering: implicit_3d_hidden_bus
+  surface_contact_model: overlay_on_full_propellant_domain
+  maximum_branch_depth: 2
+  maximum_branches_per_component: 2
+  minimum_segment_mm: 0.65
+  maximum_segment_mm: 5.0
+physics:
+  voltage_V: 260.0
+  end_time_s: 2.0
+  interpretation: condensed_phase_only_no_flame_progress
+  composition:
+    lithium_perchlorate_mass_fraction: 0.291
+    water_mass_fraction: 0.539
+    pva_mass_fraction: 0.1
+    glycerol_mass_fraction: 0.05
+    boric_acid_mass_fraction: 0.02
+    tungsten_mass_fraction: 0.0
+  retained_water_fraction: null
+  literature_overlay_file: config/literature_nonmetal_lp_pva_gly_ba.yaml
+  kinetics_policy:
+    use_existing_v772_global_solid_kinetics_until_validated: true
+    fabricate_missing_arrhenius_coefficients: false
+    literature_values_are_priors_not_calibration: true
+condensed_ignition:
+  criterion: first_local_crossing_of_literature_decomposition_onset_temperature
+  onset_temperature_K: 622.15
+  onset_temperature_source: non_metallized_M0_reported_decomposition_onset_349C
+  minimum_conversion_numerical_guard: 0.0
+  minimum_rate_numerical_guard_per_s: 0.0
+  reference_time_s: 2.0
+  interpretation: condensed_phase_decomposition_onset_not_gas_flame
+  sensitivity_onset_temperature_K:
+  - 602.15
+  - 622.15
+  - 642.15
+minimum_ignition_voltage_search:
+  enabled: true
+  lower_bound_V: 20.0
+  upper_bound_V: 260.0
+  tolerance_V: 5.0
+  maximum_bisection_iterations: 8
+  right_censor_objective_penalty_V: 50.0
+  invalid_search_objective_penalty_V: 100.0
+  stop_successful_trials_at_ignition: true
+  reported_value: conservative_upper_igniting_bracket
+  interpretation: minimum_voltage_for_condensed_phase_ignition_within_2s
+baselines:
+  area_matched_staggered:
+    enabled: true
+    layout: hidden_bus_vertical_2anode_2cathode
+    fingers_per_polarity: 2
+    target_interdigitation_overlap_fraction: 0.50
+    minimum_interdigitation_overlap_fraction: 0.45
+    hidden_bus_in_contact_mask: false
+    maximum_gap_safety_pixels: 8
+    include_in_nsga2_population: false
+    include_in_pareto_selection: false
+evaluator:
+  backend: cpp_fp64_cpu
+  base_config: config/default_lp_pva.yaml
+  device: cpu
+  voltage_V: 260.0
+  end_time_s: 2.0
+  cpp_auto_build: true
+  cpp_parallel_cases: 4
+  base_overrides:
+    numerics:
+      physicsDevice: cpu
+      physicsDtype: float64
+      potentialSolver:
+        relativeToleranceStatic: 1.0e-10
+        relativeToleranceCoupled: 1.0e-09
+        absoluteTolerance: 1.0e-12

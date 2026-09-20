@@ -1,0 +1,125 @@
+{
+  "existing_suite": {
+    "passed": 668,
+    "skipped": 6,
+    "failed": 8
+  },
+  "new_tests_passed": 58,
+  "installed_project_new_tests_passed": 58,
+  "all_eight_failures_reproduced_on_original": true,
+  "cases": [
+    {
+      "test": "test_geometry_safe_bootstrap::test_fitted_primitives_reproduce_masks_and_do_not_refit_on_reload",
+      "changed_tree": {
+        "message": "AssertionError: assert 9.645042786631185 <= 1e-12\n +  where 9.645042786631185 = RasterizedGeometry(anode_mask=array([[False, False, False, ..., False, False, False],\\n       [False, False, False, ......mum_width_mm': 5.0, 'area_error_pixels': 744.8, 'evaluated_rasters': 221}}, 'fitted_geometry_is_authoritative': True}}).constraint_violation",
+        "source_report": "existing_regression.xml",
+        "seconds": 0.328
+      },
+      "original_tree": {
+        "message": "AssertionError: assert 9.645042786631185 <= 1e-12\n +  where 9.645042786631185 = RasterizedGeometry(anode_mask=array([[False, False, False, ..., False, False, False],\\n       [False, False, False, ......mum_width_mm': 5.0, 'area_error_pixels': 744.8, 'evaluated_rasters': 221}}, 'fitted_geometry_is_authoritative': True}}).constraint_violation",
+        "source_report": "original_eight_failures.xml",
+        "seconds": 0.341
+      },
+      "same_failure_message": true
+    },
+    {
+      "test": "test_geometry_safe_bootstrap::test_all_20_topologies_have_unique_feasible_small_quotas",
+      "changed_tree": {
+        "message": "ecsp_nsga2.bootstrap.BootstrapGeometryError: T07_e_fork_bus: neither 1A1C nor 2A2C filled 2 unique feasible designs",
+        "source_report": "existing_regression.xml",
+        "seconds": 550.174
+      },
+      "original_tree": {
+        "message": "ecsp_nsga2.bootstrap.BootstrapGeometryError: T07_e_fork_bus: neither 1A1C nor 2A2C filled 2 unique feasible designs",
+        "source_report": "original_eight_failures.xml",
+        "seconds": 577.973
+      },
+      "same_failure_message": true
+    },
+    {
+      "test": "test_geometry_safe_bootstrap::test_bootstrap_never_pads_invalid_candidates",
+      "changed_tree": {
+        "message": "AssertionError: Regex pattern did not match.\n  Expected regex: 'no INVALID padding'\n  Actual message: 'T00_serpentine: neither 1A1C nor 2A2C filled 2 unique feasible designs'",
+        "source_report": "existing_regression.xml",
+        "seconds": 221.446
+      },
+      "original_tree": {
+        "message": "AssertionError: Regex pattern did not match.\n  Expected regex: 'no INVALID padding'\n  Actual message: 'T00_serpentine: neither 1A1C nor 2A2C filled 2 unique feasible designs'",
+        "source_report": "original_no_padding.xml",
+        "seconds": 222.657
+      },
+      "same_failure_message": true
+    },
+    {
+      "test": "test_geometry_safe_bootstrap::test_duplicate_masks_do_not_fill_a_topology_quota",
+      "changed_tree": {
+        "message": "assert 0 == 1",
+        "source_report": "existing_regression.xml",
+        "seconds": 322.344
+      },
+      "original_tree": {
+        "message": "assert 0 == 1",
+        "source_report": "original_duplicate_masks.xml",
+        "seconds": 324.687
+      },
+      "same_failure_message": true
+    },
+    {
+      "test": "test_geometry_safe_bootstrap::test_bootstrap_cache_is_revalidated_and_bound_to_seed_and_grids",
+      "changed_tree": {
+        "message": "ecsp_nsga2.bootstrap.BootstrapGeometryError: Adaptive symmetric bootstrap requires a fresh G0; do not reuse a legacy bootstrap cache.",
+        "source_report": "existing_regression.xml",
+        "seconds": 0.947
+      },
+      "original_tree": {
+        "message": "ecsp_nsga2.bootstrap.BootstrapGeometryError: Adaptive symmetric bootstrap requires a fresh G0; do not reuse a legacy bootstrap cache.",
+        "source_report": "original_remaining_contracts.xml",
+        "seconds": 1.012
+      },
+      "same_failure_message": true
+    },
+    {
+      "test": "test_m2_post_onset_profile::test_production_preflame_sections_are_immutable[path0]",
+      "changed_tree": {
+        "message": "AssertionError: assert 'd964d6ec1342...ca1848fefde0b' == '416134903da7...14eb0313efd63'\n  \n  - 416134903da7d345aae2a5f3e71b54021cbcce9c976f1dba03a14eb0313efd63\n  + d964d6ec1342700231ce9f851a2fc93a1686b1f7cce56bd5586ca1848fefde0b",
+        "source_report": "existing_regression.xml",
+        "seconds": 0.016
+      },
+      "original_tree": {
+        "message": "AssertionError: assert 'd964d6ec1342...ca1848fefde0b' == '416134903da7...14eb0313efd63'\n  \n  - 416134903da7d345aae2a5f3e71b54021cbcce9c976f1dba03a14eb0313efd63\n  + d964d6ec1342700231ce9f851a2fc93a1686b1f7cce56bd5586ca1848fefde0b",
+        "source_report": "original_remaining_contracts.xml",
+        "seconds": 0.024
+      },
+      "same_failure_message": true
+    },
+    {
+      "test": "test_surface_contact_multicomponent_geometry::test_components_have_independent_poses_and_surface_contact_area",
+      "changed_tree": {
+        "message": "assert 0.04121093749999999 <= 0.012\n +  where 0.04121093749999999 = abs((0.1337890625 - 0.175))",
+        "source_report": "existing_regression.xml",
+        "seconds": 0.144
+      },
+      "original_tree": {
+        "message": "assert 0.04121093749999999 <= 0.012\n +  where 0.04121093749999999 = abs((0.1337890625 - 0.175))",
+        "source_report": "original_remaining_contracts.xml",
+        "seconds": 0.176
+      },
+      "same_failure_message": true
+    },
+    {
+      "test": "test_surface_contact_multicomponent_geometry::test_component_mutations_obey_caps_and_change_counts",
+      "changed_tree": {
+        "message": "AssertionError: assert 4 == 3\n +  where 4 = sum((2, 2))\n +    where (2, 2) = _pair({'anode': {'components': [{'type': 'WAVE', 'role': 'wave', 'base_turn_deg': 0.0, 'children': [{'type': 'WAVE', 'role':...656, 2.753937648400953], 'initial_heading_deg': 154.05150429301827}, 'family': 'wave_branch', 'topology_index': 0, ...})",
+        "source_report": "existing_regression.xml",
+        "seconds": 0.002
+      },
+      "original_tree": {
+        "message": "AssertionError: assert 4 == 3\n +  where 4 = sum((2, 2))\n +    where (2, 2) = _pair({'anode': {'components': [{'type': 'WAVE', 'role': 'wave', 'base_turn_deg': 0.0, 'children': [{'type': 'WAVE', 'role':...656, 2.753937648400953], 'initial_heading_deg': 154.05150429301827}, 'family': 'wave_branch', 'topology_index': 0, ...})",
+        "source_report": "original_remaining_contracts.xml",
+        "seconds": 0.002
+      },
+      "same_failure_message": true
+    }
+  ],
+  "all_failure_messages_match": true
+}

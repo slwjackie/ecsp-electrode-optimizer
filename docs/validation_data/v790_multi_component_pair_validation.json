@@ -1,0 +1,109 @@
+{
+  "status": "passed",
+  "required_component_pairs": [
+    [
+      1,
+      1
+    ],
+    [
+      1,
+      2
+    ],
+    [
+      2,
+      1
+    ],
+    [
+      2,
+      2
+    ],
+    [
+      3,
+      1
+    ],
+    [
+      1,
+      3
+    ]
+  ],
+  "cases": [
+    {
+      "geometry_id": "pair_1A_1C",
+      "variant_attempt": 0,
+      "design_grid_anode_contact_fraction": 0.17513020833333334,
+      "design_grid_cathode_contact_fraction": 0.17545572916666666,
+      "physics_rejected": false,
+      "electrical_converged": true,
+      "propellant_domain_fraction": 1.0,
+      "physics_grid_anode_contact_fraction": 0.17353485999624152,
+      "physics_grid_cathode_contact_fraction": 0.1738570162957395,
+      "current_balance_mismatch": 1.2621313280236811e-05,
+      "potential_relative_residual": 9.840292416116995e-10
+    },
+    {
+      "geometry_id": "pair_1A_2C",
+      "variant_attempt": 0,
+      "design_grid_anode_contact_fraction": 0.1743706597222222,
+      "design_grid_cathode_contact_fraction": 0.1743706597222222,
+      "physics_rejected": false,
+      "electrical_converged": true,
+      "propellant_domain_fraction": 1.0,
+      "physics_grid_anode_contact_fraction": 0.1747697924776504,
+      "physics_grid_cathode_contact_fraction": 0.1725683910977476,
+      "current_balance_mismatch": 5.780860360185166e-05,
+      "potential_relative_residual": 8.921151556618135e-10
+    },
+    {
+      "geometry_id": "pair_2A_1C",
+      "variant_attempt": 0,
+      "design_grid_anode_contact_fraction": 0.17567274305555555,
+      "design_grid_cathode_contact_fraction": 0.1753472222222222,
+      "physics_rejected": false,
+      "electrical_converged": true,
+      "propellant_domain_fraction": 1.0,
+      "physics_grid_anode_contact_fraction": 0.1738570162957395,
+      "physics_grid_cathode_contact_fraction": 0.1737496308625735,
+      "current_balance_mismatch": 4.5274295858184604e-05,
+      "potential_relative_residual": 9.566537319113872e-10
+    },
+    {
+      "geometry_id": "pair_2A_2C",
+      "variant_attempt": 0,
+      "design_grid_anode_contact_fraction": 0.1753472222222222,
+      "design_grid_cathode_contact_fraction": 0.1759982638888889,
+      "physics_rejected": false,
+      "electrical_converged": true,
+      "propellant_domain_fraction": 1.0,
+      "physics_grid_anode_contact_fraction": 0.17353485999624152,
+      "physics_grid_cathode_contact_fraction": 0.17417917259523746,
+      "current_balance_mismatch": 1.198342499539923e-05,
+      "potential_relative_residual": 9.538200808392375e-10
+    },
+    {
+      "geometry_id": "pair_3A_1C",
+      "variant_attempt": 0,
+      "design_grid_anode_contact_fraction": 0.1740451388888889,
+      "design_grid_cathode_contact_fraction": 0.17491319444444445,
+      "physics_rejected": false,
+      "electrical_converged": true,
+      "propellant_domain_fraction": 1.0,
+      "physics_grid_anode_contact_fraction": 0.1724073129479986,
+      "physics_grid_cathode_contact_fraction": 0.17530671964348035,
+      "current_balance_mismatch": 0.00028246511422960356,
+      "potential_relative_residual": 9.767586068577665e-10
+    },
+    {
+      "geometry_id": "pair_1A_3C",
+      "variant_attempt": 1,
+      "design_grid_anode_contact_fraction": 0.1750217013888889,
+      "design_grid_cathode_contact_fraction": 0.17415364583333334,
+      "physics_rejected": false,
+      "electrical_converged": true,
+      "propellant_domain_fraction": 1.0,
+      "physics_grid_anode_contact_fraction": 0.1734811672796585,
+      "physics_grid_cathode_contact_fraction": 0.17455502161131842,
+      "current_balance_mismatch": 0.00013438577814762058,
+      "potential_relative_residual": 9.373265598972012e-10
+    }
+  ]
+}

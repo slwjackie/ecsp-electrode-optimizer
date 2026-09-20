@@ -1,0 +1,16 @@
+[
+  {
+    "script": "run_bc_reactive.sh",
+    "dangling_log_symlink_rejected": true,
+    "returncode": 2,
+    "stderr": "ERROR: output exists: /tmp/tmp3e0u7hx9/case",
+    "target_created": false
+  },
+  {
+    "script": "run_bc_reactive_a100_cpu8.sh",
+    "dangling_log_symlink_rejected": true,
+    "returncode": 2,
+    "stderr": "ERROR: output/log/preflight exists; choose a fresh workdir (nothing is deleted).",
+    "target_created": false
+  }
+]

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="222.926" timestamp="2026-09-16T02:48:39.941027+09:00" hostname="gimjiin-ui-MacBookPro.local"><testcase classname="python.tests.test_geometry_safe_bootstrap" name="test_bootstrap_never_pads_invalid_candidates" time="222.657"><failure message="AssertionError: Regex pattern did not match.&#10;  Expected regex: 'no INVALID padding'&#10;  Actual message: 'T00_serpentine: neither 1A1C nor 2A2C filled 2 unique feasible designs'">tmp_path = PosixPath('/private/var/folders/pv/jh7w35ys4qn40jk0vn8xxdrr0000gn/T/pytest-of-kimjiin/pytest-600/test_bootstrap_never_pads_inva0')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x103552230&gt;
+
+    def test_bootstrap_never_pads_invalid_candidates(tmp_path,monkeypatch):
+        import ecsp_nsga2.bootstrap as module
+        original=module.rasterize_and_validate
+        calls=[]
+        def invalid(g,lim):
+            calls.append(1)
+            r=original(g,lim)
+            r.constraint_violation=1.0
+            r.violation_details['forced_test_failure']=1.0
+            return r
+        monkeypatch.setattr(module,'rasterize_and_validate',invalid)
+        c=small_config();c['optimization']['bootstrap_max_attempts_per_topology']=3
+&gt;       with pytest.raises(BootstrapGeometryError,match='no INVALID padding'):
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'no INVALID padding'
+E         Actual message: 'T00_serpentine: neither 1A1C nor 2A2C filled 2 unique feasible designs'
+
+python/tests/test_geometry_safe_bootstrap.py:137: AssertionError</failure></testcase></testsuite></testsuites>

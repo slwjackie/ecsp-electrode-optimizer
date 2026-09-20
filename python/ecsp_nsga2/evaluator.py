@@ -1,0 +1,3603 @@
+from __future__ import annotations
+
+from dataclasses import asdict, is_dataclass
+from pathlib import Path
+from typing import Any, Callable, Iterable, Mapping, Sequence
+import importlib
+import inspect
+import json
+import math
+import os
+import pkgutil
+import sys
+import traceback
+import time
+
+import numpy as np
+
+
+def _deep_merge(base: dict[str, Any], overlay: Mapping[str, Any]) -> dict[str, Any]:
+    result = dict(base)
+    for key, value in overlay.items():
+        if isinstance(value, Mapping) and isinstance(result.get(key), Mapping):
+            result[key] = _deep_merge(dict(result[key]), value)
+        else:
+            result[key] = value
+    return result
+
+
+def _load_yaml_if_available(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    try:
+        import yaml
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+OBJECTIVE_ALIASES: dict[str, tuple[str, ...]] = {
+    "ignition_delay_s": (
+        "ignition_delay_s",
+        "ignitionDelay_s",
+        "condensedPhaseIgnitionDelay_s",
+        "t_ignition_s",
+        "condensed_phase_ignition_delay_s",
+    ),
+    "area_undecomposed_fraction_at_evaluation_time": (
+        "area_undecomposed_fraction_at_evaluation_time",
+        "remainingReactiveMassFractionAtEvaluationTime",
+        "areaAveragedUndecomposedFractionAtEvaluationTime",
+        "areaWeightedUndecomposedFractionAtEvaluationTime",
+        # Deprecated compatibility aliases. They always mean the configured
+        # evaluationTime_s, which need not be exactly two seconds.
+        "area_undecomposed_fraction_at_2s",
+        "remainingReactiveMassFractionAt2s",
+        "areaAveragedUndecomposedFractionAt2s",
+        "areaWeightedUndecomposedFractionAt2s",
+        "finalAreaAveragedUndecomposedFraction",
+        "residual_undecomposed_fraction_at_2s",
+        "UspAt2s",
+        "U_rem_at_2s",
+    ),
+    "minimum_ignition_voltage_V": (
+        "minimumIgnitionVoltageObjective_V",
+        "minimum_ignition_voltage_V",
+        "minimumIgnitionVoltage_V",
+        "VminIgnition_V",
+        "V_min_ignition_V",
+    ),
+    "current_congestion": (
+        "peakCurrentCongestionToEvaluationTime",
+        "current_congestion",
+        "peakCurrentCongestionTo2s",
+        "peakCurrentCongestion",
+        "peakCurrentCongestion_A",
+        "peak_current_congestion",
+        "current_congestion_ratio",
+        "j99_over_mean",
+    ),
+}
+
+
+EVALUATION_TIME_METRIC_ALIASES: dict[str, tuple[str, ...]] = {
+    "areaAveragedUndecomposedFractionAtEvaluationTime": (
+        "areaAveragedUndecomposedFractionAt2s",
+    ),
+    "areaWeightedUndecomposedFractionAtEvaluationTime": (
+        "areaWeightedUndecomposedFractionAt2s",
+    ),
+    "remainingReactiveMassFractionAtEvaluationTime": (
+        "remainingReactiveMassFractionAt2s",
+    ),
+    "meanChemicalProgressAtEvaluationTime": ("meanChemicalProgressAt2s",),
+    "meanGlobalProgressAtEvaluationTime": ("meanGlobalProgressAt2s",),
+    "temperatureOnsetAreaFractionAtEvaluationTime": (
+        "temperatureOnsetAreaFractionAt2s",
+    ),
+    "inputElectricalEnergyAtEvaluationTime_J": ("inputElectricalEnergyAt2s_J",),
+    "peakCurrentCongestionToEvaluationTime": ("peakCurrentCongestionTo2s",),
+}
+
+
+def _normalise_evaluation_time_aliases(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Promote configured-time names and keep misleading ``At2s`` aliases equal."""
+    result = dict(row)
+    deprecated: dict[str, str] = {}
+    for canonical_name, aliases in EVALUATION_TIME_METRIC_ALIASES.items():
+        value = result.get(canonical_name)
+        if value is None:
+            value = next(
+                (result[name] for name in aliases if result.get(name) is not None),
+                None,
+            )
+        if value is None:
+            continue
+        result[canonical_name] = value
+        for alias in aliases:
+            result[alias] = value
+            deprecated[alias] = canonical_name
+    if deprecated:
+        existing = result.get("deprecatedMetricAliases", {})
+        result["deprecatedMetricAliases"] = {
+            **(dict(existing) if isinstance(existing, Mapping) else {}),
+            **deprecated,
+        }
+    return result
+
+
+def _bc_solver_converged(
+    metrics: Mapping[str, Any], solver: Mapping[str, Any]
+) -> bool:
+    """Require cumulative convergence through each lane's active lifetime.
+
+    ``solver`` is the last shared-batch solve and can belong to another lane
+    after an early-onset candidate was frozen.  The per-lane cumulative flags
+    are therefore authoritative and are required explicitly.
+    """
+    return bool(
+        metrics.get("allElectricalLinearSolvesConverged", False)
+        and metrics.get("allNonlinearRobinSolvesConverged", False)
+    )
+
+
+class EvaluatorError(RuntimeError):
+    pass
+
+
+class BCCandidateGeometryError(EvaluatorError):
+    """A rasterised-geometry rejection confined to one B/C candidate.
+
+    This deliberately separate type is part of the B/C batch fault boundary:
+    only candidate geometry errors and structured B/C physics errors may be
+    converted into dominated rows.  Configuration, device, compiler and
+    unclassified runtime failures must escape the evaluator.
+    """
+
+
+def _strict_json_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(k): _strict_json_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_strict_json_value(v) for v in value]
+    if isinstance(value, np.ndarray):
+        return [_strict_json_value(v) for v in value.tolist()]
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, float) and not np.isfinite(value):
+        return None
+    return value
+
+
+def _normalise_result(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return dict(value)
+    if is_dataclass(value):
+        return asdict(value)
+    if hasattr(value, "to_dict"):
+        try:
+            data = value.to_dict()
+            if isinstance(data, dict):
+                # pandas DataFrame orient fallback
+                if data and all(isinstance(v, dict) for v in data.values()):
+                    keys = list(data)
+                    first_index = next(iter(data[keys[0]]), None)
+                    if first_index is not None:
+                        return {k: data[k][first_index] for k in keys}
+                return data
+        except Exception:
+            pass
+    if hasattr(value, "__dict__"):
+        return {k: v for k, v in vars(value).items() if not k.startswith("_")}
+    if isinstance(value, (tuple, list)) and value and isinstance(value[0], Mapping):
+        return dict(value[0])
+    raise EvaluatorError(f"Unsupported evaluator return type: {type(value)!r}")
+
+
+def _lookup(data: Mapping[str, Any], aliases: Sequence[str]) -> Any:
+    lower = {str(k).lower(): v for k, v in data.items()}
+    for key in aliases:
+        if key in data:
+            return data[key]
+        if key.lower() in lower:
+            return lower[key.lower()]
+    # Search nested dictionaries one level deep.
+    for value in data.values():
+        if isinstance(value, Mapping):
+            nested = _lookup(value, aliases)
+            if nested is not None:
+                return nested
+    return None
+
+
+def canonicalise_metrics(
+    raw: Mapping[str, Any],
+    end_time_s: float,
+    no_ignition_penalty_s: float,
+) -> dict[str, Any]:
+    """Map evaluator output to the four v7.9.4 minimisation objectives.
+
+    Objective 3 is the *operational minimum ignition voltage*: the smallest
+    numerically-valid applied voltage, within the configured search interval,
+    that reaches the same condensed-phase ignition criterion by ``end_time_s``.
+    The C++ evaluator reports a conservative upper (igniting) bracket value.
+
+    Objectives 1, 2 and 4 remain evaluated at the fixed reference voltage
+    (normally 260 V).  Energy-to-ignition remains available as a diagnostic but
+    is no longer part of NSGA-II ranking.
+    """
+    metrics = _normalise_evaluation_time_aliases(raw)
+    canonical: dict[str, Any] = dict(metrics)
+    missing: list[str] = []
+
+    for target in OBJECTIVE_ALIASES:
+        value = _lookup(metrics, OBJECTIVE_ALIASES[target])
+        if value is None:
+            missing.append(target)
+            continue
+        canonical[target] = float(np.asarray(value).reshape(-1)[0])
+
+    ignited_value = _lookup(
+        metrics,
+        (
+            "ignitionSucceeded",
+            "ignition_succeeded",
+            "condensedPhaseIgnited",
+            "ignited",
+        ),
+    )
+    ignition_value = canonical.get("ignition_delay_s", np.nan)
+    ignition_success = (
+        bool(ignited_value)
+        if ignited_value is not None
+        else bool(np.isfinite(float(ignition_value)))
+    )
+    canonical["ignition_success"] = ignition_success
+
+    # A non-igniting design at the reference voltage remains infeasible.  Keep
+    # the objective vector finite so constrained NSGA-II never relies on NaN
+    # ordering; Vmin itself is right-censored by the evaluator in this case.
+    if not ignition_success:
+        canonical["ignition_delay_s"] = (
+            float(end_time_s) + float(no_ignition_penalty_s)
+        )
+        missing = [x for x in missing if x != "ignition_delay_s"]
+
+    if missing:
+        raise EvaluatorError(
+            "Condensed-phase evaluator did not expose required no-F metrics: "
+            + ", ".join(sorted(set(missing)))
+            + ". Available keys: "
+            + ", ".join(sorted(str(k) for k in metrics.keys()))
+        )
+
+    for name in OBJECTIVE_ALIASES:
+        if not np.isfinite(float(canonical[name])):
+            raise EvaluatorError(f"Non-finite objective {name}: {canonical[name]!r}")
+
+    canonical["area_undecomposed_fraction_at_2s"] = canonical[
+        "area_undecomposed_fraction_at_evaluation_time"
+    ]
+    canonical["objective_vector"] = [
+        canonical["ignition_delay_s"],
+        canonical["area_undecomposed_fraction_at_evaluation_time"],
+        canonical["minimum_ignition_voltage_V"],
+        canonical["current_congestion"],
+    ]
+    bc_model = str(_lookup(metrics, ("modelStatus", "model_status")) or "").startswith("bc_global_")
+    canonical["objective_definition"] = {
+        "ignition_delay_s": (
+            "first time the configured temperature AND global-reaction-conversion criterion is met over the configured minimum propellant area at the reference voltage"
+            if bc_model
+            else "first local condensed-phase decomposition-onset temperature crossing at the reference voltage"
+        ),
+        "area_undecomposed_fraction_at_evaluation_time": (
+            "remaining reactive LP-plus-PVA condensed mass divided by its initial value at the configured evaluationTime_s and reference voltage"
+            if bc_model
+            else "area average of 1-alpha at the configured evaluationTime_s and reference voltage"
+        ),
+        "minimum_ignition_voltage_V": (
+            "conservative upper/igniting bound from a bracketed voltage search: "
+            "lowest numerically-valid tested voltage that ignites by the finite horizon"
+        ),
+        "current_congestion": (
+            "peak through the configured evaluationTime_s of J99/mean(J) "
+            "at the reference voltage"
+        ),
+        "vmin_search_policy": (
+            "reference-voltage run supplies objectives 1/2/4; lower-voltage trials are used only to classify ignition threshold"
+        ),
+        "energy_to_ignition_role": "diagnostic_only_not_an_NSGA2_objective",
+        "flame_progress_used": False,
+        "bc_global_species_mass_objective": bc_model,
+        "deprecated_aliases": {
+            "area_undecomposed_fraction_at_2s": (
+                "area_undecomposed_fraction_at_evaluation_time"
+            ),
+            "peakCurrentCongestionTo2s": (
+                "peakCurrentCongestionToEvaluationTime"
+            ),
+        },
+    }
+    canonical["objective_definition"]["area_undecomposed_fraction_at_2s"] = (
+        canonical["objective_definition"][
+            "area_undecomposed_fraction_at_evaluation_time"
+        ]
+        + "; deprecated At2s key aliases the configured evaluation time"
+    )
+    return canonical
+
+
+
+class AnalyticDebugEvaluator:
+    """Fast deterministic plumbing test. It is not a physical ECSP model."""
+
+    def __init__(self, end_time_s: float = 2.0):
+        self.end_time_s = float(end_time_s)
+
+    def evaluate(
+        self,
+        anode_mask: np.ndarray,
+        cathode_mask: np.ndarray,
+        metadata: Mapping[str, Any],
+        output_dir: Path,
+    ) -> dict[str, Any]:
+        from scipy import ndimage
+
+        gap = float(metadata.get("geometry_descriptors", {}).get("minimum_gap_mm", 0.5))
+        perimeter = float(metadata.get("geometry_descriptors", {}).get("perimeter_px", 1.0))
+        dispersion = float(metadata.get("geometry_descriptors", {}).get("spatial_dispersion", 0.1))
+        branch = float(metadata.get("geometry_descriptors", {}).get("n_branch", 0.0))
+        distance = ndimage.distance_transform_edt(~(anode_mask | cathode_mask))
+        coverage = float(np.percentile(distance, 90)) / max(anode_mask.shape)
+        ignition = 0.18 + 0.42 * coverage + 0.025 / max(gap, 0.05) - 0.01 * min(branch, 4.0)
+        undecomposed = float(np.clip(0.10 + 0.80 * coverage - 0.55 * dispersion, 0.0, 1.0))
+        energy = 5.0 + 0.012 * perimeter + 5.0 * undecomposed
+        congestion = 1.0 + 0.20 / max(gap, 0.05) + 0.03 * branch
+        return {
+            "ignition_delay_s": ignition,
+            "area_undecomposed_fraction_at_evaluation_time": undecomposed,
+            "area_undecomposed_fraction_at_2s": undecomposed,
+            "minimum_ignition_voltage_V": 80.0 + 140.0 * coverage + 10.0 / max(gap, 0.05),
+            "inputElectricalEnergyToIgnition_J": energy,
+            "current_congestion": congestion,
+            "ignitionSucceeded": ignition <= self.end_time_s,
+            "empiricalSurfaceReactionProgressUsed": False,
+            "backend": "analytic_debug_nonphysical_no_f",
+        }
+
+
+class DirectCondensedV772NoFEvaluator:
+    """Direct adapter to the bundled v7.7.2 condensed-phase solver.
+
+    Unlike the earlier best-effort callable discovery layer, this adapter builds
+    ``GeometryBatch`` objects explicitly and calls ``run_coupled_batch`` with a
+    resolved v7.7.2 configuration.  It is therefore the production backend for
+    the no-F NSGA-II workflow.
+    """
+
+    def __init__(
+        self,
+        package_root: Path,
+        config: Mapping[str, Any],
+        workdir: Path,
+    ) -> None:
+        self.package_root = Path(package_root).resolve()
+        self.adapter_config = dict(config)
+        self.workdir = Path(workdir).resolve()
+        self.workdir.mkdir(parents=True, exist_ok=True)
+
+        python_root = self.package_root / "python"
+        if str(python_root) not in sys.path:
+            sys.path.insert(0, str(python_root))
+
+        import torch
+        from ecsp_v6.config import load_config
+        from ecsp_v6.physics.composition_model import build_composition
+        from ecsp_v6.physics.numerics import (
+            configure_torch,
+            resolve_device,
+            resolve_dtype,
+            validate_device_dtype,
+        )
+
+        base_rel = str(self.adapter_config.get("base_config", "config/default_lp_pva.yaml"))
+        base_path = (self.package_root / base_rel).resolve()
+        if not base_path.is_file():
+            raise EvaluatorError(f"Base v7.7.2 config not found: {base_path}")
+        resolved = load_config(base_path)
+        base_overrides = self.adapter_config.get("base_overrides", {})
+        if isinstance(base_overrides, Mapping) and base_overrides:
+            resolved = _deep_merge(resolved, base_overrides)
+
+        nsga_config = self.adapter_config.get("physics_config", {})
+        if not isinstance(nsga_config, Mapping):
+            nsga_config = {}
+        physics = nsga_config.get("physics", {})
+        geometry = nsga_config.get("geometry", {})
+        project = nsga_config.get("project", {})
+        condensed_ignition = nsga_config.get("condensed_ignition", {})
+        if not isinstance(condensed_ignition, Mapping):
+            condensed_ignition = {}
+
+        # Map the user's wet mass fractions onto the 35 g v7.7.2 recipe.
+        user_comp = physics.get("composition", {}) if isinstance(physics, Mapping) else {}
+        fraction_to_mass_key = {
+            "lithium_perchlorate_mass_fraction": "LP",
+            "water_mass_fraction": "water",
+            "pva_mass_fraction": "PVA",
+            "glycerol_mass_fraction": "glycerol",
+            "boric_acid_mass_fraction": "boric_acid",
+        }
+        if isinstance(user_comp, Mapping) and user_comp:
+            tungsten = float(user_comp.get("tungsten_mass_fraction", 0.0))
+            if abs(tungsten) > 1e-15:
+                raise EvaluatorError(
+                    "The requested production workflow is non-metallized; "
+                    f"tungsten_mass_fraction must be zero, got {tungsten}."
+                )
+            fractions = {
+                mass_key: float(user_comp[fraction_key])
+                for fraction_key, mass_key in fraction_to_mass_key.items()
+                if fraction_key in user_comp
+            }
+            if len(fractions) == len(fraction_to_mass_key):
+                total_fraction = sum(fractions.values())
+                if abs(total_fraction - 1.0) > 1e-9:
+                    raise EvaluatorError(
+                        "LP/water/PVA/glycerol/boric-acid mass fractions must sum to 1; "
+                        f"found {total_fraction:.12g}."
+                    )
+                resolved["composition"]["masses_g"] = {
+                    key: 35.0 * value for key, value in fractions.items()
+                }
+
+        cured_water = physics.get("cured_water_mass_fraction") if isinstance(physics, Mapping) else None
+        retained = physics.get("retained_water_fraction") if isinstance(physics, Mapping) else None
+        if cured_water is not None:
+            resolved["composition"]["cured_water_mass_fraction"] = float(cured_water)
+            resolved["composition"]["cured_water_mass_fraction_basis"] = str(
+                physics.get(
+                    "cured_water_mass_fraction_basis",
+                    "literature_nominal_uncalibrated",
+                )
+            )
+            resolved["composition"]["retained_water_fraction_basis"] = resolved[
+                "composition"
+            ]["cured_water_mass_fraction_basis"]
+            resolved["project"]["calibrationStatus"] = str(
+                physics.get("calibration_status", "literature_nominal_uncalibrated")
+            )
+        elif retained is not None:
+            resolved["composition"]["retained_water_fraction"] = float(retained)
+            resolved["composition"].pop("cured_water_mass_fraction", None)
+            resolved["composition"]["retained_water_fraction_basis"] = (
+                "user_supplied_for_nsga2"
+            )
+        else:
+            resolved["project"]["calibrationStatus"] = "nominal_unvalidated"
+            resolved["composition"]["retained_water_fraction_basis"] = (
+                "legacy_nominal_pending_cure_mass_measurement"
+            )
+
+        voltage = float(
+            self.adapter_config.get(
+                "voltage_V", physics.get("voltage_V", 260.0)
+            )
+        )
+        end_time = float(
+            self.adapter_config.get(
+                "end_time_s", physics.get("end_time_s", 2.0)
+            )
+        )
+        evaluation_time = float(
+            self.adapter_config.get(
+                "metric_evaluation_time_s",
+                condensed_ignition.get(
+                    "reference_time_s",
+                    physics.get("metric_evaluation_time_s", 2.0),
+                ),
+            )
+        )
+        onset_temperature = float(
+            self.adapter_config.get(
+                "ignition_onset_temperature_K",
+                condensed_ignition.get(
+                    "onset_temperature_K",
+                    physics.get("ignition_onset_temperature_K", 622.15),
+                ),
+            )
+        )
+        minimum_conversion_guard = float(
+            self.adapter_config.get(
+                "minimum_conversion_numerical_guard",
+                condensed_ignition.get("minimum_conversion_numerical_guard", 0.0),
+            )
+        )
+        minimum_rate_guard = float(
+            self.adapter_config.get(
+                "minimum_rate_numerical_guard_per_s",
+                condensed_ignition.get("minimum_rate_numerical_guard_per_s", 0.0),
+            )
+        )
+        resolved["coupled"]["voltage_V"] = voltage
+        resolved["coupled"]["endTime_s"] = end_time
+        resolved["coupled"]["saveLevel"] = (
+            "full" if bool(self.adapter_config.get("save_full_fields", False)) else "light"
+        )
+        resolved["condensedPhaseMetrics"]["evaluationTime_s"] = evaluation_time
+        resolved["condensedIgnition"][
+            "decompositionOnsetTemperature_K"
+        ] = onset_temperature
+        resolved["condensedIgnition"][
+            "minimumChemicalProgressNumericalGuard"
+        ] = minimum_conversion_guard
+        resolved["condensedIgnition"][
+            "minimumChemicalRateNumericalGuard_per_s"
+        ] = minimum_rate_guard
+        resolved["reducedCFD"]["enabled"] = False
+        resolved["project"]["modelStatus"] = (
+            "electrical_electrochemical_solid_decomposition_no_F_nominal_unvalidated"
+        )
+
+        if isinstance(geometry, Mapping):
+            if "domain_mm" in geometry:
+                resolved["geometry"]["domainSize_m"] = float(geometry["domain_mm"]) / 1000.0
+                resolved["manufacturability"]["domainSize_m"] = float(geometry["domain_mm"]) / 1000.0
+            if "minimum_gap_mm" in geometry:
+                resolved["geometry"]["minimumElectrodeGap_m"] = float(
+                    geometry["minimum_gap_mm"]
+                ) / 1000.0
+                resolved["manufacturability"]["minimumGap_m"] = float(
+                    geometry["minimum_gap_mm"]
+                ) / 1000.0
+            if "maximum_components_per_polarity" in geometry:
+                cap = int(geometry["maximum_components_per_polarity"])
+                resolved["geometry"]["maximumComponentsPerPolarity"] = cap
+                resolved["manufacturability"]["maximumComponentsPerPolarity"] = cap
+            if "maximum_total_components" in geometry:
+                cap = int(geometry["maximum_total_components"])
+                resolved["geometry"]["maximumTotalComponents"] = cap
+                resolved["manufacturability"]["maximumTotalComponents"] = cap
+
+        device_request = str(
+            self.adapter_config.get("device", project.get("device", "auto"))
+        ).lower()
+        try:
+            self.device = resolve_device(device_request)
+        except Exception as exc:
+            raise EvaluatorError(str(exc)) from exc
+        resolved["numerics"]["physicsDevice"] = str(self.device)
+
+        dtype_name = str(resolved["numerics"].get("physicsDtype", "float64")).lower()
+        try:
+            self.dtype = resolve_dtype(dtype_name)
+            validate_device_dtype(self.device, self.dtype)
+        except Exception as exc:
+            raise EvaluatorError(str(exc)) from exc
+
+        configure_torch(
+            self.device,
+            deterministic=bool(resolved["numerics"].get("deterministic", True)),
+        )
+
+        self.config = resolved
+        self.voltage = voltage
+        self.end_time_s = end_time
+        self.grid_size = int(
+            self.adapter_config.get("grid_size", resolved["coupled"]["gridSize"])
+        )
+        self.domain_size_m = float(resolved["geometry"]["domainSize_m"])
+        self.minimum_gap_m = float(resolved["geometry"]["minimumElectrodeGap_m"])
+        self.internal_batch_size = max(
+            1,
+            int(
+                self.adapter_config.get(
+                    "internal_batch_size",
+                    resolved.get("numerics", {}).get("coupledBatchSize", 4),
+                )
+            ),
+        )
+        self.composition = build_composition(self.config)
+
+        diagnostics = {
+            "backend": "direct_condensed_v772_no_f",
+            "solver_callable": "ecsp_v6.physics.coupled.run_coupled_batch",
+            "flame_progress_present": False,
+            "device": str(self.device),
+            "dtype": str(self.dtype),
+            "grid_size": self.grid_size,
+            "domain_size_m": self.domain_size_m,
+            "minimum_gap_m": self.minimum_gap_m,
+            "voltage_V": self.voltage,
+            "end_time_s": self.end_time_s,
+            "evaluation_time_s": evaluation_time,
+            "ignition_onset_temperature_K": onset_temperature,
+            "retained_water_fraction": self.composition.summary["retained_water_fraction"],
+            "cured_water_mass_fraction": self.composition.summary["cured_water_mass_fraction"],
+            "retained_water_fraction_basis": self.composition.summary.get(
+                "retained_water_fraction_basis"
+            ),
+        }
+        (self.workdir / "evaluator_adapter_diagnostics.json").write_text(
+            json.dumps(diagnostics, indent=2), encoding="utf-8"
+        )
+        (self.workdir / "resolved_physics_config.json").write_text(
+            json.dumps(self.config, indent=2, default=str), encoding="utf-8"
+        )
+
+    def _build_geometry_batch(
+        self,
+        items: Sequence[tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]],
+    ):
+        import torch
+        from scipy import ndimage
+        from ecsp_v6.physics.geometry import GeometryBatch
+        from ecsp_v6.physics.numerics import resize_nearest_numpy
+
+        anodes: list[np.ndarray] = []
+        cathodes: list[np.ndarray] = []
+        ids: list[str] = []
+        rows = self.grid_size
+        spacing = self.domain_size_m / rows
+        for anode_raw, cathode_raw, metadata, _ in items:
+            anode = resize_nearest_numpy(np.asarray(anode_raw, dtype=bool), rows)
+            cathode = resize_nearest_numpy(np.asarray(cathode_raw, dtype=bool), rows)
+            if np.any(anode & cathode):
+                raise EvaluatorError(
+                    f"Polarity overlap after physics-grid resize: {metadata.get('geometry_id')}"
+                )
+            if not np.any(anode) or not np.any(cathode):
+                raise EvaluatorError(
+                    f"A polarity vanished after physics-grid resize: {metadata.get('geometry_id')}"
+                )
+            direct = ndimage.binary_dilation(
+                anode, structure=np.ones((3, 3), dtype=bool)
+            ) & cathode
+            cathode_support = ndimage.binary_dilation(
+                cathode, structure=np.ones((3, 3), dtype=bool)
+            )
+            distance = ndimage.distance_transform_edt(
+                ~cathode_support, sampling=(spacing, spacing)
+            )
+            minimum_distance = float(np.min(distance[anode]))
+            if np.any(direct) or minimum_distance < self.minimum_gap_m - 1e-12:
+                raise EvaluatorError(
+                    "Unsafe geometry after physics-grid resize for "
+                    f"{metadata.get('geometry_id')}: direct_contact={int(np.count_nonzero(direct))}, "
+                    f"minimum_distance_m={minimum_distance:.8g}, required={self.minimum_gap_m:.8g}"
+                )
+            anodes.append(anode)
+            cathodes.append(cathode)
+            ids.append(str(metadata.get("geometry_id")))
+
+        anode_t = torch.as_tensor(
+            np.stack(anodes), device=self.device, dtype=torch.bool
+        )
+        cathode_t = torch.as_tensor(
+            np.stack(cathodes), device=self.device, dtype=torch.bool
+        )
+        fixed = anode_t | cathode_t
+        return GeometryBatch(
+            geometry_ids=ids,
+            anode=anode_t,
+            cathode=cathode_t,
+            fixed=fixed,
+            propellant=~fixed,
+            grid_size=rows,
+            domain_size_m=self.domain_size_m,
+            minimum_gap_m=self.minimum_gap_m,
+        )
+
+    @staticmethod
+    def _tensor_scalar(value: Any, index: int) -> Any:
+        try:
+            import torch
+            if isinstance(value, torch.Tensor):
+                item = value[index] if value.ndim else value
+                if item.dtype == torch.bool:
+                    return bool(item.detach().cpu().item())
+                return float(item.detach().cpu().item())
+        except Exception:
+            pass
+        if isinstance(value, np.ndarray):
+            item = value[index] if value.ndim else value
+            return item.item()
+        return value
+
+    def _evaluate_chunk(
+        self,
+        items: Sequence[tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]],
+    ) -> list[dict[str, Any]]:
+        import torch
+        from ecsp_v6.physics.coupled import run_coupled_batch
+
+        geometry = self._build_geometry_batch(items)
+        with torch.inference_mode():
+            output = run_coupled_batch(
+                geometry,
+                self.config,
+                self.composition,
+                self.voltage,
+                self.dtype,
+                save_fields=bool(self.adapter_config.get("save_full_fields", False)),
+            )
+        solver_rows = output["solverDiagnostics"].to_cpu_dicts()
+        scalar_keys = [
+            "ignitionDelay_s",
+            "condensedPhaseIgnitionDelay_s",
+            "ignitionSucceeded",
+            "areaAveragedUndecomposedFractionAt2s",
+            "areaAveragedUndecomposedFractionAtEvaluationTime",
+            "meanChemicalProgressAt2s",
+            "meanChemicalProgressAtEvaluationTime",
+            "temperatureOnsetAreaFractionAt2s",
+            "maximumTemperatureAtEvaluationTime_K",
+            "evaluationStateTime_s",
+            "objectiveEvaluationStateTime_s",
+            "evaluationStateAvailable",
+            "postOnsetContinuationApplied",
+            "postOnsetContinuationDuration_s",
+            "inputElectricalEnergyToIgnition_J",
+            "inputElectricalEnergyAt2s_J",
+            "inputElectricalEnergyAtEvaluationTime_J",
+            "inputElectricalEnergy_J",
+            "peakMaximumTemperature_K",
+            "peakCurrent_A",
+            "peakCurrentCongestion",
+            "peakCurrentCongestionToEvaluationTime",
+            "finalEffectiveResistance_ohm",
+            "preflameTerminationEffectiveResistance_ohm",
+            "evaluationEffectiveResistance_ohm",
+            "meanAnodeCathodeCurrentMismatch",
+            "finalAnodeCathodeCurrentMismatch",
+            "maximumAnodeCathodeCurrentMismatch",
+            "finalNonlinearRobinOuterIterations",
+            "finalNonlinearRobinConverged",
+            "finalNonlinearRobinGaugeConverged",
+            "finalNonlinearRobinCurrentBalanceCombinedResidual",
+            "finalNonlinearRobinGaugeIterations",
+            "finalNonlinearRobinGaugeTotalIterations",
+            "finalNonlinearRobinGaugeOffset_V",
+            "finalNonlinearRobinGaugeBracketWidth_V",
+            "finalNonlinearRobinAnodeCurrent_A",
+            "finalNonlinearRobinCathodeCurrent_A",
+            "finalNonlinearRobinAbsoluteCurrentDifference_A",
+            "maximumSpeciesLimiterFraction",
+            "maximumTemperatureCapFraction",
+            "maximumGasCapFraction",
+            "maximumChemicalRateCapFraction",
+            "equation32ElectricalHeatRateAtEvaluationTime_W",
+            "equation32ElectricalHeatEnergyAtEvaluationTime_J",
+            "equation32ElectricalHeatEnergy_J",
+            "finalMeanChemicalProgress",
+            "finalAreaAveragedUndecomposedFraction",
+            "maximumLocalRobinResidual_A_per_m2",
+            "maximumLocalRobinRelativeResidual",
+            "maximumLocalRobinCombinedResidual",
+            "maximumLocalRobinRoundoffFloor_A_per_m2",
+            "maximumRoundoffLimitedLocalRobinFaceCount",
+            "maximumLocalRobinIterations",
+            "maximumUnresolvedLocalRobinFaceCount",
+            "minimumLocalRobinAllFacesConvergedFraction",
+        ]
+        rows: list[dict[str, Any]] = []
+        for i, (_, _, metadata, output_dir) in enumerate(items):
+            row = _normalise_evaluation_time_aliases({
+                key: self._tensor_scalar(output[key], i)
+                for key in scalar_keys
+                if key in output
+            })
+            # Explicit publication-facing aliases.  These are derived from
+            # alpha, V*I and J fields only; no flame-progress quantity exists.
+            if "areaAveragedUndecomposedFractionAt2s" in row:
+                row["areaWeightedUndecomposedFractionAtEvaluationTime"] = row[
+                    "areaAveragedUndecomposedFractionAt2s"
+                ]
+                row = _normalise_evaluation_time_aliases(row)
+            if (
+                "peakCurrentCongestionToEvaluationTime" not in row
+                and "peakCurrentCongestion" in row
+            ):
+                row["peakCurrentCongestionToEvaluationTime"] = row[
+                    "peakCurrentCongestion"
+                ]
+                row = _normalise_evaluation_time_aliases(row)
+            solver = solver_rows[i]
+            row.update(
+                {
+                    "geometry_id": str(metadata.get("geometry_id")),
+                    "backend": "direct_condensed_v772_no_f",
+                    "solverRevision": "v7_7_5_mps_robust_spd_pcg_gap_bv",
+                    "empiricalSurfaceReactionProgressUsed": False,
+                    "modelStatus": output["modelStatus"],
+                    "postIgnitionClosure": output["postIgnitionClosure"],
+                    "evaluationTime_s": float(output["evaluationTime_s"]),
+                    "ignitionCriterionType": output["ignitionCriterion"]["type"],
+                    "ignitionOnsetTemperature_K": float(
+                        output["ignitionCriterion"][
+                            "decompositionOnsetTemperature_K"
+                        ]
+                    ),
+                    "ignitionInterpretation": output["ignitionCriterion"][
+                        "interpretation"
+                    ],
+                    "finalElectricalConverged": bool(solver["converged"]),
+                    "finalElectricalIterations": int(solver["iterations"]),
+                    "finalElectricalRelativeResidual": float(
+                        solver["relative_residual"]
+                    ),
+                    "finalElectricalSolverMethod": str(solver["method"]),
+                    "finalElectricalRestarts": int(solver.get("restarts", 0)),
+                    "finalElectricalRefinementRounds": int(
+                        solver.get("refinement_rounds", 0)
+                    ),
+                    "finalElectricalFallbackUsed": bool(
+                        solver.get("fallback_used", False)
+                    ),
+                    "converged": bool(solver["converged"]),
+                    "physicsDevice": str(self.device),
+                    "physicsDtype": str(self.dtype).replace("torch.", ""),
+                    "gridSize": self.grid_size,
+                    "timeStep_s": float(self.config["coupled"]["timeStep_s"]),
+                    "diffusiveCFLFraction": float(
+                        output["stabilityDiagnostics"]["diffusive_CFL_fraction"]
+                    ),
+                }
+            )
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / "condensed_metrics.json").write_text(
+                json.dumps(_strict_json_value(row), indent=2, allow_nan=False),
+                encoding="utf-8",
+            )
+            rows.append(row)
+        return rows
+
+    @staticmethod
+    def _failed_geometry_row(
+        metadata: Mapping[str, Any], output_dir: Path, exc: Exception
+    ) -> dict[str, Any]:
+        """Return a finite, dominated row instead of aborting a whole generation.
+
+        A geometry that becomes unsafe after solver-grid rasterisation is a
+        manufacturing/numerical constraint failure, not a reason to lose all
+        other candidates in the batch.
+        """
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "physics_rejection.txt").write_text(
+            f"{type(exc).__name__}: {exc}\n", encoding="utf-8"
+        )
+        return {
+            "geometry_id": str(metadata.get("geometry_id")),
+            "ignitionDelay_s": float("nan"),
+            "condensedPhaseIgnitionDelay_s": float("nan"),
+            "ignitionSucceeded": False,
+            "areaAveragedUndecomposedFractionAtEvaluationTime": 1.0,
+            "areaAveragedUndecomposedFractionAt2s": 1.0,
+            "areaWeightedUndecomposedFractionAtEvaluationTime": 1.0,
+            "areaWeightedUndecomposedFractionAt2s": 1.0,
+            "inputElectricalEnergyAtEvaluationTime_J": 1.0e12,
+            "inputElectricalEnergyAt2s_J": 1.0e12,
+            "minimumIgnitionVoltageObjective_V": 1.0e12,
+            "minimumIgnitionVoltage_V": None,
+            "minimumIgnitionVoltageSearchValid": False,
+            "minimumIgnitionVoltageSearchStatus": "physics_rejected_before_vmin_search",
+            "peakCurrentCongestion": 1.0e12,
+            "peakCurrentCongestionTo2s": 1.0e12,
+            "converged": False,
+            "finalElectricalConverged": False,
+            "physicsRejected": True,
+            "physicsRejectionReason": str(exc),
+            "backend": "direct_condensed_v772_no_f",
+            "solverRevision": "v7_7_5_mps_robust_spd_pcg_gap_bv",
+            "empiricalSurfaceReactionProgressUsed": False,
+        }
+
+    def evaluate_batch(
+        self,
+        items: Sequence[tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]],
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        total_batches = (len(items) + self.internal_batch_size - 1) // self.internal_batch_size
+        for start in range(0, len(items), self.internal_batch_size):
+            chunk = items[start : start + self.internal_batch_size]
+            batch_number = start // self.internal_batch_size + 1
+            geometry_ids = [str(item[2].get("geometry_id")) for item in chunk]
+            batch_start = time.perf_counter()
+            print(
+                f"[physics] batch {batch_number}/{total_batches} start "
+                f"size={len(chunk)} ids={geometry_ids[0]}..{geometry_ids[-1]}",
+                flush=True,
+            )
+            try:
+                chunk_rows = self._evaluate_chunk(chunk)
+                rows.extend(chunk_rows)
+                print(
+                    f"[physics] batch {batch_number}/{total_batches} complete "
+                    f"successful={len(chunk_rows)} elapsed={time.perf_counter() - batch_start:.1f}s",
+                    flush=True,
+                )
+                continue
+            except Exception as batch_exc:
+                print(
+                    f"[physics] batch {batch_number}/{total_batches} failed; "
+                    f"isolating candidates ({type(batch_exc).__name__}: {batch_exc})",
+                    flush=True,
+                )
+                # Any candidate-dependent geometry, nonlinear Robin, or
+                # numerical failure is isolated to single candidates rather
+                # than aborting the entire generation. Infrastructure failures
+                # still reappear for every singleton and are recorded as
+                # dominated/non-converged rows for transparent inspection.
+                pass
+            isolated_success = 0
+            isolated_rejected = 0
+            for item in chunk:
+                try:
+                    rows.extend(self._evaluate_chunk([item]))
+                    isolated_success += 1
+                except Exception as exc:
+                    rows.append(self._failed_geometry_row(item[2], item[3], exc))
+                    isolated_rejected += 1
+            print(
+                f"[physics] batch {batch_number}/{total_batches} isolated "
+                f"successful={isolated_success} rejected={isolated_rejected} "
+                f"elapsed={time.perf_counter() - batch_start:.1f}s",
+                flush=True,
+            )
+        return rows
+
+    def evaluate(
+        self,
+        anode_mask: np.ndarray,
+        cathode_mask: np.ndarray,
+        metadata: Mapping[str, Any],
+        output_dir: Path,
+    ) -> dict[str, Any]:
+        return self.evaluate_batch(
+            [(anode_mask, cathode_mask, metadata, output_dir)]
+        )[0]
+
+
+class BCGlobalPreflameEvaluator(DirectCondensedV772NoFEvaluator):
+    """B/C Eq. (22)--(24) evaluator with global LP/PVA chemistry.
+
+    The class reuses the mature v7.9.5 geometry, potential and local-BV
+    infrastructure but replaces all legacy phase/passivation/gas/global-alpha
+    closures with :func:`ecsp_v6.physics.bc_global.run_bc_global_batch`.
+    Legacy evaluators remain selectable and unmodified.
+    """
+
+    def __init__(self, package_root: Path, config: Mapping[str, Any], workdir: Path) -> None:
+        adapter = dict(config)
+        physics_config = adapter.get("physics_config", {})
+        if not isinstance(physics_config, Mapping):
+            physics_config = {}
+        bc_cfg = physics_config.get("bc_global", physics_config.get("bcGlobal", {}))
+        if not isinstance(bc_cfg, Mapping) or not bc_cfg:
+            raise EvaluatorError(
+                "bc_global_preflame backend requires top-level bc_global configuration"
+            )
+        overrides = adapter.get("base_overrides", {})
+        if not isinstance(overrides, Mapping):
+            overrides = {}
+        # Disable every legacy proxy that the specification explicitly excludes.
+        adapter["base_overrides"] = _deep_merge(
+            dict(overrides),
+            {
+                "coupled": {
+                    "usePaperMassTransferSaturation": False,
+                    "useFullNernstPlanckTransport": True,
+                },
+                "electrical": {
+                    # Irreversible bulk heating is sigma|E|^2.  The signed
+                    # total J.E field remains available as an energy-transfer
+                    # diagnostic, but must not be forced into the heat source.
+                    "jouleHeatModel": "conductive_sigma_E2",
+                    "electronicConductivity0_S_per_m": 0.0,
+                    "electronicConductivityTemperatureCoefficient_per_K": 0.0,
+                    "electronicLiquidSuppression": 0.0,
+                },
+                "interface": {
+                    "liquidKineticsGain": 0.0,
+                    "includeActivationHeat": False,
+                    "activationHeatFraction": 0.0,
+                    "nernst": {"enabled": False},
+                    "blocking": {
+                        "minimumActiveAreaFraction": 1.0,
+                        "passivation": {"enabled": False},
+                        "gasCoverage": {"enabled": False},
+                    },
+                },
+                "chemical": {"enabled": False},
+                "phase": {
+                    "liquidDiffusivityGain": 0.0,
+                    "latentHeat_J_per_kg": 0.0,
+                },
+            },
+        )
+        super().__init__(package_root, adapter, workdir)
+        from ecsp_v6.physics.composition_model import build_composition
+        from ecsp_v6.physics.bc_global import _validate_bc_runtime_contract
+
+        self.config["bcGlobal"] = json.loads(json.dumps(dict(bc_cfg)))
+        self.config["bcGlobal"]["endTime_s"] = float(
+            self.config["bcGlobal"].get("endTime_s", self.end_time_s)
+        )
+        self.config["bcGlobal"]["evaluationTime_s"] = float(
+            self.config["bcGlobal"].get("evaluationTime_s", self.end_time_s)
+        )
+        self.end_time_s = float(self.config["bcGlobal"]["endTime_s"])
+        self.config["coupled"]["endTime_s"] = self.end_time_s
+        self.config["coupled"]["timeStep_s"] = float(self.config["bcGlobal"]["timeStep_s"])
+        self.config["coupled"]["electricalUpdateInterval_s"] = float(
+            self.config["bcGlobal"]["electricalUpdateInterval_s"]
+        )
+        boundary_model = str(
+            self.config.get("interface", {}).get("boundaryCouplingModel", "")
+        ).lower()
+        if boundary_model != "surface_overlay_bv":
+            raise EvaluatorError(
+                "B/C production physics requires interface.boundaryCouplingModel="
+                "surface_overlay_bv; perimeter/embedded-electrode semantics are not valid"
+            )
+
+        # B/C owns the initial condensed temperature.  Synchronise the legacy
+        # transport dictionaries to this one canonical value because shared
+        # low-level kernels still read those dictionaries.
+        bc_thermal = self.config["bcGlobal"].get("thermal", {})
+        shared_initial_temperature = float(
+            self.config["thermal"]["initialTemperature_K"]
+        )
+        electrical_initial_temperature = float(
+            self.config["electrical"].get(
+                "initialTemperature_K", shared_initial_temperature
+            )
+        )
+        initial_temperature = float(
+            bc_thermal.get("initialTemperature_K", shared_initial_temperature)
+        )
+        initial_temperatures = (
+            initial_temperature,
+            shared_initial_temperature,
+            electrical_initial_temperature,
+        )
+        if not all(math.isfinite(value) and value > 0.0 for value in initial_temperatures):
+            raise EvaluatorError(
+                "All B/C initial temperatures must be finite positive Kelvin values"
+            )
+        if not all(
+            math.isclose(value, initial_temperature, rel_tol=0.0, abs_tol=1e-12)
+            for value in initial_temperatures[1:]
+        ):
+            raise EvaluatorError(
+                "Conflicting initial temperatures: bc_global.thermal, base thermal, "
+                "and electrical initialTemperature_K must be identical"
+            )
+        self.config["bcGlobal"].setdefault("thermal", {})[
+            "initialTemperature_K"
+        ] = initial_temperature
+        self.config["thermal"]["initialTemperature_K"] = initial_temperature
+        self.config["electrical"]["initialTemperature_K"] = initial_temperature
+
+        # The public condensed_ignition block is the single onset source.  A
+        # duplicated B/C value is accepted only as an equality assertion.
+        canonical_onset = float(
+            self.config["condensedIgnition"]["decompositionOnsetTemperature_K"]
+        )
+        canonical_progress = float(
+            self.config["condensedIgnition"].get(
+                "minimumChemicalProgressNumericalGuard", 0.0
+            )
+        )
+        if not math.isfinite(canonical_onset) or canonical_onset <= 0.0:
+            raise EvaluatorError(
+                "condensed_ignition onset temperature must be finite and positive"
+            )
+        if not math.isfinite(canonical_progress) or not 0.0 < canonical_progress <= 1.0:
+            raise EvaluatorError(
+                "condensed_ignition minimum conversion guard must lie in (0, 1]"
+            )
+        bc_onset = self.config["bcGlobal"].setdefault("onsetCriterion", {})
+        if "temperature_K" in bc_onset and not math.isclose(
+            float(bc_onset["temperature_K"]), canonical_onset,
+            rel_tol=0.0, abs_tol=1e-12,
+        ):
+            raise EvaluatorError(
+                "Conflicting onset temperatures: condensed_ignition.onset_temperature_K "
+                "and bc_global.onsetCriterion.temperature_K must be identical"
+            )
+        if "minimum_progress" in bc_onset and not math.isclose(
+            float(bc_onset["minimum_progress"]), canonical_progress,
+            rel_tol=0.0, abs_tol=1e-12,
+        ):
+            raise EvaluatorError(
+                "Conflicting onset progress guards: condensed_ignition and bc_global "
+                "must be identical"
+            )
+        bc_onset["temperature_K"] = canonical_onset
+        bc_onset["minimum_progress"] = canonical_progress
+
+        # Surface-source linearisation is symmetric positive definite.  The
+        # Jacobi-equilibrated PCG path is the audited Python reference solver.
+        potential_solver = self.config["numerics"].setdefault("potentialSolver", {})
+        potential_solver["methodStatic"] = "pcg"
+        potential_solver["methodCoupled"] = "pcg"
+        potential_solver["preconditioner"] = "jacobi"
+        potential_solver["symmetricEquilibration"] = True
+        potential_solver["correctionForm"] = True
+        self.config["project"]["modelStatus"] = (
+            "bc_global_preflame_species_electrochemical_thermal_literature_nominal_uncalibrated"
+        )
+        self.composition = build_composition(self.config)
+        try:
+            _validate_bc_runtime_contract(self.config, self.composition)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise EvaluatorError(f"Invalid strict B/C configuration: {exc}") from exc
+
+        vmin_cfg = physics_config.get("minimum_ignition_voltage_search", {})
+        if not isinstance(vmin_cfg, Mapping):
+            vmin_cfg = {}
+        self.vmin_enabled = bool(vmin_cfg.get("enabled", True))
+        if not self.vmin_enabled:
+            raise EvaluatorError(
+                "B/C minimum_ignition_voltage_search.enabled must be true "
+                "because minimum ignition voltage is an active objective"
+            )
+        self.vmin_lower_bound_V = float(vmin_cfg.get("lower_bound_V", 20.0))
+        configured_upper = vmin_cfg.get("upper_bound_V", self.voltage)
+        self.vmin_upper_bound_V = float(
+            self.voltage if configured_upper is None else configured_upper
+        )
+        self.vmin_tolerance_V = float(vmin_cfg.get("tolerance_V", 5.0))
+        raw_vmin_max_iterations = vmin_cfg.get("maximum_bisection_iterations", 8)
+        self.vmin_max_iterations = raw_vmin_max_iterations
+        raw_vmin_early_stop = vmin_cfg.get(
+            "stop_successful_trials_at_ignition", True
+        )
+        raw_vmin_verify_final = vmin_cfg.get(
+            "verify_final_upper_full_horizon", True
+        )
+        if not isinstance(raw_vmin_early_stop, bool):
+            raise EvaluatorError(
+                "minimum_ignition_voltage_search."
+                "stop_successful_trials_at_ignition must be a boolean"
+            )
+        if not isinstance(raw_vmin_verify_final, bool):
+            raise EvaluatorError(
+                "minimum_ignition_voltage_search."
+                "verify_final_upper_full_horizon must be a boolean"
+            )
+        # These public Vmin options are canonical for every B/C engine.  Native
+        # compatibility aliases are checked (and rejected if contradictory)
+        # by NativeBCGlobalEvaluator instead of silently overriding them.
+        self.vmin_stop_successful_trials_at_ignition = raw_vmin_early_stop
+        self.vmin_verify_final = raw_vmin_verify_final
+        self.vmin_right_censor_penalty_V = float(
+            vmin_cfg.get("right_censor_objective_penalty_V", 50.0)
+        )
+        self.vmin_invalid_penalty_V = float(
+            vmin_cfg.get("invalid_search_objective_penalty_V", 100.0)
+        )
+        from .bc_vmin import validate_voltage_search_contract
+
+        try:
+            validate_voltage_search_contract(
+                low_voltage=self.vmin_lower_bound_V,
+                high_voltage=self.vmin_upper_bound_V,
+                tolerance=self.vmin_tolerance_V,
+                max_iterations=self.vmin_max_iterations,
+                invalid_penalty=self.vmin_invalid_penalty_V,
+                censor_penalty=self.vmin_right_censor_penalty_V,
+            )
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise EvaluatorError(f"Invalid B/C Vmin configuration: {exc}") from exc
+        self.vmin_max_iterations = int(self.vmin_max_iterations)
+        geometry_contract = physics_config.get("geometry", {})
+        if not isinstance(geometry_contract, Mapping):
+            geometry_contract = {}
+        self.target_area_fraction_per_polarity = float(
+            geometry_contract.get("target_area_fraction_per_polarity", 0.175)
+        )
+        self.area_tolerance_fraction = float(
+            geometry_contract.get("area_tolerance_fraction", 0.035)
+        )
+        self.maximum_components_per_polarity = int(
+            geometry_contract.get("maximum_components_per_polarity", 3)
+        )
+        self.maximum_total_components = int(
+            geometry_contract.get("maximum_total_components", 4)
+        )
+        self.minimum_width_mm = float(
+            geometry_contract.get("minimum_width_mm", 0.0)
+        )
+        if (
+            not math.isfinite(self.target_area_fraction_per_polarity)
+            or not 0.0 < self.target_area_fraction_per_polarity < 0.5
+            or not math.isfinite(self.area_tolerance_fraction)
+            or not 0.0 <= self.area_tolerance_fraction <= 1.0
+            or self.maximum_components_per_polarity < 1
+            or self.maximum_total_components < 2
+            or not math.isfinite(self.minimum_width_mm)
+            or self.minimum_width_mm < 0.0
+        ):
+            raise EvaluatorError("Invalid B/C post-resize geometry contract")
+        thresholds = physics_config.get("optimization", {}).get(
+            "numerical_cap_thresholds", {}
+        )
+        self.vmin_numerical_thresholds = {
+            "temperature": float(thresholds.get("temperature", 0.02)),
+            "species": float(thresholds.get("species", 0.02)),
+            "chemical_rate": float(thresholds.get("chemical_rate", 0.02)),
+        }
+        for name, limit in self.vmin_numerical_thresholds.items():
+            if not np.isfinite(limit) or not 0.0 <= limit <= 1.0:
+                raise EvaluatorError(
+                    f"optimization.numerical_cap_thresholds.{name} must lie "
+                    "in [0, 1]"
+                )
+        cathode_voltage = float(self.config["electrical"]["cathodeVoltage_V"])
+        if self.vmin_enabled:
+            if not self.vmin_lower_bound_V > cathode_voltage:
+                raise EvaluatorError(
+                    "B/C Vmin lower bound must exceed the cathode voltage "
+                    f"({cathode_voltage:g} V)"
+                )
+            if abs(self.vmin_upper_bound_V - self.voltage) > 1e-9:
+                raise EvaluatorError(
+                    "B/C Vmin upper bound must equal the reference voltage so objectives 1/2/4 share one reference run"
+                )
+
+        diagnostics_path = self.workdir / "evaluator_adapter_diagnostics.json"
+        diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+        from ecsp_v6.physics.bc_global import bc_model_contract
+
+        diagnostics.update(
+            {
+                "backend": "bc_global_preflame",
+                "solver_callable": "ecsp_v6.physics.bc_global.run_bc_global_batch",
+                "bc_model_contract": bc_model_contract(),
+                "objective_2": "remaining_reactive_LP_plus_PVA_mass_fraction",
+                "onset_criterion": dict(self.config["bcGlobal"]["onsetCriterion"]),
+                "cured_water_mass_fraction": self.composition.cured_water_mass_fraction,
+                "legacy_backends_preserved": True,
+            }
+        )
+        diagnostics_path.write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
+        (self.workdir / "resolved_physics_config.json").write_text(
+            json.dumps(self.config, indent=2, default=str), encoding="utf-8"
+        )
+
+    @staticmethod
+    def _to_python(value: Any, index: int) -> Any:
+        return DirectCondensedV772NoFEvaluator._tensor_scalar(value, index)
+
+    @staticmethod
+    def _failed_geometry_row(
+        metadata: Mapping[str, Any], output_dir: Path, exc: Exception
+    ) -> dict[str, Any]:
+        row = DirectCondensedV772NoFEvaluator._failed_geometry_row(
+            metadata, output_dir, exc
+        )
+        row.update(
+            {
+                "backend": "bc_global_preflame",
+                "solverRevision": (
+                    "v8_2_bc_global_surface_bv_fixed_time_condensed_continuation"
+                ),
+                "evaluationStateModel": (
+                    "preflame_electrical_to_first_onset_then_zero_electrical_"
+                    "condensed_continuation_to_common_evaluation_time"
+                ),
+                "evaluationStateAvailable": False,
+                "objectiveEvaluationStateTime_s": None,
+                "postOnsetContinuationApplied": False,
+                "legacyProxyClosuresUsed": False,
+                "surfaceContactModel": True,
+            }
+        )
+        return row
+
+    def _build_geometry_batch(
+        self,
+        items: Sequence[tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]],
+    ):
+        """Keep propellant everywhere; electrode masks are top-surface labels."""
+        import torch
+        from scipy import ndimage
+
+        try:
+            geometry = super()._build_geometry_batch(items)
+        except EvaluatorError as exc:
+            # Every EvaluatorError emitted by the base geometry builder is a
+            # post-rasterisation overlap, vanished-polarity or gap rejection.
+            # Retype it so the B/C batch scheduler never has to infer failure
+            # provenance from mutable human-readable text.
+            raise BCCandidateGeometryError(str(exc)) from exc
+        # The production B/C raster is cell-centred (dx=L/N).  Re-check the
+        # physical contact gap with that same convention after the legacy base
+        # adapter has resized the masks.
+        spacing = self.domain_size_m / geometry.grid_size
+        for index, geometry_id in enumerate(geometry.geometry_ids):
+            anode = geometry.anode[index].detach().cpu().numpy()
+            cathode = geometry.cathode[index].detach().cpu().numpy()
+            metadata = items[index][2]
+            cathode_support = ndimage.binary_dilation(
+                cathode, structure=np.ones((3, 3), dtype=bool)
+            )
+            distance = ndimage.distance_transform_edt(
+                ~cathode_support,
+                sampling=(spacing, spacing),
+            )
+            minimum_distance = float(np.min(distance[anode]))
+            if minimum_distance < self.minimum_gap_m - 1.0e-12:
+                raise BCCandidateGeometryError(
+                    "Unsafe cell-centred B/C geometry after physics-grid resize "
+                    f"for {geometry_id}: minimum_distance_m={minimum_distance:.8g}, "
+                    f"required={self.minimum_gap_m:.8g}"
+                )
+            # Production NSGA/baseline items carry intended component metadata.
+            # Revalidate every manufacturability invariant after the physics-grid
+            # resize; direct low-level unit fixtures without that metadata remain
+            # usable for isolated solver tests.
+            if (
+                "intended_anode_components" in metadata
+                and "intended_cathode_components" in metadata
+            ):
+                structure = np.ones((3, 3), dtype=np.uint8)
+                labels_a, components_a = ndimage.label(anode, structure=structure)
+                labels_c, components_c = ndimage.label(cathode, structure=structure)
+                intended_a = int(metadata["intended_anode_components"])
+                intended_c = int(metadata["intended_cathode_components"])
+                hidden_bus_reference = bool(
+                    metadata.get(
+                        "allow_hidden_bus_reference_component_override", False
+                    )
+                    and metadata.get("baseline_type") == "area_matched_staggered"
+                )
+                maximum_per = (
+                    max(
+                        self.maximum_components_per_polarity,
+                        int(
+                            metadata.get(
+                                "reference_maximum_components_per_polarity", 2
+                            )
+                        ),
+                    )
+                    if hidden_bus_reference
+                    else self.maximum_components_per_polarity
+                )
+                maximum_total = (
+                    max(
+                        self.maximum_total_components,
+                        int(metadata.get("reference_maximum_total_components", 4)),
+                    )
+                    if hidden_bus_reference
+                    else self.maximum_total_components
+                )
+                if (
+                    components_a != intended_a
+                    or components_c != intended_c
+                    or components_a > maximum_per
+                    or components_c > maximum_per
+                    or components_a + components_c > maximum_total
+                ):
+                    raise BCCandidateGeometryError(
+                        "Component topology/cap changed after B/C physics-grid "
+                        f"resize for {geometry_id}: intended=({intended_a},"
+                        f"{intended_c}), actual=({components_a},{components_c}), "
+                        f"limits=({maximum_per},{maximum_per},{maximum_total})"
+                    )
+                target = (
+                    float(metadata["reference_target_area_fraction_per_polarity"])
+                    if hidden_bus_reference
+                    and metadata.get(
+                        "reference_target_area_fraction_per_polarity"
+                    )
+                    is not None
+                    else self.target_area_fraction_per_polarity
+                )
+                area_a = float(np.mean(anode))
+                area_c = float(np.mean(cathode))
+                area_error = (
+                    abs(area_a - target) + abs(area_c - target)
+                ) / max(2.0 * target, np.finfo(float).tiny)
+                imbalance = abs(area_a - area_c) / max(
+                    area_a + area_c, np.finfo(float).tiny
+                )
+                # Both polarities separately satisfy the advertised tolerance;
+                # averaging their errors would otherwise allow one to exceed it.
+                maximum_polarity_error = max(abs(area_a-target), abs(area_c-target)) / max(target,np.finfo(float).tiny)
+                if (
+                    maximum_polarity_error > self.area_tolerance_fraction + 1.0e-12
+                    or imbalance > self.area_tolerance_fraction + 1.0e-12
+                ):
+                    raise BCCandidateGeometryError(
+                        "Surface-contact area constraint changed after B/C "
+                        f"physics-grid resize for {geometry_id}: Aa={area_a:.8g}, "
+                        f"Ac={area_c:.8g}, target={target:.8g}, "
+                        f"relative_error={area_error:.8g}, imbalance={imbalance:.8g}"
+                    )
+                if self.minimum_width_mm > 0.0:
+                    minimum_component_widths: list[float] = []
+                    for labels, count in (
+                        (labels_a, components_a),
+                        (labels_c, components_c),
+                    ):
+                        for component_index in range(1, count + 1):
+                            component = labels == component_index
+                            radius_pixels = float(
+                                np.max(ndimage.distance_transform_edt(component))
+                            )
+                            minimum_component_widths.append(
+                                max(0.0, 2.0 * radius_pixels - 1.0)
+                                * spacing
+                                * 1000.0
+                            )
+                    minimum_component_width = min(minimum_component_widths)
+                    if (
+                        minimum_component_width
+                        + 64.0 * np.finfo(float).eps
+                        < self.minimum_width_mm
+                    ):
+                        raise BCCandidateGeometryError(
+                            "An electrode component became narrower than the "
+                            "manufacturing minimum after B/C physics-grid resize "
+                            f"for {geometry_id}: effective_width_mm="
+                            f"{minimum_component_width:.8g}, required_mm="
+                            f"{self.minimum_width_mm:.8g}"
+                        )
+        geometry.fixed = torch.zeros_like(geometry.anode)
+        geometry.propellant = torch.ones_like(geometry.anode)
+        return geometry
+
+    def _run_physics(self, geometry, voltage, *, save_handoff=False, stop_on_onset=False):
+        """Reference dispatch. Native subclass replaces only the numerical engine.
+
+        Every B/C lane terminates at onset; ``stop_on_onset`` additionally
+        permits the batched integrator to return as soon as no lane is active.
+        """
+        from ecsp_v6.physics.bc_global import run_bc_global_batch
+        return run_bc_global_batch(geometry, self.config, self.composition,
+                                   float(voltage), self.dtype,
+                                   save_fields=save_handoff, save_handoff=save_handoff,
+                                   stop_on_onset=stop_on_onset)
+
+    def _run_model(
+        self,
+        items: Sequence[tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]],
+        voltage: Any,
+        *,
+        save_handoff: bool = False,
+        write_metrics: bool = True,
+        stop_on_onset: bool = False,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+        import torch
+        from ecsp_v6.physics.bc_global import run_bc_global_batch
+
+        geometry = self._build_geometry_batch(items)
+        with torch.inference_mode():
+            output = self._run_physics(
+                geometry, voltage, save_handoff=save_handoff,
+                stop_on_onset=stop_on_onset,
+            )
+        solver_rows = output["solverDiagnostics"].to_cpu_dicts()
+        scalar_keys = [
+            "ignitionDelay_s",
+            "condensedPhaseIgnitionDelay_s",
+            "ignitionSucceeded",
+            "areaAveragedUndecomposedFractionAt2s",
+            "areaAveragedUndecomposedFractionAtEvaluationTime",
+            "remainingReactiveMassFractionAt2s",
+            "remainingReactiveMassFractionAtEvaluationTime",
+            "meanGlobalProgressAt2s",
+            "meanGlobalProgressAtEvaluationTime",
+            "temperatureOnsetAreaFractionAt2s",
+            "maximumTemperatureAtEvaluationTime_K",
+            "evaluationStateTime_s",
+            "objectiveEvaluationStateTime_s",
+            "evaluationStateAvailable",
+            "postOnsetContinuationApplied",
+            "postOnsetContinuationDuration_s",
+            "inputElectricalEnergyToIgnition_J",
+            "inputElectricalEnergyAt2s_J",
+            "inputElectricalEnergyAtEvaluationTime_J",
+            "inputElectricalEnergy_J",
+            "peakMaximumTemperature_K",
+            "peakCurrent_A",
+            "peakCurrentCongestion",
+            "peakCurrentCongestionToEvaluationTime",
+            "finalEffectiveResistance_ohm",
+            "preflameTerminationEffectiveResistance_ohm",
+            "evaluationEffectiveResistance_ohm",
+            "maximumSpeciesLimiterFraction",
+            "maximumTemperatureCapFraction",
+            "maximumGasCapFraction",
+            "maximumChemicalRateCapFraction",
+            "equation32ElectricalHeatRateAtEvaluationTime_W",
+            "equation32ElectricalHeatEnergyAtEvaluationTime_J",
+            "equation32ElectricalHeatEnergy_J",
+            "finalMeanChemicalProgress",
+            "finalAreaAveragedUndecomposedFraction",
+            "finalRemainingReactiveMassFraction",
+            "finalGlobalProgress",
+            "meanAnodeCathodeCurrentMismatch",
+            "finalAnodeCathodeCurrentMismatch",
+            "maximumAnodeCathodeCurrentMismatch",
+            "maximumThermalDiffusiveCFL",
+            "maximumThermalStabilityCFL",
+            "allElectricalLinearSolvesConverged",
+            "allNonlinearRobinSolvesConverged",
+        ]
+        rows: list[dict[str, Any]] = []
+        for i, (_, _, metadata, output_dir) in enumerate(items):
+            row = _normalise_evaluation_time_aliases({
+                key: self._to_python(output[key], i)
+                for key in scalar_keys
+                if key in output
+            })
+            if not stop_on_onset:
+                objective_state_time = row.get("objectiveEvaluationStateTime_s")
+                if (
+                    objective_state_time is None
+                    or not np.isfinite(float(objective_state_time))
+                    or not math.isclose(
+                        float(objective_state_time),
+                        float(output["evaluationTime_s"]),
+                        rel_tol=0.0,
+                        abs_tol=64.0
+                        * max(
+                            math.ulp(abs(float(objective_state_time))),
+                            math.ulp(abs(float(output["evaluationTime_s"]))),
+                        ),
+                    )
+                ):
+                    raise EvaluatorError(
+                        "B/C objective state was not completed at the configured "
+                        "common evaluation time"
+                    )
+            remaining = row["remainingReactiveMassFractionAtEvaluationTime"]
+            row["areaWeightedUndecomposedFractionAtEvaluationTime"] = remaining
+            row["areaWeightedUndecomposedFractionAt2s"] = remaining
+            if "peakCurrentCongestionToEvaluationTime" not in row:
+                row["peakCurrentCongestionToEvaluationTime"] = row[
+                    "peakCurrentCongestion"
+                ]
+            row["peakCurrentCongestionTo2s"] = row[
+                "peakCurrentCongestionToEvaluationTime"
+            ]
+            row = _normalise_evaluation_time_aliases(row)
+            solver = solver_rows[i]
+            overall_converged = _bc_solver_converged(row, solver)
+            row.update(
+                {
+                    "geometry_id": str(metadata.get("geometry_id")),
+                    "backend": "bc_global_preflame",
+                    "solverRevision": "v8_2_bc_global_surface_bv_fixed_time_condensed_continuation",
+                    "empiricalSurfaceReactionProgressUsed": False,
+                    "legacyProxyClosuresUsed": False,
+                    "modelStatus": output["modelStatus"],
+                    "postIgnitionClosure": output["postIgnitionClosure"],
+                    "evaluationStateModel": output.get(
+                        "evaluationStateModel", "preflame_state_only"
+                    ),
+                    "evaluationStateCompletion": {
+                        "completedAtCommonEvaluationTime": bool(
+                            row.get("evaluationStateAvailable", False)
+                        ),
+                        "postOnsetContinuationApplied": bool(
+                            row.get("postOnsetContinuationApplied", False)
+                        ),
+                        "continuationDuration_s": float(
+                            row.get("postOnsetContinuationDuration_s", 0.0)
+                        ),
+                        "electricalHeatingAfterOnset": False,
+                        "onsetFieldsRemainImmutable": True,
+                    },
+                    "evaluationTime_s": float(output["evaluationTime_s"]),
+                    "ignitionCriterionType": output["ignitionCriterion"]["type"],
+                    "ignitionOnsetTemperature_K": float(output["ignitionCriterion"]["temperature_K"]),
+                    "ignitionMinimumGlobalProgress": float(output["ignitionCriterion"]["minimumGlobalProgress"]),
+                    "ignitionMinimumAreaFraction": float(output["ignitionCriterion"]["minimumAreaFraction"]),
+                    "ignitionInterpretation": output["ignitionCriterion"]["interpretation"],
+                    "undecomposedMetricType": "remaining_reactive_LP_plus_PVA_mass_fraction",
+                    "globalReaction": output["globalReaction"]["equation"],
+                    "globalReactionScope": output["globalReaction"]["scope"],
+                    "finalElectricalConverged": overall_converged,
+                    "finalElectricalIterations": int(solver["iterations"]),
+                    "finalElectricalRelativeResidual": float(solver["relative_residual"]),
+                    "finalElectricalSolverMethod": str(solver["method"]),
+                    "converged": overall_converged,
+                    "physicsDevice": str(self.device),
+                    "physicsDtype": str(self.dtype).replace("torch.", ""),
+                    "gridSize": self.grid_size,
+                    "timeStep_s": float(self.config["bcGlobal"]["timeStep_s"]),
+                    "curedWaterMassFraction": float(self.composition.cured_water_mass_fraction),
+                    "paperEquationUse": output["paperEquationUse"],
+                }
+            )
+            if "nativeExecution" in output:
+                row["nativeExecution"] = {
+                    k: self._to_python(v, i) if hasattr(v, "ndim") else v
+                    for k, v in output["nativeExecution"].items()
+                }
+                row["backend"] = "bc_global_native"
+                row["solverRevision"] = "v8_2_compiled_fp64_surface_bv_fixed_time_continuation"
+            if write_metrics:
+                output_dir.mkdir(parents=True, exist_ok=True)
+                (output_dir / "condensed_metrics.json").write_text(
+                    json.dumps(_strict_json_value(row), indent=2, allow_nan=False),
+                    encoding="utf-8",
+                )
+            rows.append(row)
+        return rows, output if save_handoff else None
+
+    def _trial_valid(self, row: Mapping[str, Any]) -> tuple[bool, str]:
+        if not bool(row.get("converged", False)):
+            return False, "electrical_nonconvergence"
+        aliases = {
+            "temperature": (
+                "maximumTemperatureCapFraction",
+                "maximum_temperature_cap_fraction",
+            ),
+            "species": (
+                "maximumSpeciesLimiterFraction",
+                "maximum_species_limiter_fraction",
+            ),
+            "chemical_rate": (
+                "maximumChemicalRateCapFraction",
+                "maximum_chemical_rate_cap_fraction",
+            ),
+        }
+        lower = {str(key).lower(): value for key, value in row.items()}
+        for name, keys in aliases.items():
+            raw_value = next(
+                (
+                    row[key]
+                    if key in row
+                    else lower[key.lower()]
+                    for key in keys
+                    if key in row or key.lower() in lower
+                ),
+                None,
+            )
+            if raw_value is None:
+                return False, f"missing_{name}_numerical_diagnostic"
+            try:
+                value = float(raw_value)
+            except (TypeError, ValueError):
+                return False, f"invalid_{name}_numerical_diagnostic"
+            if (
+                not np.isfinite(value)
+                or not 0.0 <= value <= 1.0
+                or value > self.vmin_numerical_thresholds[name] + 1.0e-15
+            ):
+                return False, f"{name}_numerical_threshold"
+        return True, "valid"
+
+    def _attach_vmin(
+        self,
+        item: tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path],
+        row: dict[str, Any],
+    ) -> None:
+        from .bc_vmin import batched_voltage_search
+
+        def run_trials(
+            indices: list[int], voltages: list[float], role: str
+        ) -> list[dict[str, Any]]:
+            if any(index != 0 for index in indices):
+                raise RuntimeError("Single-candidate Vmin callback lost alignment")
+            results: list[dict[str, Any]] = []
+            for voltage in voltages:
+                trial_dir = (
+                    Path(item[3])
+                    / "vmin_search"
+                    / f"{role}_V_{voltage:.6f}".replace(".", "p")
+                )
+                try:
+                    trial_row = self._run_model(
+                        [(item[0], item[1], item[2], trial_dir)],
+                        voltage,
+                        write_metrics=True,
+                        stop_on_onset=(
+                            self.vmin_stop_successful_trials_at_ignition
+                            and role != "final_upper_full_horizon_verification"
+                        ),
+                    )[0][0]
+                except Exception as exc:
+                    # A failed voltage trial invalidates only the threshold
+                    # search; the valid reference-voltage objectives remain
+                    # usable.  Infrastructure/configuration failures retain
+                    # their traceback and abort the run.
+                    if not self._is_candidate_scoped_failure(exc):
+                        raise
+                    trial_row = self._failed_geometry_row(
+                        item[2], trial_dir, exc
+                    )
+                    trial_row["physicsRejectionScope"] = "vmin_trial"
+                    trial_dir.mkdir(parents=True, exist_ok=True)
+                    (trial_dir / "condensed_metrics.json").write_text(
+                        json.dumps(
+                            _strict_json_value(trial_row),
+                            indent=2,
+                            allow_nan=False,
+                        ),
+                        encoding="utf-8",
+                    )
+                results.append(trial_row)
+            return results
+
+        batched_voltage_search(
+            [row],
+            run_trials,
+            self._trial_valid,
+            enabled=self.vmin_enabled,
+            low_voltage=self.vmin_lower_bound_V,
+            high_voltage=self.vmin_upper_bound_V,
+            tolerance=self.vmin_tolerance_V,
+            max_iterations=self.vmin_max_iterations,
+            invalid_penalty=self.vmin_invalid_penalty_V,
+            censor_penalty=self.vmin_right_censor_penalty_V,
+            verify_final=self.vmin_verify_final,
+        )
+
+    def _evaluate_chunk(
+        self,
+        items: Sequence[tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]],
+    ) -> list[dict[str, Any]]:
+        rows, _ = self._run_model(items, self.voltage, write_metrics=False)
+        for item, row in zip(items, rows):
+            self._attach_vmin(item, row)
+            Path(item[3]).mkdir(parents=True, exist_ok=True)
+            (Path(item[3]) / "condensed_metrics.json").write_text(
+                json.dumps(_strict_json_value(row), indent=2, allow_nan=False),
+                encoding="utf-8",
+            )
+        return rows
+
+    @staticmethod
+    def _is_retryable_batch_oom(exc: Exception) -> bool:
+        """Recognise only allocation exhaustion, never generic device faults."""
+        try:
+            import torch
+
+            if isinstance(exc, torch.OutOfMemoryError):
+                return True
+        except (ImportError, AttributeError):
+            pass
+        message = str(exc).lower()
+        return "cuda out of memory" in message or "mps backend out of memory" in message
+
+    @staticmethod
+    def _is_candidate_scoped_failure(exc: Exception) -> bool:
+        from ecsp_v6.physics.bc_global import BCCandidateBatchError
+
+        return isinstance(exc, (BCCandidateBatchError, BCCandidateGeometryError))
+
+    def evaluate_batch(
+        self,
+        items: Sequence[tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]],
+    ) -> list[dict[str, Any]]:
+        """Evaluate B/C lanes with a strict candidate/infrastructure boundary.
+
+        A multi-lane allocation OOM is retried in smaller batches.  A singleton
+        OOM, device loss, configuration error or any other unclassified failure
+        is fatal.  Only typed candidate failures become dominated rows.
+        """
+        if not items:
+            return []
+
+        def evaluate_resilient(
+            chunk: Sequence[
+                tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]
+            ],
+        ) -> list[dict[str, Any]]:
+            try:
+                return self._evaluate_chunk(chunk)
+            except Exception as exc:
+                retryable_oom = self._is_retryable_batch_oom(exc)
+                candidate_failure = self._is_candidate_scoped_failure(exc)
+                if retryable_oom and len(chunk) > 1:
+                    # Release the failed graph/tensors before the smaller retry.
+                    exc.__traceback__ = None
+                    try:
+                        import torch
+
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                    except (ImportError, RuntimeError):
+                        pass
+                    midpoint = len(chunk) // 2
+                    return evaluate_resilient(chunk[:midpoint]) + evaluate_resilient(
+                        chunk[midpoint:]
+                    )
+                if retryable_oom or not candidate_failure:
+                    raise
+                if len(chunk) > 1:
+                    midpoint = len(chunk) // 2
+                    return evaluate_resilient(chunk[:midpoint]) + evaluate_resilient(
+                        chunk[midpoint:]
+                    )
+                item = chunk[0]
+                return [self._failed_geometry_row(item[2], item[3], exc)]
+
+        rows: list[dict[str, Any]] = []
+        total_batches = (
+            len(items) + self.internal_batch_size - 1
+        ) // self.internal_batch_size
+        for start in range(0, len(items), self.internal_batch_size):
+            chunk = items[start : start + self.internal_batch_size]
+            batch_number = start // self.internal_batch_size + 1
+            geometry_ids = [str(item[2].get("geometry_id")) for item in chunk]
+            batch_start = time.perf_counter()
+            print(
+                f"[bc-physics] batch {batch_number}/{total_batches} start "
+                f"size={len(chunk)} ids={geometry_ids[0]}..{geometry_ids[-1]}",
+                flush=True,
+            )
+            chunk_rows = evaluate_resilient(chunk)
+            rows.extend(chunk_rows)
+            rejected = sum(
+                bool(row.get("physicsRejected", False)) for row in chunk_rows
+            )
+            print(
+                f"[bc-physics] batch {batch_number}/{total_batches} complete "
+                f"successful={len(chunk_rows) - rejected} rejected={rejected} "
+                f"elapsed={time.perf_counter() - batch_start:.1f}s",
+                flush=True,
+            )
+        return rows
+
+    @staticmethod
+    def _handoff_numpy(value: Any) -> Any:
+        try:
+            import torch
+
+            if isinstance(value, torch.Tensor):
+                return value.detach().cpu().numpy()
+        except Exception:
+            pass
+        return value
+
+    def _extract_handoff_batch(
+        self,
+        rows: Sequence[Mapping[str, Any]],
+        output: Mapping[str, Any],
+        items: Sequence[tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]],
+    ) -> list[dict[str, Any]]:
+        handoff_raw = output["handoffFields"]
+        arrays = {
+            key: self._handoff_numpy(value)
+            for key, value in handoff_raw.items()
+        }
+        results: list[dict[str, Any]] = []
+        for index, (row, item) in enumerate(zip(rows, items)):
+            def spatial(name: str) -> Any:
+                value = arrays.get(name)
+                if isinstance(value, np.ndarray) and value.ndim >= 3:
+                    return value[index]
+                return value
+
+            def history(name: str) -> Any:
+                value = arrays.get(name)
+                if isinstance(value, np.ndarray) and value.ndim >= 4:
+                    return value[:, index]
+                return value
+
+            delay_value = row.get("ignitionDelay_s")
+            try:
+                delay_float = float(delay_value)
+            except (TypeError, ValueError):
+                delay_float = float("nan")
+            delay_tolerance = 64.0 * np.finfo(float).eps * max(
+                1.0, abs(self.end_time_s)
+            )
+            delay_valid = bool(
+                np.isfinite(delay_float)
+                and delay_float >= 0.0
+                and delay_float <= self.end_time_s + delay_tolerance
+            )
+            numerically_valid, numerical_reason = self._trial_valid(row)
+            ignition_reported = bool(row.get("ignitionSucceeded", False))
+            onset_authorized = bool(
+                ignition_reported and delay_valid and numerically_valid
+            )
+            if onset_authorized:
+                handoff_authorization_reason = "ignition_and_numerics_valid"
+            elif not ignition_reported:
+                handoff_authorization_reason = "no_condensed_onset"
+            elif not delay_valid:
+                handoff_authorization_reason = "invalid_ignition_delay"
+            else:
+                handoff_authorization_reason = numerical_reason
+            handoff = {
+                "times_s": arrays.get("times_s"),
+                "qJ_W_per_m3": history("qJ_W_per_m3"),
+                "qEchem_W_per_m3": history("qEchem_W_per_m3"),
+                "temperatureHistory_K": history("temperatureHistory_K"),
+                "globalProgressHistory": history("globalProgressHistory"),
+                "temperatureAtOnset_K": spatial("temperatureAtOnset_K"),
+                "globalProgressAtOnset": spatial("globalProgressAtOnset"),
+                "alphaChannel1AtOnset": spatial("alphaChannel1AtOnset"),
+                "alphaChannel2AtOnset": spatial("alphaChannel2AtOnset"),
+                "cationAtOnset_mol_per_m3": spatial("cationAtOnset_mol_per_m3"),
+                "anionAtOnset_mol_per_m3": spatial("anionAtOnset_mol_per_m3"),
+                "mobileLPAtOnset_mol_per_m3": spatial("mobileLPAtOnset_mol_per_m3"),
+                "mobileWaterAtOnset_mol_per_m3": spatial("mobileWaterAtOnset_mol_per_m3"),
+                "generatedWaterProductAtOnset_mol_per_m3": spatial(
+                    "generatedWaterProductAtOnset_mol_per_m3"
+                ),
+                "electrochemicalLPConsumedAtOnset_mol_per_m3": spatial(
+                    "electrochemicalLPConsumedAtOnset_mol_per_m3"
+                ),
+                "pvaReactiveRepeatAtOnset_mol_per_m3": spatial(
+                    "pvaReactiveRepeatAtOnset_mol_per_m3"
+                ),
+                "potentialAtOnset_V": spatial("potentialAtOnset_V"),
+                "xiMax_mol_per_m3": spatial("xiMax_mol_per_m3"),
+                "molarMassLP_kg_per_mol": spatial("molarMassLP_kg_per_mol"),
+                "molarMassPVARepeat_kg_per_mol": spatial(
+                    "molarMassPVARepeat_kg_per_mol"
+                ),
+                "initialReactiveMass_kg_per_m3": spatial(
+                    "initialReactiveMass_kg_per_m3"
+                ),
+                "initialMobileLP_mol_per_m3": spatial(
+                    "initialMobileLP_mol_per_m3"
+                ),
+                "initialPVARepeat_mol_per_m3": spatial(
+                    "initialPVARepeat_mol_per_m3"
+                ),
+                "initialMobileWater_mol_per_m3": spatial(
+                    "initialMobileWater_mol_per_m3"
+                ),
+                "qJAtOnset_W_per_m3": spatial("qJAtOnset_W_per_m3"),
+                "qEchemAtOnset_W_per_m3": spatial("qEchemAtOnset_W_per_m3"),
+                "propellantMask": spatial("propellantMask"),
+                "ignitionDelay_s": delay_float,
+                "onsetSucceeded": onset_authorized,
+                "handoffSchemaVersion": "ecsp_bc_surface_onset_v8.2.0",
+                "onsetReportedByPhysics": ignition_reported,
+                "numericallyValidForPropagationHandoff": numerically_valid,
+                "propagationHandoffAuthorizationReason": (
+                    handoff_authorization_reason
+                ),
+                "continuedElectricalHeating": bool(
+                    handoff_raw.get("continuedElectricalHeating", False)
+                ),
+            }
+            # v8.4: persist the exact cell-centred contact footprints used by
+            # the BC evaluator. Reactive handoff never resizes a temperature,
+            # inventory or heat field, or infers contacts from q_echem values.
+            from ecsp_v6.physics.numerics import resize_nearest_numpy
+            import hashlib
+            handoff_shape = np.asarray(handoff["temperatureAtOnset_K"]).shape
+            handoff["anodeContactMask"] = resize_nearest_numpy(
+                np.asarray(item[0], dtype=bool), handoff_shape[-1]
+            )
+            handoff["cathodeContactMask"] = resize_nearest_numpy(
+                np.asarray(item[1], dtype=bool), handoff_shape[-1]
+            )
+            handoff["domainSize_m"] = float(self.config["geometry"]["domainSize_m"])
+            handoff["surfaceLayerThickness_m"] = float(self.config["geometry"]["surfaceLayerThickness_m"])
+            handoff["condensedDensity_kg_per_m3"] = float(
+                self.config["bcGlobal"]["thermal"].get("density_kg_per_m3")
+                or self.composition.density_kg_per_m3
+            )
+            handoff["appliedVoltage_V"] = float(self.voltage)
+            handoff["bcGlobalConfigSHA256"] = hashlib.sha256(
+                json.dumps(self.config["bcGlobal"], sort_keys=True,
+                           separators=(",", ":"), allow_nan=False).encode()
+            ).hexdigest()
+            # Conservative projection of the closed-domain mobile LP
+            # inventory before post-onset handoff.  Native NP positivity
+            # limiting may introduce a small global transport drift even
+            # though NP itself is redistribution-only.
+            if onset_authorized:
+                prop_mask = np.asarray(
+                    handoff["propellantMask"], dtype=bool
+                )
+                progress_arr = np.asarray(
+                    handoff["globalProgressAtOnset"], dtype=np.float64
+                )
+                cation_arr = np.asarray(
+                    handoff["cationAtOnset_mol_per_m3"], dtype=np.float64
+                )
+                anion_arr = np.asarray(
+                    handoff["anionAtOnset_mol_per_m3"], dtype=np.float64
+                )
+                ec_arr = np.asarray(
+                    handoff[
+                        "electrochemicalLPConsumedAtOnset_mol_per_m3"
+                    ],
+                    dtype=np.float64,
+                )
+
+                def _scalar_handoff(name):
+                    a = np.asarray(handoff[name], dtype=np.float64)
+                    if a.size == 0 or not np.isfinite(a).all():
+                        raise EvaluatorError(
+                            f"Invalid handoff scalar: {name}"
+                        )
+                    value = float(a.reshape(-1)[0])
+                    if a.size > 1 and not np.allclose(
+                        a,
+                        value,
+                        rtol=0.0,
+                        atol=1.0e-12 * max(1.0, abs(value)),
+                    ):
+                        raise EvaluatorError(
+                            f"Nonuniform handoff scalar: {name}"
+                        )
+                    return value
+
+                xi_max = _scalar_handoff("xiMax_mol_per_m3")
+                initial_lp = _scalar_handoff(
+                    "initialMobileLP_mol_per_m3"
+                )
+
+                pair = 0.5 * (cation_arr + anion_arr)
+
+                if (
+                    pair.shape != progress_arr.shape
+                    or pair.shape != ec_arr.shape
+                    or pair.shape != prop_mask.shape
+                    or not np.any(prop_mask)
+                ):
+                    raise EvaluatorError(
+                        "Invalid LP conservation projection shapes"
+                    )
+
+                consumed = (
+                    ec_arr
+                    + 1.45 * xi_max * progress_arr
+                )
+
+                cell_count = int(np.count_nonzero(prop_mask))
+                current_mobile_total = float(
+                    np.sum(pair[prop_mask])
+                )
+                target_mobile_total = float(
+                    initial_lp * cell_count
+                    - np.sum(consumed[prop_mask])
+                )
+
+                if (
+                    not np.isfinite(current_mobile_total)
+                    or not np.isfinite(target_mobile_total)
+                    or current_mobile_total <= 0.0
+                    or target_mobile_total < 0.0
+                ):
+                    raise EvaluatorError(
+                        "Invalid integrated LP inventory for handoff"
+                    )
+
+                reference_total = max(
+                    abs(initial_lp * cell_count), 1.0
+                )
+                relative_correction = abs(
+                    current_mobile_total - target_mobile_total
+                ) / reference_total
+
+                # Never hide a large B/C error.  This limit is the same
+                # numerical-quality scale used by the production run.
+                if relative_correction > 0.02 + 1.0e-15:
+                    raise EvaluatorError(
+                        "LP handoff conservation drift exceeds 2% "
+                        f"quality bound: {relative_correction}"
+                    )
+
+                scale = (
+                    target_mobile_total / current_mobile_total
+                )
+
+                corrected_pair = pair.copy()
+                corrected_pair[prop_mask] *= scale
+
+                if (
+                    not np.isfinite(corrected_pair).all()
+                    or np.any(corrected_pair[prop_mask] < 0.0)
+                ):
+                    raise EvaluatorError(
+                        "LP conservation projection produced "
+                        "invalid concentration"
+                    )
+
+                handoff[
+                    "cationAtOnset_mol_per_m3"
+                ] = corrected_pair.copy()
+                handoff[
+                    "anionAtOnset_mol_per_m3"
+                ] = corrected_pair.copy()
+                handoff[
+                    "mobileLPAtOnset_mol_per_m3"
+                ] = corrected_pair.copy()
+
+                balance_after = float(
+                    np.mean(
+                        corrected_pair[prop_mask]
+                        + consumed[prop_mask]
+                    )
+                )
+
+                if not np.isclose(
+                    balance_after,
+                    initial_lp,
+                    rtol=1.0e-12,
+                    atol=1.0e-9,
+                ):
+                    raise EvaluatorError(
+                        "LP handoff conservation projection failed"
+                    )
+
+                handoff[
+                    "handoffLPConservationProjectionApplied"
+                ] = True
+                handoff[
+                    "handoffLPConservationProjectionScale"
+                ] = float(scale)
+                handoff[
+                    "handoffLPConservationRelativeCorrection"
+                ] = float(relative_correction)
+                handoff[
+                    "handoffLPBalanceAfter_mol_per_m3"
+                ] = float(balance_after)
+
+            output_dir = Path(item[3])
+            output_dir.mkdir(parents=True, exist_ok=True)
+            np.savez_compressed(
+                output_dir / "bc_handoff_fields.npz",
+                **{k: v for k, v in handoff.items() if isinstance(v, np.ndarray)},
+            )
+            scalar_meta = {
+                k: v for k, v in handoff.items() if not isinstance(v, np.ndarray)
+            }
+            scalar_meta["field_file"] = "bc_handoff_fields.npz"
+            scalar_meta["geometry_id"] = str(item[2].get("geometry_id"))
+            (output_dir / "bc_handoff_metadata.json").write_text(
+                json.dumps(_strict_json_value(scalar_meta), indent=2, allow_nan=False),
+                encoding="utf-8",
+            )
+            results.append({"metrics": dict(row), "handoff": handoff})
+        return results
+
+    def _failed_handoff_result(
+        self,
+        item: tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path],
+        exc: Exception,
+    ) -> dict[str, Any]:
+        """Create one aligned, explicitly unauthorized handoff failure."""
+        output_dir = Path(item[3])
+        row = self._failed_geometry_row(item[2], output_dir, exc)
+        row["physicsRejectionScope"] = "preflame_handoff"
+        handoff = {
+            "handoffSchemaVersion": "ecsp_bc_surface_onset_v8.2.0",
+            "ignitionDelay_s": float("nan"),
+            "onsetSucceeded": False,
+            "onsetReportedByPhysics": False,
+            "numericallyValidForPropagationHandoff": False,
+            "propagationHandoffAuthorizationReason": "preflame_candidate_failure",
+            "continuedElectricalHeating": False,
+        }
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "condensed_metrics.json").write_text(
+            json.dumps(_strict_json_value(row), indent=2, allow_nan=False),
+            encoding="utf-8",
+        )
+        (output_dir / "bc_handoff_metadata.json").write_text(
+            json.dumps(
+                {
+                    **_strict_json_value(handoff),
+                    "geometry_id": str(item[2].get("geometry_id")),
+                    "handoffPreparationFailed": True,
+                    "failureType": type(exc).__name__,
+                    "failureMessage": str(exc),
+                },
+                indent=2,
+                allow_nan=False,
+            ),
+            encoding="utf-8",
+        )
+        return {
+            "metrics": row,
+            "handoff": handoff,
+            "handoffPreparationFailed": True,
+            "handoffPreparationFailure": str(exc),
+        }
+
+    def evaluate_handoff_batch(
+        self,
+        items: Sequence[tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]],
+    ) -> list[dict[str, Any]]:
+        """Re-evaluate onset fields without sacrificing valid neighbouring lanes."""
+        if not items:
+            return []
+
+        def evaluate_resilient(
+            chunk: Sequence[
+                tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]
+            ],
+        ) -> list[dict[str, Any]]:
+            try:
+                rows, output = self._run_model(
+                    chunk,
+                    self.voltage,
+                    save_handoff=True,
+                    write_metrics=True,
+                    stop_on_onset=False,
+                )
+                if output is None:
+                    raise RuntimeError(
+                        "B/C handoff run returned no full-field output"
+                    )
+                return self._extract_handoff_batch(rows, output, chunk)
+            except Exception as exc:
+                retryable_oom = self._is_retryable_batch_oom(exc)
+                candidate_failure = self._is_candidate_scoped_failure(exc)
+                if (retryable_oom or candidate_failure) and len(chunk) > 1:
+                    if retryable_oom:
+                        exc.__traceback__ = None
+                        try:
+                            import torch
+
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                        except (ImportError, RuntimeError):
+                            pass
+                    midpoint = len(chunk) // 2
+                    return evaluate_resilient(chunk[:midpoint]) + evaluate_resilient(
+                        chunk[midpoint:]
+                    )
+                if retryable_oom or not candidate_failure:
+                    raise
+                return [self._failed_handoff_result(chunk[0], exc)]
+
+        results: list[dict[str, Any]] = []
+        for start in range(0, len(items), self.internal_batch_size):
+            chunk = list(items[start : start + self.internal_batch_size])
+            results.extend(evaluate_resilient(chunk))
+        return results
+
+    def evaluate_handoff(
+        self,
+        anode_mask: np.ndarray,
+        cathode_mask: np.ndarray,
+        metadata: Mapping[str, Any],
+        output_dir: Path,
+    ) -> dict[str, Any]:
+        return self.evaluate_handoff_batch(
+            [(anode_mask, cathode_mask, metadata, output_dir)]
+        )[0]
+
+
+class CppCondensedFp64Evaluator(DirectCondensedV772NoFEvaluator):
+    """Production C++/CPU/FP64 condensed-phase backend.
+
+    Python retains geometry generation, NSGA-II, Pareto ranking and file
+    orchestration.  Each candidate is resized/validated once, transferred to a
+    standalone C++ process once, integrated entirely in IEEE-754 binary64 on
+    CPU, and only scalar objectives/diagnostics are returned to Python.
+    """
+
+    def __init__(self, package_root: Path, config: Mapping[str, Any], workdir: Path) -> None:
+        adapter = dict(config)
+        adapter["device"] = "cpu"
+        overrides = adapter.get("base_overrides", {})
+        if not isinstance(overrides, Mapping):
+            overrides = {}
+        adapter["base_overrides"] = _deep_merge(
+            dict(overrides),
+            {
+                "numerics": {
+                    "physicsDevice": "cpu",
+                    "physicsDtype": "float64",
+                    "potentialSolver": {
+                        "relativeToleranceStatic": 1.0e-10,
+                        "relativeToleranceCoupled": 1.0e-9,
+                        "absoluteTolerance": 1.0e-12,
+                    },
+                }
+            },
+        )
+        super().__init__(package_root, adapter, workdir)
+        from ecsp_cpp.backend import CppPhysicsRunner, serialise_cpp_config
+
+        executable = adapter.get("cpp_executable")
+        executable_path = (
+            (self.package_root / str(executable)).resolve()
+            if executable
+            else self.package_root / "build" / "ecsp_cpp_solver"
+        )
+        if not executable_path.is_file() and bool(adapter.get("cpp_auto_build", True)):
+            script = self.package_root / "tools" / "build_cpp_cpu.sh"
+            if not script.is_file():
+                raise EvaluatorError(f"C++ build script missing: {script}")
+            completed = __import__("subprocess").run(
+                ["bash", str(script)], cwd=self.package_root, capture_output=True, text=True
+            )
+            if completed.returncode != 0:
+                raise EvaluatorError(
+                    "C++ physics build failed:\n" + (completed.stderr or completed.stdout)
+                )
+        self.cpp_runner = CppPhysicsRunner(self.package_root, executable_path)
+        try:
+            self.cpp_version = self.cpp_runner.verify()
+        except Exception as first_exc:
+            # A copied worktree may contain a binary built for another architecture
+            # (e.g. x86_64 Linux -> arm64 macOS).  Rebuild it once from source when
+            # auto-build is enabled instead of failing with a misleading exec error.
+            if bool(adapter.get("cpp_auto_build", True)):
+                script = self.package_root / "tools" / "build_cpp_cpu.sh"
+                try:
+                    executable_path.unlink(missing_ok=True)
+                    completed = __import__("subprocess").run(
+                        ["bash", str(script)],
+                        cwd=self.package_root,
+                        capture_output=True,
+                        text=True,
+                    )
+                    if completed.returncode != 0:
+                        raise RuntimeError(completed.stderr or completed.stdout)
+                    self.cpp_version = self.cpp_runner.verify()
+                except Exception as rebuild_exc:
+                    raise EvaluatorError(
+                        f"C++ physics executable verification failed ({first_exc}); "
+                        f"native rebuild also failed: {rebuild_exc}"
+                    ) from rebuild_exc
+            else:
+                raise EvaluatorError(str(first_exc)) from first_exc
+        self.cpp_parallel_cases = max(1, int(adapter.get("cpp_parallel_cases", 4)))
+        self.cpp_config_values = serialise_cpp_config(
+            self.config, self.composition, grid_size=self.grid_size, voltage=self.voltage
+        )
+
+        physics_config = adapter.get("physics_config", {})
+        if not isinstance(physics_config, Mapping):
+            physics_config = {}
+        vmin_cfg = physics_config.get("minimum_ignition_voltage_search", {})
+        if not isinstance(vmin_cfg, Mapping):
+            vmin_cfg = {}
+        self.vmin_enabled = bool(vmin_cfg.get("enabled", True))
+        self.vmin_lower_bound_V = float(vmin_cfg.get("lower_bound_V", 20.0))
+        configured_upper = vmin_cfg.get("upper_bound_V", self.voltage)
+        self.vmin_upper_bound_V = float(
+            self.voltage if configured_upper is None else configured_upper
+        )
+        self.vmin_tolerance_V = float(vmin_cfg.get("tolerance_V", 5.0))
+        self.vmin_max_iterations = int(vmin_cfg.get("maximum_bisection_iterations", 8))
+        self.vmin_right_censor_penalty_V = float(
+            vmin_cfg.get("right_censor_objective_penalty_V", 50.0)
+        )
+        self.vmin_invalid_penalty_V = float(
+            vmin_cfg.get("invalid_search_objective_penalty_V", 100.0)
+        )
+        self.vmin_stop_successful_trials_at_ignition = bool(
+            vmin_cfg.get("stop_successful_trials_at_ignition", True)
+        )
+        opt_cfg = physics_config.get("optimization", {})
+        if not isinstance(opt_cfg, Mapping):
+            opt_cfg = {}
+        thresholds = opt_cfg.get("numerical_cap_thresholds", {})
+        if not isinstance(thresholds, Mapping):
+            thresholds = {}
+        self.vmin_numerical_thresholds = {
+            "temperature": float(thresholds.get("temperature", 0.02)),
+            "species": float(thresholds.get("species", 0.02)),
+            "gas": float(thresholds.get("gas", 0.02)),
+            "chemical_rate": float(thresholds.get("chemical_rate", 0.02)),
+        }
+        cathode_voltage = float(self.config["electrical"]["cathodeVoltage_V"])
+        if self.vmin_enabled:
+            if not (self.vmin_lower_bound_V > cathode_voltage):
+                raise EvaluatorError(
+                    "minimum_ignition_voltage_search.lower_bound_V must exceed "
+                    f"cathode voltage ({cathode_voltage:g} V)"
+                )
+            if not (self.vmin_upper_bound_V > self.vmin_lower_bound_V):
+                raise EvaluatorError(
+                    "minimum_ignition_voltage_search.upper_bound_V must exceed lower_bound_V"
+                )
+            if abs(self.vmin_upper_bound_V - self.voltage) > 1.0e-9:
+                raise EvaluatorError(
+                    "v7.9.4 requires minimum_ignition_voltage_search.upper_bound_V "
+                    "to equal the fixed reference voltage physics.voltage_V/evaluator.voltage_V. "
+                    "This guarantees that objectives 1, 2 and 4 and the upper Vmin bracket "
+                    "share the same reference simulation."
+                )
+            if not (self.vmin_tolerance_V > 0.0):
+                raise EvaluatorError(
+                    "minimum_ignition_voltage_search.tolerance_V must be positive"
+                )
+            if self.vmin_max_iterations < 1:
+                raise EvaluatorError(
+                    "minimum_ignition_voltage_search.maximum_bisection_iterations must be >= 1"
+                )
+        nsga_geometry = adapter.get("physics_config", {}).get("geometry", {})
+        self.target_area_fraction_per_polarity = float(
+            nsga_geometry.get("target_area_fraction_per_polarity", 0.175)
+        )
+        self.area_tolerance_fraction = float(
+            nsga_geometry.get("area_tolerance_fraction", 0.035)
+        )
+        self.maximum_components_per_polarity = int(
+            nsga_geometry.get("maximum_components_per_polarity", 3)
+        )
+        self.maximum_total_components = int(
+            nsga_geometry.get("maximum_total_components", 4)
+        )
+        diagnostics_path = self.workdir / "cpp_evaluator_diagnostics.json"
+        diagnostics_path.write_text(
+            json.dumps(
+                {
+                    "backend": "cpp_fp64_cpu",
+                    "engine": self.cpp_version,
+                    "executable": str(executable_path),
+                    "parallel_cases": self.cpp_parallel_cases,
+                    "device": "cpu",
+                    "dtype": "float64",
+                    "physics_transfer_policy": "surface_contact_masks_once_metrics_once_no_timestep_transfer",
+                    "propellant_domain": f"full_{self.domain_size_m * 1000.0:g}x{self.domain_size_m * 1000.0:g}_mm_all_cells",
+                    "electrode_mask_semantics": "top_surface_contact_overlay",
+                    "hidden_bus_connection_assumed": True,
+                    "python_roles": ["geometry", "NSGA-II", "Pareto", "I/O"],
+                    "cpp_roles": [
+                        "full-propellant thin-layer electrical", "surface-contact Butler-Volmer",
+                        "Nernst-Planck species", "thermal", "decomposition", "2s integration"
+                    ],
+                    "minimum_ignition_voltage_search": {
+                        "enabled": self.vmin_enabled,
+                        "definition": "minimum numerically-valid voltage that reaches condensed-phase ignition by the finite horizon",
+                        "reference_voltage_V": self.voltage,
+                        "lower_bound_V": self.vmin_lower_bound_V,
+                        "upper_bound_V": self.vmin_upper_bound_V,
+                        "tolerance_V": self.vmin_tolerance_V,
+                        "maximum_bisection_iterations": self.vmin_max_iterations,
+                        "reported_value": "conservative upper/igniting bracket",
+                        "stop_successful_trials_at_ignition": self.vmin_stop_successful_trials_at_ignition,
+                        "numerical_cap_thresholds": self.vmin_numerical_thresholds,
+                    },
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+    def _prepare_cpp_item(
+        self,
+        item: tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path],
+    ) -> tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]:
+        """Resize and validate one mask without constructing Torch tensors.
+
+        C++/CPU physics does not need PyTorch.  Geometry preparation is kept in
+        Python/NumPy and is completed serially before worker threads launch
+        standalone C++ processes.  This avoids concurrent Torch runtime entry,
+        OpenMP/BLAS oversubscription and any accidental MPS allocation.
+        """
+        from scipy import ndimage
+        from ecsp_v6.physics.numerics import resize_nearest_numpy
+
+        anode_raw, cathode_raw, metadata, output_dir = item
+        rows = self.grid_size
+        spacing = self.domain_size_m / rows
+        anode = resize_nearest_numpy(np.asarray(anode_raw, dtype=bool), rows)
+        cathode = resize_nearest_numpy(np.asarray(cathode_raw, dtype=bool), rows)
+        geometry_id = str(metadata.get("geometry_id"))
+        if np.any(anode & cathode):
+            raise EvaluatorError(
+                f"Polarity overlap after physics-grid resize: {geometry_id}"
+            )
+        if not np.any(anode) or not np.any(cathode):
+            raise EvaluatorError(
+                f"A polarity vanished after physics-grid resize: {geometry_id}"
+            )
+        direct = ndimage.binary_dilation(
+            anode, structure=np.ones((3, 3), dtype=bool)
+        ) & cathode
+        cathode_support = ndimage.binary_dilation(
+            cathode, structure=np.ones((3, 3), dtype=bool)
+        )
+        distance = ndimage.distance_transform_edt(
+            ~cathode_support, sampling=(spacing, spacing)
+        )
+        minimum_distance = float(np.min(distance[anode]))
+        if np.any(direct) or minimum_distance < self.minimum_gap_m - 1.0e-12:
+            raise EvaluatorError(
+                "Unsafe geometry after physics-grid resize for "
+                f"{geometry_id}: direct_contact={int(np.count_nonzero(direct))}, "
+                f"minimum_distance_m={minimum_distance:.8g}, "
+                f"required={self.minimum_gap_m:.8g}"
+            )
+        structure = np.ones((3, 3), dtype=np.uint8)
+        _, anode_components = ndimage.label(anode, structure=structure)
+        _, cathode_components = ndimage.label(cathode, structure=structure)
+        total_components = int(anode_components + cathode_components)
+        intended_anode = int(metadata.get("intended_anode_components", anode_components))
+        intended_cathode = int(metadata.get("intended_cathode_components", cathode_components))
+
+        hidden_bus_reference = bool(
+            metadata.get("allow_hidden_bus_reference_component_override", False)
+            and metadata.get("baseline_type") == "area_matched_staggered"
+            and metadata.get("source_role")
+            in {
+                "post_optimization_area_matched_staggered_reference",
+                "post_optimization_reference_only",
+            }
+        )
+        if hidden_bus_reference:
+            maximum_components_per_polarity = max(
+                self.maximum_components_per_polarity,
+                int(metadata.get("reference_maximum_components_per_polarity", 2)),
+            )
+            maximum_total_components = max(
+                self.maximum_total_components,
+                int(metadata.get("reference_maximum_total_components", 4)),
+            )
+        else:
+            maximum_components_per_polarity = self.maximum_components_per_polarity
+            maximum_total_components = self.maximum_total_components
+
+        if (
+            anode_components > maximum_components_per_polarity
+            or cathode_components > maximum_components_per_polarity
+            or total_components > maximum_total_components
+        ):
+            raise EvaluatorError(
+                f"Component cap violated after physics-grid resize for {geometry_id}: "
+                f"Na={anode_components}, Nc={cathode_components}, total={total_components}; "
+                f"limits=({maximum_components_per_polarity}, "
+                f"{maximum_components_per_polarity}, {maximum_total_components})"
+            )
+        if anode_components != intended_anode or cathode_components != intended_cathode:
+            raise EvaluatorError(
+                f"Component topology changed after physics-grid resize for {geometry_id}: "
+                f"intended=({intended_anode},{intended_cathode}), "
+                f"actual=({anode_components},{cathode_components})"
+            )
+        anode_area = float(anode.mean())
+        cathode_area = float(cathode.mean())
+        target = (
+            float(metadata.get("reference_target_area_fraction_per_polarity"))
+            if hidden_bus_reference
+            and metadata.get("reference_target_area_fraction_per_polarity") is not None
+            else self.target_area_fraction_per_polarity
+        )
+        relative_area_error = (
+            abs(anode_area - target) + abs(cathode_area - target)
+        ) / max(2.0 * target, 1.0e-12)
+        imbalance = abs(anode_area - cathode_area) / max(
+            anode_area + cathode_area, 1.0e-12
+        )
+        if (
+            relative_area_error > self.area_tolerance_fraction + 1.0e-12
+            or imbalance > self.area_tolerance_fraction + 1.0e-12
+        ):
+            raise EvaluatorError(
+                f"Surface-contact area constraint violated after physics-grid resize for "
+                f"{geometry_id}: Aa={anode_area:.8g}, Ac={cathode_area:.8g}, "
+                f"target={target:.8g}, relative_error={relative_area_error:.8g}, "
+                f"imbalance={imbalance:.8g}, tolerance={self.area_tolerance_fraction:.8g}"
+            )
+        return (
+            np.ascontiguousarray(anode, dtype=bool),
+            np.ascontiguousarray(cathode, dtype=bool),
+            metadata,
+            Path(output_dir),
+        )
+
+    def _cpp_one(
+        self,
+        item: tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path],
+    ) -> dict[str, Any]:
+        anode, cathode, metadata, output_dir = item
+        row = self.cpp_runner.run_case(
+            anode, cathode, self.cpp_config_values, Path(output_dir)
+        )
+        row.update(
+            {
+                "geometry_id": str(metadata.get("geometry_id")),
+                "backend": "cpp_fp64_cpu",
+                "solverRevision": "v7_9_4_cpp_fp64_surface_contact_minimum_ignition_voltage",
+                "empiricalSurfaceReactionProgressUsed": False,
+                "modelStatus": self.config["project"]["modelStatus"],
+                "postIgnitionClosure": "none_condensed_phase_only",
+                "evaluationTime_s": float(min(2.0, self.end_time_s)),
+                "ignitionCriterionType": self.config["condensedIgnition"]["criterion"],
+                "ignitionOnsetTemperature_K": float(
+                    self.config["condensedIgnition"]["decompositionOnsetTemperature_K"]
+                ),
+                "ignitionInterpretation": self.config["condensedIgnition"]["interpretation"],
+                "physicsDevice": "cpu",
+                "physicsDtype": "float64",
+                "gridSize": self.grid_size,
+                "timeStep_s": float(self.config["coupled"]["timeStep_s"]),
+                "surfaceContactModel": True,
+                "electrodeMasksRemovePropellant": False,
+                "propellantDomainAreaFraction": 1.0,
+                "hiddenBusConnectionAssumed": True,
+            }
+        )
+        output_dir = Path(output_dir)
+        (output_dir / "condensed_metrics.json").write_text(
+            json.dumps(_strict_json_value(row), indent=2, allow_nan=False),
+            encoding="utf-8",
+        )
+        return row
+
+    @staticmethod
+    def _cpp_failed_geometry_row(
+        metadata: Mapping[str, Any], output_dir: Path, exc: Exception
+    ) -> dict[str, Any]:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "physics_rejection.txt").write_text(
+            f"{type(exc).__name__}: {exc}\n", encoding="utf-8"
+        )
+        return {
+            "geometry_id": str(metadata.get("geometry_id")),
+            "ignitionDelay_s": float("nan"),
+            "condensedPhaseIgnitionDelay_s": float("nan"),
+            "ignitionSucceeded": False,
+            "areaAveragedUndecomposedFractionAtEvaluationTime": 1.0,
+            "areaAveragedUndecomposedFractionAt2s": 1.0,
+            "areaWeightedUndecomposedFractionAtEvaluationTime": 1.0,
+            "areaWeightedUndecomposedFractionAt2s": 1.0,
+            "inputElectricalEnergyAtEvaluationTime_J": 1.0e12,
+            "inputElectricalEnergyAt2s_J": 1.0e12,
+            "minimumIgnitionVoltageObjective_V": 1.0e12,
+            "minimumIgnitionVoltage_V": None,
+            "minimumIgnitionVoltageSearchValid": False,
+            "minimumIgnitionVoltageSearchStatus": "physics_rejected_before_vmin_search",
+            "peakCurrentCongestion": 1.0e12,
+            "peakCurrentCongestionTo2s": 1.0e12,
+            "converged": False,
+            "finalElectricalConverged": False,
+            "physicsRejected": True,
+            "physicsRejectionReason": str(exc),
+            "backend": "cpp_fp64_cpu",
+            "solverRevision": "v7_9_4_cpp_fp64_surface_contact_minimum_ignition_voltage",
+            "empiricalSurfaceReactionProgressUsed": False,
+            "physicsDevice": "cpu",
+            "physicsDtype": "float64",
+        }
+
+    def _vmin_trial_validity(self, row: Mapping[str, Any]) -> tuple[bool, str]:
+        if bool(row.get("physicsRejected", False)):
+            return False, "physics_rejected"
+        if not bool(row.get("converged", row.get("finalElectricalConverged", False))):
+            return False, "solver_not_converged"
+        aliases = {
+            "temperature": ("maximumTemperatureCapFraction", "maximum_temperature_cap_fraction"),
+            "species": ("maximumSpeciesLimiterFraction", "maximum_species_limiter_fraction"),
+            "gas": ("maximumGasCapFraction", "maximum_gas_cap_fraction"),
+            "chemical_rate": ("maximumChemicalRateCapFraction", "maximum_chemical_rate_cap_fraction"),
+        }
+        lower = {str(k).lower(): v for k, v in row.items()}
+        for name, keys in aliases.items():
+            value = None
+            for key in keys:
+                if key in row:
+                    value = row[key]
+                    break
+                if key.lower() in lower:
+                    value = lower[key.lower()]
+                    break
+            if value is None:
+                return False, f"missing_{name}_cap_fraction"
+            limit = float(self.vmin_numerical_thresholds[name])
+            if float(value) > limit + 1.0e-15:
+                return False, f"{name}_cap_fraction_exceeded"
+        return True, "valid"
+
+    def _vmin_trial_summary(
+        self, row: Mapping[str, Any], voltage: float, source: str
+    ) -> dict[str, Any]:
+        valid, reason = self._vmin_trial_validity(row)
+        return {
+            "voltage_V": float(voltage),
+            "source": source,
+            "ignition_succeeded": bool(row.get("ignitionSucceeded", False)),
+            "ignition_delay_s": (
+                None
+                if row.get("ignitionDelay_s") is None
+                else float(row.get("ignitionDelay_s"))
+            ),
+            "numerically_valid_for_threshold_classification": bool(valid),
+            "validity_reason": reason,
+            "converged": bool(row.get("converged", False)),
+            "maximumTemperatureCapFraction": row.get("maximumTemperatureCapFraction"),
+            "maximumSpeciesLimiterFraction": row.get("maximumSpeciesLimiterFraction"),
+            "maximumGasCapFraction": row.get("maximumGasCapFraction"),
+            "maximumChemicalRateCapFraction": row.get("maximumChemicalRateCapFraction"),
+            "simulatedTime_s": row.get("simulatedTime_s"),
+            "terminatedAtIgnition": bool(row.get("terminatedAtIgnition", False)),
+            "wallClockTime_s": row.get("wallClockTime_s"),
+        }
+
+    @staticmethod
+    def _vmin_monotonicity_ok(trials: Sequence[Mapping[str, Any]]) -> bool:
+        classified = [
+            (float(t["voltage_V"]), bool(t["ignition_succeeded"]))
+            for t in trials
+            if bool(t.get("numerically_valid_for_threshold_classification", False))
+        ]
+        classified.sort(key=lambda x: x[0])
+        # Operational threshold search assumes that once ignition occurs,
+        # increasing voltage within the configured low-voltage interval does
+        # not revert the case to non-ignition.  Detect any sampled violation.
+        ignition_seen = False
+        for _, ignited in classified:
+            if ignited:
+                ignition_seen = True
+            elif ignition_seen:
+                return False
+        return True
+
+    def _attach_minimum_ignition_voltage_search(
+        self,
+        prepared_items: Mapping[
+            int, tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]
+        ],
+        results: list[dict[str, Any] | None],
+    ) -> None:
+        """Attach a bracketed minimum-ignition-voltage metric to reference rows.
+
+        The already-computed reference-voltage row is reused as the upper
+        bracket.  A lower-bound trial and then bisection trials are executed in
+        standalone C++ processes.  Successful threshold-only trials request
+        early termination at the first ignition event; non-igniting trials must
+        integrate the full finite horizon.
+        """
+        from collections import deque
+
+        if not self.vmin_enabled:
+            raise EvaluatorError(
+                "v7.9.4 minimum_ignition_voltage_search must remain enabled because "
+                "V_min is an active NSGA-II objective"
+            )
+
+        states: dict[int, dict[str, Any]] = {}
+        queue: deque[tuple[int, float, str]] = deque()
+
+        def finalise(
+            i: int,
+            *,
+            status: str,
+            search_valid: bool,
+            objective_value: float,
+            physical_value: float | None,
+            low_nonigniting: float | None,
+            high_igniting: float | None,
+            left_censored: bool = False,
+            right_censored: bool = False,
+            failure_reason: str | None = None,
+        ) -> None:
+            state = states[i]
+            row = results[i]
+            if row is None:
+                return
+            trials = state["trials"]
+            monotonic = self._vmin_monotonicity_ok(trials)
+            if not monotonic and search_valid:
+                search_valid = False
+                status = "invalid_nonmonotonic_sampled_ignition_response"
+                failure_reason = "sampled_ignition_response_is_nonmonotonic_in_voltage"
+                objective_value = self.vmin_upper_bound_V + self.vmin_invalid_penalty_V
+                physical_value = None
+            resolution = (
+                float(high_igniting - low_nonigniting)
+                if high_igniting is not None and low_nonigniting is not None
+                else None
+            )
+            row.update(
+                {
+                    "referenceAppliedVoltage_V": float(self.voltage),
+                    "minimumIgnitionVoltageObjective_V": float(objective_value),
+                    "minimumIgnitionVoltage_V": (
+                        None if physical_value is None else float(physical_value)
+                    ),
+                    "minimumIgnitionVoltageSearchStatus": status,
+                    "minimumIgnitionVoltageSearchValid": bool(search_valid),
+                    "minimumIgnitionVoltageSearchFailureReason": failure_reason,
+                    "minimumIgnitionVoltageLeftCensored": bool(left_censored),
+                    "minimumIgnitionVoltageRightCensored": bool(right_censored),
+                    "minimumIgnitionVoltageLowerSearchBound_V": float(
+                        self.vmin_lower_bound_V
+                    ),
+                    "minimumIgnitionVoltageUpperSearchBound_V": float(
+                        self.vmin_upper_bound_V
+                    ),
+                    "minimumIgnitionVoltageLowerNonIgnitingBound_V": low_nonigniting,
+                    "minimumIgnitionVoltageUpperIgnitingBound_V": high_igniting,
+                    "minimumIgnitionVoltageBracketWidth_V": resolution,
+                    "minimumIgnitionVoltageTargetTolerance_V": float(
+                        self.vmin_tolerance_V
+                    ),
+                    "minimumIgnitionVoltageBisectionIterations": int(
+                        state.get("bisection_iterations", 0)
+                    ),
+                    "minimumIgnitionVoltageTrialCount": len(trials),
+                    "minimumIgnitionVoltageMonotonicityObserved": bool(monotonic),
+                    "minimumIgnitionVoltageNumericalThresholds": dict(
+                        self.vmin_numerical_thresholds
+                    ),
+                    "minimumIgnitionVoltageTrials": trials,
+                    "minimumIgnitionVoltageDefinition": (
+                        "minimum numerically-valid applied voltage within the configured "
+                        "search interval that reaches the condensed-phase ignition criterion "
+                        "by the finite simulation horizon; the reported physical value is the "
+                        "conservative upper/igniting bracket"
+                    ),
+                    "minimumIgnitionVoltageOtherObjectivesReferenceVoltage_V": float(
+                        self.voltage
+                    ),
+                }
+            )
+            state["done"] = True
+
+        # Initialise from the reference-voltage simulation.  This row supplies
+        # objectives 1, 2 and 4 and doubles as the Vmin upper-bound trial.
+        for i, prepared in prepared_items.items():
+            row = results[i]
+            if row is None:
+                continue
+            ref_summary = self._vmin_trial_summary(
+                row, self.vmin_upper_bound_V, "reference_voltage_upper_bound"
+            )
+            states[i] = {
+                "trials": [ref_summary],
+                "low": None,
+                "high": self.vmin_upper_bound_V,
+                "bisection_iterations": 0,
+                "done": False,
+            }
+            ref_valid = bool(
+                ref_summary["numerically_valid_for_threshold_classification"]
+            )
+            if not ref_valid:
+                finalise(
+                    i,
+                    status="invalid_reference_voltage_numerics",
+                    search_valid=False,
+                    objective_value=self.vmin_upper_bound_V
+                    + self.vmin_invalid_penalty_V,
+                    physical_value=None,
+                    low_nonigniting=None,
+                    high_igniting=None,
+                    failure_reason=str(ref_summary["validity_reason"]),
+                )
+            elif not bool(ref_summary["ignition_succeeded"]):
+                # True threshold is above the search interval.  The fixed
+                # reference-voltage ignition constraint will independently keep
+                # this design infeasible.
+                finalise(
+                    i,
+                    status="right_censored_no_ignition_at_reference_voltage",
+                    search_valid=True,
+                    objective_value=self.vmin_upper_bound_V
+                    + self.vmin_right_censor_penalty_V,
+                    physical_value=None,
+                    low_nonigniting=self.vmin_upper_bound_V,
+                    high_igniting=None,
+                    right_censored=True,
+                )
+            else:
+                queue.append((i, self.vmin_lower_bound_V, "lower_bound"))
+
+        running: dict[
+            int, tuple[Any, Any, float, float, str, Path]
+        ] = {}
+        workers = min(self.cpp_parallel_cases, max(1, len(queue)))
+        started_all = time.perf_counter()
+        launched_trials = 0
+        completed_trials = 0
+
+        def voltage_dir(base: Path, voltage: float) -> Path:
+            token = f"{voltage:09.4f}".replace("-", "m").replace(".", "p")
+            return base / "vmin_search" / f"V_{token}"
+
+        while queue or running:
+            while queue and len(running) < workers:
+                i, voltage, kind = queue.popleft()
+                if states.get(i, {}).get("done", False):
+                    continue
+                anode, cathode, metadata, output_dir = prepared_items[i]
+                cfg = dict(self.cpp_config_values)
+                cfg["voltage"] = float(voltage)
+                cfg["stop_on_ignition"] = bool(
+                    self.vmin_stop_successful_trials_at_ignition
+                )
+                trial_dir = voltage_dir(Path(output_dir), voltage)
+                try:
+                    prepared_case = self.cpp_runner.prepare_case(
+                        anode, cathode, cfg, trial_dir
+                    )
+                    started_case = time.perf_counter()
+                    process = self.cpp_runner.launch_prepared_case(prepared_case)
+                    running[i] = (
+                        process,
+                        prepared_case,
+                        started_case,
+                        float(voltage),
+                        kind,
+                        trial_dir,
+                    )
+                    launched_trials += 1
+                except Exception as exc:
+                    finalise(
+                        i,
+                        status="invalid_trial_launch_failure",
+                        search_valid=False,
+                        objective_value=self.vmin_upper_bound_V
+                        + self.vmin_invalid_penalty_V,
+                        physical_value=None,
+                        low_nonigniting=states[i].get("low"),
+                        high_igniting=states[i].get("high"),
+                        failure_reason=f"{type(exc).__name__}: {exc}",
+                    )
+
+            finished_any = False
+            for i, (
+                process,
+                prepared_case,
+                started_case,
+                voltage,
+                kind,
+                trial_dir,
+            ) in list(running.items()):
+                if process.poll() is None:
+                    continue
+                finished_any = True
+                del running[i]
+                completed_trials += 1
+                state = states[i]
+                try:
+                    trial_row = self.cpp_runner.collect_prepared_case(
+                        prepared_case, process, started_case
+                    )
+                    trial_row["appliedVoltage_V"] = float(voltage)
+                    trial_row["vminTrialRole"] = kind
+                    Path(trial_dir, "condensed_metrics.json").write_text(
+                        json.dumps(
+                            _strict_json_value(trial_row),
+                            indent=2,
+                            allow_nan=False,
+                        ),
+                        encoding="utf-8",
+                    )
+                except Exception as exc:
+                    finalise(
+                        i,
+                        status="invalid_trial_solver_failure",
+                        search_valid=False,
+                        objective_value=self.vmin_upper_bound_V
+                        + self.vmin_invalid_penalty_V,
+                        physical_value=None,
+                        low_nonigniting=state.get("low"),
+                        high_igniting=state.get("high"),
+                        failure_reason=f"{type(exc).__name__}: {exc}",
+                    )
+                    continue
+
+                summary = self._vmin_trial_summary(trial_row, voltage, kind)
+                state["trials"].append(summary)
+                if not bool(summary["numerically_valid_for_threshold_classification"]):
+                    finalise(
+                        i,
+                        status="invalid_trial_numerics",
+                        search_valid=False,
+                        objective_value=self.vmin_upper_bound_V
+                        + self.vmin_invalid_penalty_V,
+                        physical_value=None,
+                        low_nonigniting=state.get("low"),
+                        high_igniting=state.get("high"),
+                        failure_reason=str(summary["validity_reason"]),
+                    )
+                    continue
+                if not self._vmin_monotonicity_ok(state["trials"]):
+                    finalise(
+                        i,
+                        status="invalid_nonmonotonic_sampled_ignition_response",
+                        search_valid=False,
+                        objective_value=self.vmin_upper_bound_V
+                        + self.vmin_invalid_penalty_V,
+                        physical_value=None,
+                        low_nonigniting=state.get("low"),
+                        high_igniting=state.get("high"),
+                        failure_reason="sampled_ignition_response_is_nonmonotonic_in_voltage",
+                    )
+                    continue
+
+                ignited = bool(summary["ignition_succeeded"])
+                if kind == "lower_bound":
+                    if ignited:
+                        finalise(
+                            i,
+                            status="left_censored_ignites_at_lower_search_bound",
+                            search_valid=True,
+                            objective_value=self.vmin_lower_bound_V,
+                            physical_value=self.vmin_lower_bound_V,
+                            low_nonigniting=None,
+                            high_igniting=self.vmin_lower_bound_V,
+                            left_censored=True,
+                        )
+                        continue
+                    state["low"] = float(voltage)
+                    state["high"] = float(self.vmin_upper_bound_V)
+                else:
+                    state["bisection_iterations"] += 1
+                    if ignited:
+                        state["high"] = float(voltage)
+                    else:
+                        state["low"] = float(voltage)
+
+                low = float(state["low"])
+                high = float(state["high"])
+                if high - low <= self.vmin_tolerance_V + 1.0e-12:
+                    finalise(
+                        i,
+                        status="bracketed_converged",
+                        search_valid=True,
+                        objective_value=high,
+                        physical_value=high,
+                        low_nonigniting=low,
+                        high_igniting=high,
+                    )
+                    continue
+                if state["bisection_iterations"] >= self.vmin_max_iterations:
+                    finalise(
+                        i,
+                        status="bracketed_max_iterations_reached",
+                        search_valid=True,
+                        objective_value=high,
+                        physical_value=high,
+                        low_nonigniting=low,
+                        high_igniting=high,
+                        failure_reason=(
+                            "target_voltage_tolerance_not_reached_before_maximum_bisection_iterations"
+                        ),
+                    )
+                    continue
+                midpoint = 0.5 * (low + high)
+                queue.append((i, midpoint, "bisection"))
+
+            if running and not finished_any:
+                time.sleep(0.05)
+
+        # Persist the augmented reference-voltage metrics after all threshold
+        # trials.  Trial-specific metrics remain in physics/<id>/vmin_search/.
+        for i, prepared in prepared_items.items():
+            row = results[i]
+            if row is None:
+                continue
+            output_dir = Path(prepared[3])
+            output_dir.mkdir(parents=True, exist_ok=True)
+            (output_dir / "condensed_metrics.json").write_text(
+                json.dumps(_strict_json_value(row), indent=2, allow_nan=False),
+                encoding="utf-8",
+            )
+        if launched_trials:
+            print(
+                f"[vmin-search] complete candidates={len(states)} "
+                f"trials={completed_trials}/{launched_trials} "
+                f"elapsed={time.perf_counter()-started_all:.1f}s",
+                flush=True,
+            )
+
+    def evaluate_batch(
+        self,
+        items: Sequence[tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]],
+    ) -> list[dict[str, Any]]:
+        from collections import deque
+
+        if not items:
+            return []
+        results: list[dict[str, Any] | None] = [None] * len(items)
+        pending: deque[
+            tuple[int, tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]]
+        ] = deque()
+        prepared_items: dict[
+            int, tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]
+        ] = {}
+        rejected = 0
+
+        # Prepare every mask/config serially.  Only native C++ processes are
+        # concurrent; no Python thread enters Torch/SciPy during integration.
+        for i, item in enumerate(items):
+            try:
+                prepared_item = self._prepare_cpp_item(item)
+                prepared_items[i] = prepared_item
+                pending.append((i, prepared_item))
+            except Exception as exc:
+                results[i] = self._cpp_failed_geometry_row(item[2], item[3], exc)
+                rejected += 1
+
+        workers = min(self.cpp_parallel_cases, max(1, len(pending)))
+        started_all = time.perf_counter()
+        print(
+            f"[cpp-physics] start cases={len(items)} prepared={len(pending)} "
+            f"parallel={workers} engine={self.cpp_version}", flush=True
+        )
+
+        # Main-thread Popen scheduler: avoids ThreadPool/fork-runtime interactions
+        # and makes candidate-level CPU parallelism explicit on macOS and Linux.
+        running: dict[
+            int, tuple[Any, Any, float, Mapping[str, Any], Path]
+        ] = {}
+        completed_count = len(items) - len(pending)
+        try:
+            while pending or running:
+                while pending and len(running) < workers:
+                    i, prepared_item = pending.popleft()
+                    anode, cathode, metadata, output_dir = prepared_item
+                    try:
+                        prepared_case = self.cpp_runner.prepare_case(
+                            anode, cathode, self.cpp_config_values, output_dir
+                        )
+                        started_case = time.perf_counter()
+                        process = self.cpp_runner.launch_prepared_case(prepared_case)
+                        running[i] = (
+                            process, prepared_case, started_case, metadata, output_dir
+                        )
+                    except Exception as exc:
+                        results[i] = self._cpp_failed_geometry_row(
+                            metadata, output_dir, exc
+                        )
+                        rejected += 1
+                        completed_count += 1
+
+                finished_any = False
+                for i, (process, prepared_case, started_case, metadata, output_dir) in list(running.items()):
+                    if process.poll() is None:
+                        continue
+                    finished_any = True
+                    geometry_id = str(metadata.get("geometry_id"))
+                    try:
+                        row = self.cpp_runner.collect_prepared_case(
+                            prepared_case, process, started_case
+                        )
+                        row.update(
+                            {
+                                "geometry_id": geometry_id,
+                                "backend": "cpp_fp64_cpu",
+                                "solverRevision": "v7_9_4_cpp_fp64_surface_contact_minimum_ignition_voltage",
+                                "empiricalSurfaceReactionProgressUsed": False,
+                                "modelStatus": self.config["project"]["modelStatus"],
+                                "postIgnitionClosure": "none_condensed_phase_only",
+                                "evaluationTime_s": float(min(2.0, self.end_time_s)),
+                                "ignitionCriterionType": self.config["condensedIgnition"]["criterion"],
+                                "ignitionOnsetTemperature_K": float(
+                                    self.config["condensedIgnition"]["decompositionOnsetTemperature_K"]
+                                ),
+                                "ignitionInterpretation": self.config["condensedIgnition"]["interpretation"],
+                                "physicsDevice": "cpu",
+                                "physicsDtype": "float64",
+                                "gridSize": self.grid_size,
+                                "timeStep_s": float(self.config["coupled"]["timeStep_s"]),
+                                "surfaceContactModel": True,
+                                "electrodeMasksRemovePropellant": False,
+                                "propellantDomainAreaFraction": 1.0,
+                                "hiddenBusConnectionAssumed": True,
+                            }
+                        )
+                        Path(output_dir, "condensed_metrics.json").write_text(
+                            json.dumps(_strict_json_value(row), indent=2, allow_nan=False),
+                            encoding="utf-8",
+                        )
+                        results[i] = row
+                    except Exception as exc:
+                        results[i] = self._cpp_failed_geometry_row(
+                            metadata, output_dir, exc
+                        )
+                        rejected += 1
+                    del running[i]
+                    completed_count += 1
+                    print(
+                        f"[cpp-physics] {completed_count}/{len(items)} id={geometry_id} "
+                        f"rejected={rejected} elapsed={time.perf_counter()-started_all:.1f}s",
+                        flush=True,
+                    )
+                if running and not finished_any:
+                    time.sleep(0.05)
+        except BaseException:
+            for process, *_ in running.values():
+                if process.poll() is None:
+                    process.terminate()
+            for process, *_ in running.values():
+                try:
+                    process.wait(timeout=2.0)
+                except Exception:
+                    if process.poll() is None:
+                        process.kill()
+            raise
+        self._attach_minimum_ignition_voltage_search(prepared_items, results)
+        return [row for row in results if row is not None]
+
+    def evaluate(
+        self,
+        anode_mask: np.ndarray,
+        cathode_mask: np.ndarray,
+        metadata: Mapping[str, Any],
+        output_dir: Path,
+    ) -> dict[str, Any]:
+        return self.evaluate_batch([(anode_mask, cathode_mask, metadata, output_dir)])[0]
+
+
+class AutoV772Evaluator:
+    """Runtime adapter for the existing v7.7.2 Electrical+Solid implementation.
+
+    The original package has evolved across releases. This adapter discovers a
+    public coupled/electrical-solid callable, maps commonly used argument names,
+    and records exactly which callable was selected. A manual module/function
+    override in YAML always takes precedence.
+    """
+
+    def __init__(
+        self,
+        package_root: Path,
+        config: Mapping[str, Any],
+        workdir: Path,
+    ) -> None:
+        self.package_root = Path(package_root).resolve()
+        supplied = dict(config)
+        base: dict[str, Any] = {}
+        for rel in supplied.get("base_config_candidates", [
+            "config/default_lp_pva.yaml",
+            "config/default_config.yaml",
+            "config/default.yaml",
+        ]):
+            candidate = self.package_root / str(rel)
+            if candidate.is_file():
+                base = _load_yaml_if_available(candidate)
+                supplied["resolved_base_config"] = str(candidate)
+                break
+        overlay = supplied.get("physics_config", {})
+        self.config = _deep_merge(base, overlay) if base else dict(overlay)
+        # Project physics overlay is also projected onto the common top-level
+        # keys used by prior v7.x configurations. This prevents a literature/user
+        # composition from being shadowed by the legacy base YAML.
+        project_physics = supplied.get("physics_config", {}).get("physics", {})
+        if isinstance(project_physics, Mapping):
+            composition = project_physics.get("composition")
+            if isinstance(composition, Mapping):
+                legacy_composition = self.config.get("composition", {})
+                if not isinstance(legacy_composition, Mapping):
+                    legacy_composition = {}
+                self.config["composition"] = _deep_merge(dict(legacy_composition), composition)
+            if project_physics.get("retained_water_fraction") is not None:
+                self.config["retained_water_fraction"] = project_physics["retained_water_fraction"]
+            else:
+                self.config.setdefault("parameter_status", {})["retained_water_fraction"] = (
+                    "not_measured_using_legacy_nominal_for_pipeline_only"
+                )
+            if "voltage_V" in project_physics:
+                self.config["voltage_V"] = project_physics["voltage_V"]
+                self.config["appliedVoltage_V"] = project_physics["voltage_V"]
+            if "end_time_s" in project_physics:
+                self.config["end_time_s"] = project_physics["end_time_s"]
+                self.config["endTime_s"] = project_physics["end_time_s"]
+        # Retain adapter controls at top level without losing the full v7.7.2 config.
+        self.adapter_config = supplied
+        for key in ("device", "voltage_V", "end_time_s", "module", "function", "module_candidates"):
+            if key in supplied:
+                self.config[key] = supplied[key]
+        self.workdir = Path(workdir)
+        self.python_root = self.package_root / "python"
+        if str(self.python_root) not in sys.path:
+            sys.path.insert(0, str(self.python_root))
+        self.callable, self.callable_name = self._discover()
+        self._write_diagnostics()
+
+    def _candidate_modules(self) -> list[str]:
+        configured = self.adapter_config.get("module_candidates", [])
+        modules = [str(x) for x in configured]
+        search_root = self.python_root
+        for p in search_root.rglob("*.py"):
+            rel = p.relative_to(search_root).with_suffix("")
+            if "__pycache__" in rel.parts or rel.name.startswith("test_"):
+                continue
+            module = ".".join(rel.parts)
+            text = p.read_text(errors="ignore").lower()
+            if any(k in text for k in ("coupled", "electrical", "solid", "physics")):
+                modules.append(module)
+        # Preserve order while removing duplicates.
+        return list(dict.fromkeys(modules))
+
+    @staticmethod
+    def _score_callable(module: str, name: str, func: Callable[..., Any]) -> int:
+        full = f"{module}.{name}".lower()
+        score = 0
+        patterns = {
+            "run_coupled_batch": 100,
+            "evaluate_coupled_batch": 95,
+            "run_electrical_solid": 90,
+            "evaluate_electrical_solid": 90,
+            "run_coupled": 80,
+            "evaluate_coupled": 80,
+            "coupled": 35,
+            "solid": 20,
+            "evaluate": 12,
+            "simulate": 12,
+        }
+        for p, s in patterns.items():
+            if p in full:
+                score += s
+        try:
+            params = inspect.signature(func).parameters
+            names = {x.lower() for x in params}
+            anode_names = {"anodemask", "anode_mask", "anode", "mask_a"}
+            cathode_names = {"cathodemask", "cathode_mask", "cathode", "mask_c"}
+            geometry_names = {"geometry", "candidate", "metadata", "geometry_data"}
+            batch_names = {"batch", "candidates", "geometries", "geometry_batch", "items"}
+            has_geometry_input = bool((anode_names & names and cathode_names & names) or geometry_names & names or batch_names & names)
+            if not has_geometry_input:
+                score -= 200
+            if anode_names & names:
+                score += 15
+            if cathode_names & names:
+                score += 15
+            if batch_names & names:
+                score += 10
+            if any("config" in n or n == "cfg" for n in names):
+                score += 5
+            mappable = anode_names | cathode_names | geometry_names | batch_names | {
+                "geometry_id", "config", "cfg", "user_cfg", "usercfg",
+                "workdir", "output_dir", "case_dir", "outdir", "outputroot",
+                "device", "voltage", "voltage_v", "end_time_s"
+            }
+            required = {
+                n.lower() for n, p in params.items()
+                if p.default is inspect.Parameter.empty and p.kind not in (
+                    inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD
+                )
+            }
+            if required - mappable:
+                score -= 500
+        except Exception:
+            score -= 10
+        return score
+
+    def _discover(self) -> tuple[Callable[..., Any], str]:
+        manual_module = self.adapter_config.get("module")
+        manual_function = self.adapter_config.get("function")
+        if manual_module and manual_function:
+            module = importlib.import_module(str(manual_module))
+            func = getattr(module, str(manual_function))
+            return func, f"{manual_module}.{manual_function}"
+
+        candidates: list[tuple[int, str, Callable[..., Any]]] = []
+        failures: dict[str, str] = {}
+        for module_name in self._candidate_modules():
+            try:
+                module = importlib.import_module(module_name)
+            except Exception as exc:
+                failures[module_name] = f"{type(exc).__name__}: {exc}"
+                continue
+            for name, obj in vars(module).items():
+                if name.startswith("_") or not callable(obj) or inspect.isclass(obj):
+                    continue
+                score = self._score_callable(module_name, name, obj)
+                if score >= 30:
+                    candidates.append((score, f"{module_name}.{name}", obj))
+        candidates.sort(key=lambda x: (-x[0], x[1]))
+        self.discovery_failures = failures
+        self.discovery_candidates = [(s, n) for s, n, _ in candidates[:50]]
+        if not candidates:
+            raise EvaluatorError(
+                "Could not auto-discover a v7.7.2 Electrical+Solid callable. "
+                "Set evaluator.module and evaluator.function in the NSGA-II YAML."
+            )
+        return candidates[0][2], candidates[0][1]
+
+    def _write_diagnostics(self) -> None:
+        report = {
+            "selected_callable": self.callable_name,
+            "signature": str(inspect.signature(self.callable)),
+            "ranked_candidates": getattr(self, "discovery_candidates", []),
+            "import_failures": getattr(self, "discovery_failures", {}),
+        }
+        self.workdir.mkdir(parents=True, exist_ok=True)
+        (self.workdir / "evaluator_adapter_diagnostics.json").write_text(
+            json.dumps(report, indent=2), encoding="utf-8"
+        )
+
+    def _build_call(
+        self,
+        anode_mask: np.ndarray,
+        cathode_mask: np.ndarray,
+        metadata: Mapping[str, Any],
+        output_dir: Path,
+    ) -> tuple[list[Any], dict[str, Any]]:
+        sig = inspect.signature(self.callable)
+        context: dict[str, Any] = {
+            "anode_mask": anode_mask,
+            "anodemask": anode_mask,
+            "cathode_mask": cathode_mask,
+            "cathodemask": cathode_mask,
+            "geometry": metadata,
+            "candidate": metadata,
+            "metadata": metadata,
+            "geometry_id": metadata.get("geometry_id"),
+            "config": self.config.get("physics_config", self.config),
+            "cfg": self.config.get("physics_config", self.config),
+            "user_cfg": self.config.get("physics_config", self.config),
+            "workdir": output_dir,
+            "output_dir": output_dir,
+            "case_dir": output_dir,
+            "device": self.config.get("device", "auto"),
+            "voltage_v": float(self.config.get("voltage_V", 260.0)),
+            "voltage": float(self.config.get("voltage_V", 260.0)),
+            "end_time_s": float(self.config.get("end_time_s", 2.0)),
+        }
+        args: list[Any] = []
+        kwargs: dict[str, Any] = {}
+        unsupported: list[str] = []
+        for name, param in sig.parameters.items():
+            lname = name.lower()
+            value_found = False
+            value = None
+            if lname in context:
+                value, value_found = context[lname], True
+            else:
+                aliases = {
+                    "anode": "anode_mask",
+                    "cathode": "cathode_mask",
+                    "mask_a": "anode_mask",
+                    "mask_c": "cathode_mask",
+                    "geometry_data": "geometry",
+                    "usercfg": "user_cfg",
+                    "outdir": "output_dir",
+                    "outputroot": "output_dir",
+                }
+                if lname in aliases:
+                    value, value_found = context[aliases[lname]], True
+            if value_found:
+                if param.kind == inspect.Parameter.POSITIONAL_ONLY:
+                    args.append(value)
+                else:
+                    kwargs[name] = value
+            elif param.default is inspect.Parameter.empty and param.kind not in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            ):
+                unsupported.append(name)
+        if unsupported:
+            raise EvaluatorError(
+                f"Auto-selected {self.callable_name}{sig}, but required arguments "
+                f"could not be mapped: {unsupported}. Set a manual adapter override."
+            )
+        return args, kwargs
+
+    def evaluate_batch(
+        self,
+        items: Sequence[tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]],
+    ) -> list[dict[str, Any]]:
+        """Use a discovered batch callable when its signature exposes a batch argument.
+
+        If the original v7.7.2 API is single-geometry, evaluation safely falls
+        back to repeated calls. The selected mode is written to diagnostics.
+        """
+        sig = inspect.signature(self.callable)
+        names = {n.lower() for n in sig.parameters}
+        batch_names = {"batch", "candidates", "geometries", "geometry_batch", "items"}
+        target = next((n for n in sig.parameters if n.lower() in batch_names), None)
+        if target is None or len(items) <= 1:
+            return [self.evaluate(a, c, m, o) for a, c, m, o in items]
+
+        payload = [
+            {
+                "anode_mask": a,
+                "cathode_mask": c,
+                "metadata": dict(m),
+                "geometry_id": m.get("geometry_id"),
+                "output_dir": o,
+            }
+            for a, c, m, o in items
+        ]
+        kwargs: dict[str, Any] = {target: payload}
+        for name, param in sig.parameters.items():
+            if name == target:
+                continue
+            lname = name.lower()
+            if lname in {"config", "cfg", "user_cfg", "usercfg"}:
+                kwargs[name] = self.config.get("physics_config", self.config)
+            elif lname == "device":
+                kwargs[name] = self.config.get("device", "auto")
+            elif lname in {"output_dir", "workdir", "outputroot"}:
+                kwargs[name] = self.workdir
+            elif param.default is inspect.Parameter.empty and param.kind not in (
+                inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD
+            ):
+                # A required per-geometry argument means this is not a usable batch API.
+                return [self.evaluate(a, c, m, o) for a, c, m, o in items]
+        result = self.callable(**kwargs)
+        if hasattr(result, "to_dict") and not isinstance(result, Mapping):
+            try:
+                rows = result.to_dict(orient="records")
+                return [dict(r) for r in rows]
+            except Exception:
+                pass
+        if isinstance(result, Sequence) and not isinstance(result, (str, bytes, Mapping)):
+            rows = [_normalise_result(x) for x in result]
+            if len(rows) == len(items):
+                return rows
+        if isinstance(result, Mapping):
+            # Mapping keyed by geometry_id.
+            if all(str(m.get("geometry_id")) in result for _, _, m, _ in items):
+                return [_normalise_result(result[str(m.get("geometry_id"))]) for _, _, m, _ in items]
+        raise EvaluatorError(
+            f"Batch callable {self.callable_name} returned an unsupported structure or row count"
+        )
+
+    def evaluate(
+        self,
+        anode_mask: np.ndarray,
+        cathode_mask: np.ndarray,
+        metadata: Mapping[str, Any],
+        output_dir: Path,
+    ) -> dict[str, Any]:
+        args, kwargs = self._build_call(anode_mask, cathode_mask, metadata, output_dir)
+        try:
+            result = self.callable(*args, **kwargs)
+        except Exception as exc:
+            error_path = output_dir / "evaluator_error.txt"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            error_path.write_text(traceback.format_exc(), encoding="utf-8")
+            raise EvaluatorError(
+                f"{self.callable_name} failed for {metadata.get('geometry_id')}: {exc}. "
+                f"See {error_path}."
+            ) from exc
+        return _normalise_result(result)
+
+
+def create_evaluator(
+    package_root: Path,
+    evaluator_config: Mapping[str, Any],
+    workdir: Path,
+    allow_debug: bool,
+):
+    backend = str(evaluator_config.get("backend", "auto_v772")).lower()
+    if backend in {"bc_global_native", "bc_native_cpu", "bc_native_cuda"}:
+        from .bc_native import NativeBCGlobalEvaluator
+        return NativeBCGlobalEvaluator(package_root, evaluator_config, workdir)
+    if backend in {"bc_global_native_hybrid", "bc_native_cpu_pool", "bc_global_native_cpu_pool"}:
+        from .bc_native import NativeBCHybridEvaluator
+        return NativeBCHybridEvaluator(package_root, evaluator_config, workdir)
+    if backend == "analytic_debug":
+        if not allow_debug:
+            raise EvaluatorError(
+                "The analytic_debug backend is non-physical. Pass --allow-debug-physics only for plumbing tests."
+            )
+        return AnalyticDebugEvaluator(float(evaluator_config.get("end_time_s", 2.0)))
+    if backend in {
+        "bc_global_preflame",
+        "bc_global_torch",
+        "paper_bc_global",
+        "bc_global_preflame_propagation",
+    }:
+        return BCGlobalPreflameEvaluator(package_root, evaluator_config, workdir)
+    if backend in {"cpp_fp64_cpu", "cpp_cpu_fp64", "m2_cpp_fp64"}:
+        return CppCondensedFp64Evaluator(package_root, evaluator_config, workdir)
+    if backend in {
+        "hybrid_cuda_cpu",
+        "hybrid_cuda_fp64_a100_cpp_fp64_cpu",
+        "a100_cpu48_hybrid",
+    }:
+        # Local import avoids a module cycle: hybrid.py subclasses the CPU
+        # evaluator defined in this module.
+        from .hybrid import HybridCudaCpuFp64Evaluator
+
+        return HybridCudaCpuFp64Evaluator(package_root, evaluator_config, workdir)
+    if backend in {
+        "direct_condensed_v772_no_f",
+        "native_condensed_phase",
+        "condensed_v772_no_f",
+        "condensed_phase_no_f",
+        "no_f",
+    }:
+        return DirectCondensedV772NoFEvaluator(package_root, evaluator_config, workdir)
+    if backend in {"auto", "auto_v772", "v772"}:
+        return AutoV772Evaluator(package_root, evaluator_config, workdir)
+    raise EvaluatorError(f"Unknown evaluator backend: {backend}")

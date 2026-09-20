@@ -1,0 +1,327 @@
+{
+  "status": "passed",
+  "actual_BC_geometry_builder_cases": 1000,
+  "design_grid": 96,
+  "physics_grid": 193,
+  "full_propellant_overlay": true,
+  "candidate_PDE_runs": 0,
+  "CUDA_used": false,
+  "elapsed_s": 22.620621968000023,
+  "cache_report": {
+    "schema": "ecsp.validated_bootstrap/v1",
+    "status": "passed",
+    "contract": {
+      "schema": "ecsp.validated_bootstrap/v1",
+      "seed": 20260904,
+      "population_size": 1000,
+      "initial_topologies": 20,
+      "variants_per_topology": 50,
+      "maximum_attempts_per_topology": 5000,
+      "limits": {
+        "domain_mm": 20.0,
+        "grid_size": 96,
+        "margin_mm": 0.75,
+        "minimum_gap_mm": 0.5,
+        "minimum_width_mm": 0.3,
+        "maximum_width_mm": 5.0,
+        "target_area_fraction_per_polarity": 0.175,
+        "area_tolerance_fraction": 0.01,
+        "maximum_components_per_polarity": 3,
+        "maximum_total_components": 4,
+        "disconnected_component_powering": "implicit_3d_hidden_bus",
+        "surface_contact_model": "overlay_on_full_propellant_domain",
+        "maximum_branch_depth": 2,
+        "maximum_branches_per_component": 2,
+        "minimum_segment_mm": 0.65,
+        "maximum_segment_mm": 5.0
+      },
+      "physics_grid_size": 193,
+      "generator_sources": {
+        "geometry.py": "fdbd8c2622bb172c25ef6e076e90885f8180f03dcad2b6e6d4ba506ac49810be",
+        "geometry_fit.py": "2a831c7db76847c3226e470e78aab4c33eadf83a893387d2ae7f4c52f56d74f1",
+        "bootstrap.py": "a6ccd5222bd72fe9311f43d2d13d25771d39acdb3eb9315759311de6b2330f1b",
+        "numerics.py": "4c518a1d00f78591b29ae7064f405c4213d5101bc90f91d3de0fd302c43af6be"
+      },
+      "area_rule": "each_polarity_relative_to_target_and_polarity_imbalance",
+      "unique_rule": "ordered_anode_cathode_mask_pair_on_design_and_physics_grids"
+    },
+    "contract_sha256": "3589b02d8840d79a9cdc8c5e71033840c0d83ac1db634121639f4ba7defaca11",
+    "requested_count": 1000,
+    "accepted_count": 1000,
+    "all_candidates_feasible_before_physics": true,
+    "independently_tested_on_actual_A100": false,
+    "physical_ignition_validation": false,
+    "topologies": [
+      {
+        "topology_id": "T00_1A1C_f430c6",
+        "signature": "f430c63060cf",
+        "component_pair": [
+          1,
+          1
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T01_1A2C_64e3cb",
+        "signature": "64e3cb2beffa",
+        "component_pair": [
+          1,
+          2
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T02_2A1C_5c93ad",
+        "signature": "5c93adf9927a",
+        "component_pair": [
+          2,
+          1
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T03_2A2C_6bbb2a",
+        "signature": "6bbb2ac4b262",
+        "component_pair": [
+          2,
+          2
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T04_3A1C_057621",
+        "signature": "0576212229f0",
+        "component_pair": [
+          3,
+          1
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T05_1A3C_821d3e",
+        "signature": "821d3e863dd7",
+        "component_pair": [
+          1,
+          3
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T06_1A1C_5ee018",
+        "signature": "5ee018168620",
+        "component_pair": [
+          1,
+          1
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T07_1A2C_584e91",
+        "signature": "584e91e0c1d2",
+        "component_pair": [
+          1,
+          2
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T08_2A1C_9a248d",
+        "signature": "9a248d6d5383",
+        "component_pair": [
+          2,
+          1
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T09_2A2C_b29458",
+        "signature": "b2945851dc36",
+        "component_pair": [
+          2,
+          2
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T10_3A1C_a04c3f",
+        "signature": "a04c3fbce332",
+        "component_pair": [
+          3,
+          1
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T11_1A3C_3a9b95",
+        "signature": "3a9b9531df9d",
+        "component_pair": [
+          1,
+          3
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T12_1A1C_8c4485",
+        "signature": "8c4485bb5b27",
+        "component_pair": [
+          1,
+          1
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T13_1A2C_f3be84",
+        "signature": "f3be840df05f",
+        "component_pair": [
+          1,
+          2
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T14_2A1C_79adb7",
+        "signature": "79adb7f3ccae",
+        "component_pair": [
+          2,
+          1
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T15_2A2C_fb290e",
+        "signature": "fb290e37dc28",
+        "component_pair": [
+          2,
+          2
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T16_3A1C_1e5eb8",
+        "signature": "1e5eb8c4ecff",
+        "component_pair": [
+          3,
+          1
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T17_1A3C_2f1913",
+        "signature": "2f1913800b9d",
+        "component_pair": [
+          1,
+          3
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T18_1A1C_90cdcd",
+        "signature": "90cdcde1aeef",
+        "component_pair": [
+          1,
+          1
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      },
+      {
+        "topology_id": "T19_1A2C_e24705",
+        "signature": "e2470556caf1",
+        "component_pair": [
+          1,
+          2
+        ],
+        "accepted": 50,
+        "required": 50,
+        "attempts": 50,
+        "rejections": {},
+        "status": "passed"
+      }
+    ],
+    "reused_cache": true,
+    "elapsed_s": 13.028132928999867,
+    "design_unique_count": 1000,
+    "physics_unique_count": 1000,
+    "total_attempts": 1000,
+    "maximum_design_area_relative_error": 0.0029761904761904656,
+    "maximum_physics_area_relative_error": 0.00990630620956263,
+    "minimum_design_gap_mm": 1.25,
+    "minimum_physics_gap_mm": 1.3471502590673574,
+    "maximum_used_width_mm": 1.562128707547879
+  }
+}

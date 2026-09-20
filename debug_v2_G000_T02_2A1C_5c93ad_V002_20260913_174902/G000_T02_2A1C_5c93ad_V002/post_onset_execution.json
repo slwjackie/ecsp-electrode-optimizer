@@ -1,0 +1,26 @@
+{
+  "schema": "ecsp.post-onset-batch/v1",
+  "requested_cpu_budget": 8,
+  "detected_cpu_budget": 8,
+  "cpu_workers": 1,
+  "host_reserve": 2,
+  "process_start_method": "spawn",
+  "execution": {
+    "backend": "numpy_cpu",
+    "device": "cpu",
+    "batch_size": 1,
+    "cuda_graph": false,
+    "cpu_budget": 8,
+    "host_reserve": 2,
+    "cpu_workers": 6,
+    "torch_threads": 1,
+    "maximum_batch_working_bytes": 8589934592,
+    "maximum_batch_history_bytes": 8589934592,
+    "oom_split_retry": true
+  },
+  "case_count": 1,
+  "candidate_order_preserved": true,
+  "cuda_oom_splits": 0,
+  "note": "execution evidence, not material/experimental validation",
+  "wall_clock_s": 2.338467290974222
+}

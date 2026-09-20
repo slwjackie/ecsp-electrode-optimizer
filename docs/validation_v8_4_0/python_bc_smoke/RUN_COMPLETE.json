@@ -1,0 +1,14 @@
+{
+  "recommended_geometry_id": "G000_T00_1A1C_f430c6_V000",
+  "elapsed_s": 2.5889837741851807,
+  "openfoam_used": false,
+  "model_scope": "bc_global_preflame_plus_post_onset_condensed_reaction_propagation",
+  "bc_global_preflame_used": true,
+  "post_onset_condensed_propagation_used": true,
+  "post_onset_backend": "reactive_euler",
+  "post_onset_reactive_euler_used": true,
+  "reactive_ranking_experimentally_validated": false,
+  "gas_phase_cfd_used": false,
+  "area_matched_staggered_evaluated": true,
+  "area_matched_staggered_included_in_optimization": false
+}

@@ -1,0 +1,65 @@
+{
+  "total_input_mass_g": 35.0,
+  "total_analyzed_mass_g": 18.19125,
+  "retained_water_fraction": 0.17793563847997262,
+  "cured_water_mass_fraction": 0.2,
+  "retained_water_fraction_basis": "literature_nominal_uncalibrated_3rd_paper_low_temperature_TGA_loss",
+  "retained_water_measurement_id": null,
+  "retained_water_is_measured": false,
+  "density_kg_per_m3": 1665.2661928448529,
+  "estimated_volume_m3": 1.092392920613072e-05,
+  "masses_g": {
+    "LP": 11.053,
+    "water": 20.447000000000003,
+    "PVA": 3.15,
+    "glycerol": 0.0,
+    "boric_acid": 0.35000000000000003
+  },
+  "analyzed_masses_g": {
+    "LP": 11.053,
+    "water": 3.6382500000000007,
+    "PVA": 3.15,
+    "glycerol": 0.0,
+    "boric_acid": 0.35000000000000003
+  },
+  "wet_mass_fractions": {
+    "LP": 0.3158,
+    "water": 0.5842,
+    "PVA": 0.09,
+    "glycerol": 0.0,
+    "boric_acid": 0.01
+  },
+  "analyzed_mass_fractions": {
+    "LP": 0.6075998075998077,
+    "water": 0.20000000000000004,
+    "PVA": 0.17316017316017315,
+    "glycerol": 0.0,
+    "boric_acid": 0.01924001924001924
+  },
+  "dry_mass_fractions": {
+    "LP": 0.7594997594997596,
+    "PVA": 0.21645021645021645,
+    "glycerol": 0.0,
+    "boric_acid": 0.024050024050024054
+  },
+  "moles": {
+    "LP": 0.1038913431713507,
+    "water": 0.20195356386356475,
+    "PVA_repeat": 0.07150542760245707,
+    "glycerol": 0.0,
+    "boric_acid": 0.005660682516577714
+  },
+  "initial_concentrations_mol_per_m3": {
+    "LP": 9510.437243866874,
+    "water": 18487.264065225223,
+    "PVA_repeat": 6545.76080210469,
+    "glycerol": 0.0,
+    "boric_acid": 518.1910656653496,
+    "Li_plus": 9510.437243866874,
+    "ClO4_minus": 9510.437243866874
+  },
+  "water_to_LP_mass_ratio": 1.8499050031665611,
+  "glycerol_to_PVA_mass_ratio": 0.0,
+  "boric_acid_to_PVA_repeat_molar_ratio": 0.07916437543802901,
+  "calibration_status": "literature_nominal_uncalibrated"
+}

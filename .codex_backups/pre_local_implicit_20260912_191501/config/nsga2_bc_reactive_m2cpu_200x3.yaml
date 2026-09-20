@@ -1,0 +1,395 @@
+project:
+  name: ECSP_v8_4_2_Reactive_A100CPU8_5mm_Area1pct_PowerOff
+  seed: 20260904
+  device: cpu
+  calibration_status: literature_nominal_uncalibrated
+workflow:
+  openfoam_enabled: false
+  gas_phase_cfd_enabled: false
+  flame_progress_enabled: false
+  evaluator_scope: bc_global_preflame_plus_selectable_two_channel_condensed_post_onset
+optimization:
+  algorithm: constrained_grammar_nsga2
+  population_size: 200
+  generations: 3
+  initial_topologies: 20
+  variants_per_topology: 10
+  physics_batch_size: 6
+  mating_performance_count: 70
+  mating_topology_count: 20
+  mating_diversity_count: 10
+  offspring_fractions:
+    crossover: 0.6
+    mutation: 0.25
+    new_grammar: 0.15
+  offspring_generation_attempts: 40
+  objectives_minimise:
+  - ignition_delay_s
+  - area_undecomposed_fraction_at_evaluation_time
+  - minimum_ignition_voltage_V
+  - current_congestion
+  no_ignition_penalty_s: 2.0
+  early_stop_patience: 2
+  early_stop_min_improvement: 0.001
+  numerical_cap_thresholds:
+    temperature: 0.02
+    species: 0.02
+    gas: 0.02
+    chemical_rate: 0.02
+  no_ignition_constraint_violation: 1.0
+  continuous_ignition_constraint: true
+  minimum_no_ignition_violation: 1.0e-06
+  require_ignition_for_feasibility: true
+  vmin_invalid_search_constraint_violation: 1.0
+  bootstrap_max_attempts_per_topology: 5000
+geometry:
+  domain_mm: 20.0
+  grid_size: 96
+  margin_mm: 0.75
+  minimum_gap_mm: 0.5
+  minimum_width_mm: 0.3
+  maximum_width_mm: 5.0
+  target_area_fraction_per_polarity: 0.175
+  area_tolerance_fraction: 0.01
+  maximum_components_per_polarity: 3
+  maximum_total_components: 4
+  disconnected_component_powering: implicit_3d_hidden_bus
+  surface_contact_model: overlay_on_full_propellant_domain
+  maximum_branch_depth: 2
+  maximum_branches_per_component: 2
+  minimum_segment_mm: 0.65
+  maximum_segment_mm: 5.0
+physics:
+  voltage_V: 260.0
+  end_time_s: 2.0
+  metric_evaluation_time_s: 2.0
+  interpretation: bc_global_preflame_condensed_phase_not_visible_flame
+  composition:
+    lithium_perchlorate_mass_fraction: 0.3158
+    water_mass_fraction: 0.5842
+    pva_mass_fraction: 0.09
+    glycerol_mass_fraction: 0.0
+    boric_acid_mass_fraction: 0.01
+    tungsten_mass_fraction: 0.0
+  cured_water_mass_fraction: 0.2
+  cured_water_mass_fraction_basis: literature_nominal_uncalibrated_3rd_paper_low_temperature_TGA_loss
+  calibration_status: literature_nominal_uncalibrated
+condensed_ignition:
+  criterion: temperature_and_global_conversion_over_minimum_area
+  onset_temperature_K: 523.15
+  onset_temperature_source: 2nd_paper_250C_onset_with_3rd_paper_260C_sensitivity
+  minimum_conversion_numerical_guard: 0.01
+  minimum_rate_numerical_guard_per_s: 0.0
+  reference_time_s: 2.0
+  interpretation: condensed_phase_decomposition_onset_not_visible_gas_flame
+  sensitivity_onset_temperature_K:
+  - 523.15
+  - 533.15
+minimum_ignition_voltage_search:
+  enabled: true
+  lower_bound_V: 20.0
+  upper_bound_V: 260.0
+  tolerance_V: 5.0
+  maximum_bisection_iterations: 8
+  right_censor_objective_penalty_V: 50.0
+  invalid_search_objective_penalty_V: 100.0
+  stop_successful_trials_at_ignition: true
+  verify_final_upper_full_horizon: true
+  reported_value: conservative_upper_igniting_bracket
+  interpretation: minimum_voltage_for_identical_temperature_plus_conversion_area_onset_within_configured_evaluation_horizon
+baselines:
+  area_matched_staggered:
+    enabled: true
+    layout: hidden_bus_vertical_2anode_2cathode
+    fingers_per_polarity: 2
+    target_interdigitation_overlap_fraction: 0.5
+    minimum_interdigitation_overlap_fraction: 0.45
+    hidden_bus_in_contact_mask: false
+    maximum_gap_safety_pixels: 8
+    include_in_nsga2_population: false
+    include_in_pareto_selection: false
+bc_global:
+  timeStep_s: 0.00025
+  endTime_s: 2.0
+  evaluationTime_s: 2.0
+  electricalUpdateInterval_s: 0.0025
+  handoffSnapshotInterval_s: 0.02
+  continuedElectricalHeatingAfterOnset: false
+  transport:
+    cation_diffusivity:
+      mode: reference_arrhenius
+      reference_value: 2.0e-13
+      reference_temperature_K: 298.15
+      activation_energy_J_per_mol: 22000.0
+      provenance: literature_nominal_pending_EIS_transference_or_PFG_NMR
+    anion_diffusivity:
+      mode: reference_arrhenius
+      reference_value: 1.5e-13
+      reference_temperature_K: 298.15
+      activation_energy_J_per_mol: 25000.0
+      provenance: literature_nominal_pending_EIS_transference_or_PFG_NMR
+    water_diffusivity:
+      mode: reference_arrhenius
+      reference_value: 2.0e-10
+      reference_temperature_K: 298.15
+      activation_energy_J_per_mol: 12000.0
+      provenance: literature_nominal_pending_DVS_or_PFG_NMR
+  augmentedElectronicConduction:
+    enabled: false
+    interpretation: strict_BC_ionic_current_only
+    conductivity:
+      mode: constant
+      value: 0.0
+  kinetics:
+    model: two_conversion_dependent_exothermic_channels_one_global_stoichiometry
+    mass_conversion_weights:
+    - 0.6666666666666666
+    - 0.3333333333333333
+    weight_provenance: literature_nominal_from_2nd_paper_24_to_12_percent_main_stage_mass_losses
+    heat_release_basis: per_initial_bulk_propellant_channel_contribution
+    maximum_rate_per_s: 1000.0
+    channels:
+    - label: second_exotherm_275_to_420C
+      provenance: approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data
+      alpha_grid:
+      - 0.0
+      - 0.1
+      - 0.2
+      - 0.3
+      - 0.4
+      - 0.5
+      - 0.6
+      - 0.7
+      - 0.8
+      - 0.9
+      - 1.0
+      activation_energy_J_per_mol:
+      - 85000
+      - 85000
+      - 91000
+      - 98000
+      - 105000
+      - 112000
+      - 119000
+      - 127000
+      - 136000
+      - 150000
+      - 150000
+      ln_Af_per_s:
+      - 13.0
+      - 13.0
+      - 14.5
+      - 15.5
+      - 16.5
+      - 18.0
+      - 19.0
+      - 20.0
+      - 21.0
+      - 23.8
+      - 23.8
+      heat_release_J_per_kg: 881000.0
+    - label: third_exotherm_380_to_525C
+      provenance: approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data
+      alpha_grid:
+      - 0.0
+      - 0.1
+      - 0.2
+      - 0.3
+      - 0.4
+      - 0.5
+      - 0.6
+      - 0.7
+      - 0.8
+      - 0.9
+      - 1.0
+      activation_energy_J_per_mol:
+      - 150000
+      - 150000
+      - 145000
+      - 140000
+      - 140000
+      - 150000
+      - 190000
+      - 220000
+      - 190000
+      - 150000
+      - 150000
+      ln_Af_per_s:
+      - 19.0
+      - 19.0
+      - 18.5
+      - 18.0
+      - 18.0
+      - 20.0
+      - 26.0
+      - 29.9
+      - 26.0
+      - 18.0
+      - 18.0
+      heat_release_J_per_kg: 1162000.0
+  onsetCriterion:
+    temperature_K: 523.15
+    minimum_progress: 0.01
+    minimum_area_fraction: 0.01
+    status: operational_threshold_pending_experimental_calibration
+  thermal:
+    density_kg_per_m3: null
+    heat_capacity:
+      mode: table
+      temperature_K:
+      - 298.15
+      - 373.15
+      - 473.15
+      - 573.15
+      - 773.15
+      values:
+      - 2200.0
+      - 2250.0
+      - 2350.0
+      - 2500.0
+      - 2700.0
+      provenance: literature_nominal_pending_DSC_specific_heat
+    thermal_conductivity:
+      mode: table
+      temperature_K:
+      - 298.15
+      - 373.15
+      - 473.15
+      - 573.15
+      - 773.15
+      values:
+      - 0.4
+      - 0.39
+      - 0.37
+      - 0.35
+      - 0.32
+      provenance: literature_nominal_pending_LFA_or_TPS
+    initialTemperature_K: 298.15
+    ambientTemperature_K: 298.15
+    convectionCoefficient_W_per_m2K: 12.0
+    emissivity: 0.85
+    stefanBoltzmann_W_per_m2K4: 5.670374419e-08
+    minimumTemperature_K: 250.0
+    maximumTemperature_K: 2500.0
+propagation_refinement:
+  enabled: true
+  selection:
+    maximum_pareto_candidates: 50
+    additional_fraction: 0.15
+    minimum_additional_candidates: 4
+    maximum_total_candidates: 60
+    source: preflame_pareto_plus_near_pareto_max_diversity
+    maximum_near_pareto_rank: 3
+  duration_s: 1.0
+  time_step_s: 0.00025
+  snapshot_interval_s: 0.05
+  front_progress_threshold: 0.5
+  established_reacted_area_fraction: 0.5
+  continued_electrical_heating: false
+  combined_final_objectives:
+  - ignition_delay_s
+  - area_undecomposed_fraction_at_evaluation_time
+  - minimum_ignition_voltage_V
+  - current_congestion
+  - final_unreacted_area_fraction
+  - established_time_after_onset_s
+  - negative_mean_regression_velocity_m_per_s
+  - reaction_front_nonuniformity
+  interpretation: post_onset_condensed_phase_reaction_progress_and_level_set_not_gas_phase_cfd
+  execution:
+    backend: numpy_cpu
+    parallel_cases: 6
+    note: Historical fallback-only setting; post_onset.execution controls this profile.
+  electrical_heating_mode: 'off'
+evaluator:
+  backend: bc_global_native_cpu_pool
+  base_config: config/default_lp_pva.yaml
+  device: cpu
+  voltage_V: 260.0
+  end_time_s: 2.0
+  grid_size: 193
+  internal_batch_size: 6
+  save_full_fields: false
+  base_overrides:
+    numerics:
+      physicsDevice: cpu
+      physicsDtype: float64
+      coupledBatchSize: 6
+      deterministic: true
+      potentialSolver:
+        methodCoupled: pcg
+        preconditioner: jacobi
+    coupled:
+      useFullNernstPlanckTransport: true
+      usePaperMassTransferSaturation: false
+    interface:
+      includeActivationHeat: false
+      activationHeatFraction: 0.0
+      boundaryCouplingModel: surface_overlay_bv
+      currentDirectionModel: signed_normal
+      useFullButlerVolmer: true
+      liquidKineticsGain: 0.0
+      nernst:
+        enabled: false
+      blocking:
+        minimumActiveAreaFraction: 1.0
+        passivation:
+          enabled: false
+        gasCoverage:
+          enabled: false
+  native:
+    torch_threads: 1
+    cpu_budget: 8
+    host_reserve: 2
+    cpu_workers: 6
+    cpu_threads_per_worker: 1
+    successful_trial_early_stop: true
+    verify_final_upper_full_horizon: true
+    handoff_batch_size: 1
+    host_check_interval_steps: 16
+    linear_check_interval: 8
+    cpu_runtime: standalone
+post_onset:
+  backend: reactive_euler
+  compare_backends: false
+  allow_experimental_ranking: true
+  reactive_euler:
+    eos:
+      A_Pa: 101325.0
+      B_Pa: 2000000000.0
+      N: 7.0
+      rho0_kg_per_m3: null
+      provenance: ASSUMED_NOT_FROM_PAPER; inherited v8.3 example, not measured ECSP
+        Tait coefficients; rho0 defaults to resolved BC density
+    caloric_closure: bc_cp_integral_plus_tait_cold_energy
+    boundary: reflective
+    riemann_solver: hllc
+    weno_epsilon: 1.0e-06
+    cfl: 0.35
+    thermal_cfl: 0.7
+    maximum_chemical_rate_cap_fraction: 0.02
+    maximum_channel_increment: 0.02
+    chemistry_integration_mode: subcycle_raw
+    maximum_chemistry_subcycles_per_pde_step: 4096
+    stationary_mechanics_fast_path: true
+    maximum_time_steps: 100000
+    maximum_step_retries: 12
+    minimum_time_step_s: 1.0e-14
+    mass_budget_relative_tolerance: 1.0e-10
+    energy_budget_relative_tolerance: 1.0e-09
+    interpretation: single condensed continuum; no thermal pressure source in barotropic
+      Tait; retain BC Fourier conduction; no gas mass transfer
+  note: Post-onset power OFF; no post-onset NP/BV recomputation; paired baseline retained.
+    Pre-onset BC NP/BV stays enabled.
+  execution:
+    backend: torch_batch
+    device: cpu
+    batch_size: 1
+    cuda_graph: false
+    cpu_budget: 8
+    host_reserve: 2
+    cpu_workers: 1
+    torch_threads: 1
+    maximum_batch_working_bytes: 8589934592
+    maximum_batch_history_bytes: 8589934592
+    oom_split_retry: true

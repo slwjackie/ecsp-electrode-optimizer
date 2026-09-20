@@ -1,0 +1,105 @@
+schema: ecsp.paper-reactive/v1
+model_mode: paper_faithful
+strict_paper: false
+description: >-
+  Runnable CPU FP64 demonstration of the equations printed in the paper. Every
+  value or numerical choice not printed by the paper is explicitly marked
+  ASSUMED_NOT_FROM_PAPER. This is not a calibrated reproduction case.
+
+grid:
+  nx: {value: 50, unit: cells, provenance: PAPER, source: "paper p.34 grid family (50x50 member)"}
+  ny: {value: 50, unit: cells, provenance: PAPER, source: "paper p.34 grid family (50x50 member)"}
+  lx: {value: 0.01, unit: m, provenance: PAPER, source: "paper p.32, 10 mm square domain"}
+  ly: {value: 0.01, unit: m, provenance: PAPER, source: "paper p.32, 10 mm square domain"}
+
+time:
+  end: {value: 2.0e-7, unit: s, provenance: ASSUMED_NOT_FROM_PAPER, source: "short numerical smoke horizon; paper time step/end time absent"}
+  cfl: {value: 0.25, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "paper does not report CFL"}
+  maximum_steps: {value: 10000, unit: steps, provenance: ASSUMED_NOT_FROM_PAPER, source: "fail-closed resource guard"}
+  maximum_stage_retries: {value: 32, unit: attempts, provenance: ASSUMED_NOT_FROM_PAPER, source: "fail-closed rejected-stage retry resource guard; paper does not report retry policy"}
+  maximum_flow_progress_increment: {value: 0.05, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "explicit source-stability limit; no paper value"}
+  flow_progress_headroom: {value: 0.5, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "fraction of remaining lambda allowed per step; no paper value"}
+  maximum_solid_progress_increment: {value: 0.05, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "explicit alpha source-stability limit; no paper value"}
+  solid_progress_headroom: {value: 0.5, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "fraction of remaining alpha allowed per step; no paper value"}
+  solid_diffusion_safety: {value: 0.9, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "explicit thermal diffusion stability safety; no paper value"}
+
+initial:
+  rho: {value: 1200.0, unit: "kg/m^3", provenance: ASSUMED_NOT_FROM_PAPER, source: "synthetic uncalibrated density; paper provides no density"}
+  u: {value: 0.0, unit: "m/s", provenance: ASSUMED_NOT_FROM_PAPER, source: "paper initial velocity absent"}
+  v: {value: 0.0, unit: "m/s", provenance: ASSUMED_NOT_FROM_PAPER, source: "paper initial velocity absent"}
+  temperature: {value: 300.0, unit: K, provenance: ASSUMED_NOT_FROM_PAPER, source: "paper initial temperature absent"}
+  reaction_progress: {value: 0.0, unit: "1", provenance: PAPER, source: "paper p.35 describes Species as 0 before reaction"}
+  alpha: {value: 0.0, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "paper initial alpha absent"}
+
+eos:
+  rho0: {value: 1200.0, unit: "kg/m^3", provenance: ASSUMED_NOT_FROM_PAPER, source: "Tait constant absent from paper"}
+  A: {value: 101325.0, unit: Pa, provenance: ASSUMED_NOT_FROM_PAPER, source: "Tait constant absent from paper"}
+  B: {value: 2.0e9, unit: Pa, provenance: ASSUMED_NOT_FROM_PAPER, source: "synthetic stable Tait value; not calibrated"}
+  N: {value: 7.0, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "Tait exponent absent from paper"}
+  cv: {value: 1500.0, unit: "J/(kg*K)", provenance: ASSUMED_NOT_FROM_PAPER, source: "caloric closure absent from paper"}
+  reference_temperature: {value: 300.0, unit: K, provenance: ASSUMED_NOT_FROM_PAPER, source: "caloric reference absent from paper"}
+  reference_energy: {value: 0.0, unit: "J/kg", provenance: ASSUMED_NOT_FROM_PAPER, source: "caloric reference absent from paper"}
+
+reaction:
+  preexponential: {value: 1.0e5, unit: "1/s", provenance: ASSUMED_NOT_FROM_PAPER, source: "flow reaction coefficient absent from paper"}
+  activation_energy: {value: 80000.0, unit: "J/mol", provenance: ASSUMED_NOT_FROM_PAPER, source: "flow reaction coefficient absent from paper"}
+  gas_constant: {value: 8.31446261815324, unit: "J/(mol*K)", provenance: CITED_REFERENCE, source: "CODATA molar gas constant; not an ECSP fit"}
+  heat_release: {value: 2.0e6, unit: "J/kg", provenance: ASSUMED_NOT_FROM_PAPER, source: "Q absent from paper"}
+  order: {value: 1.0, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "omega(lambda) closure absent from paper"}
+
+solid_thermal:
+  density: {value: 1200.0, unit: "kg/m^3", provenance: ASSUMED_NOT_FROM_PAPER, source: "paper does not publish cured density"}
+  heat_capacity: {value: 1500.0, unit: "J/(kg*K)", provenance: ASSUMED_NOT_FROM_PAPER, source: "paper does not publish heat capacity"}
+  conductivity: {value: 0.2, unit: "W/(m*K)", provenance: ASSUMED_NOT_FROM_PAPER, source: "paper does not publish thermal conductivity"}
+  preexponential: {value: 1.0e5, unit: "1/s", provenance: ASSUMED_NOT_FROM_PAPER, source: "Eq.(2) A_alpha absent"}
+  activation_energy: {value: 80000.0, unit: "J/mol", provenance: ASSUMED_NOT_FROM_PAPER, source: "Eq.(2) E_alpha absent"}
+  heat_of_decomposition: {value: -2.0e5, unit: "J/kg", provenance: ASSUMED_NOT_FROM_PAPER, source: "Eq.(2) Q_r magnitude/sign absent; negative means exothermic under printed minus sign"}
+  order: {value: 1.0, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "Eq.(2) f(alpha) absent"}
+
+electrical:
+  conductivity: {value: 0.1, unit: "S/m", provenance: ASSUMED_NOT_FROM_PAPER, source: "paper says measured field was used but publishes no conductivity"}
+  electric_field_x: {value: 100000.0, unit: "V/m", provenance: ASSUMED_NOT_FROM_PAPER, source: "1000 V divided by 10 mm; uniform-field inference, not a published field"}
+  electric_field_y: {value: 0.0, unit: "V/m", provenance: ASSUMED_NOT_FROM_PAPER, source: "paper does not publish the 2-D potential field"}
+  electrochemical_heat: {value: 0.0, unit: "W/m^3", provenance: ASSUMED_NOT_FROM_PAPER, source: "dimensionally valid placeholder; paper H term lacks molar reaction rate"}
+  butler_volmer_enabled: false
+  source_provider: {choice: CONFIG_UNIFORM_FIELD, provenance: ASSUMED_NOT_FROM_PAPER, source: "synthetic uniform field assembled from scalar configuration; the paper describes measured fields but does not publish them"}
+
+level_set:
+  initial_interface_x: {value: 0.005, unit: m, provenance: ASSUMED_NOT_FROM_PAPER, source: "synthetic passive material interface"}
+  reinitialization_interval: {value: 0, unit: steps, provenance: ASSUMED_NOT_FROM_PAPER, source: "disabled because paper gives no reinitialization algorithm/frequency"}
+
+front:
+  thresholds:
+    - {value: 0.3, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "requested sensitivity threshold; not reported by paper"}
+    - {value: 0.5, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "requested sensitivity threshold; not reported by paper"}
+    - {value: 0.7, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "requested sensitivity threshold; not reported by paper"}
+
+output:
+  front_history_stride_steps: {value: 1, unit: steps, provenance: ASSUMED_NOT_FROM_PAPER, source: "retain every accepted-step front sample; paper does not specify output thinning"}
+  maximum_history_bytes: {value: 268435456, unit: bytes, provenance: ASSUMED_NOT_FROM_PAPER, source: "256 MiB fail-closed front-history resource guard; paper does not specify an output memory budget"}
+  maximum_working_set_bytes: {value: 2147483648, unit: bytes, provenance: ASSUMED_NOT_FROM_PAPER, source: "2 GiB fail-closed estimated solver/result working-set guard; paper does not specify a memory budget"}
+
+safety:
+  minimum_density: {value: 1.0e-9, unit: "kg/m^3", provenance: ASSUMED_NOT_FROM_PAPER, source: "reject threshold, never a clipping floor"}
+  minimum_pressure: {value: 0.0, unit: Pa, provenance: ASSUMED_NOT_FROM_PAPER, source: "strict positivity reject threshold, never a clipping floor"}
+  minimum_temperature: {value: 1.0, unit: K, provenance: ASSUMED_NOT_FROM_PAPER, source: "reject threshold, never a clipping floor"}
+  progress_tolerance: {value: 1.0e-10, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "deliberate terminal chemistry cutoff: remaining progress at or below this value is treated as complete; paper gives no cutoff"}
+
+numerics:
+  weno_epsilon: {value: 1.0e-6, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "dimensionless epsilon after per-component affine normalization; WENO-JS epsilon/scaling absent from paper"}
+  level_set_weno_relative_epsilon: {value: 1.0e-12, unit: "1", provenance: ASSUMED_NOT_FROM_PAPER, source: "scale-relative Hamilton-Jacobi WENO-JS epsilon absent from paper"}
+  level_set_weno_absolute_epsilon: {value: 1.0e-40, unit: "m^2", provenance: ASSUMED_NOT_FROM_PAPER, source: "positive absolute Hamilton-Jacobi WENO-JS epsilon guard absent from paper"}
+  algorithms:
+    spatial_reconstruction: {choice: WENO5_JS, provenance: ASSUMED_NOT_FROM_PAPER, source: "paper says WENO but not order/variant; implementation uses per-component affine normalization"}
+    riemann_solver: {choice: HLL, provenance: ASSUMED_NOT_FROM_PAPER, source: "paper gives no Riemann solver or flux splitting"}
+    time_integrator: {choice: SSPRK33, provenance: ASSUMED_NOT_FROM_PAPER, source: "paper says third-order RK but gives no tableau"}
+    source_coupling: {choice: SSPRK_STAGE_COUPLED, provenance: ASSUMED_NOT_FROM_PAPER, source: "paper gives no operator/source splitting"}
+    flow_boundary: {choice: OUTFLOW, provenance: ASSUMED_NOT_FROM_PAPER, source: "paper external boundary conditions absent"}
+    solid_boundary: {choice: OUTFLOW, provenance: ASSUMED_NOT_FROM_PAPER, source: "paper condensed thermal boundary conditions absent; configured independently from Euler flow"}
+    level_set_boundary_x: {choice: OUTFLOW, provenance: ASSUMED_NOT_FROM_PAPER, source: "paper x-direction level-set boundary condition absent; configured independently from Euler flow"}
+    level_set_boundary_y: {choice: OUTFLOW, provenance: ASSUMED_NOT_FROM_PAPER, source: "paper y-direction level-set boundary condition absent; configured independently from Euler flow"}
+    electrical_gradient_boundary: {choice: FIRST_ORDER_ONE_SIDED, provenance: ASSUMED_NOT_FROM_PAPER, source: "paper gives no boundary stencil for the prescribed-potential gradient"}
+    material_interface: {choice: PASSIVE_SINGLE_EOS, provenance: ASSUMED_NOT_FROM_PAPER, source: "verification-only closure; not a ghost-fluid reproduction"}
+    level_set_gradient: {choice: WENO5_JS_UPWIND, provenance: ASSUMED_NOT_FROM_PAPER, source: "paper gives no Hamilton-Jacobi WENO variant"}
+    level_set_reinitialization: {choice: NONE, provenance: ASSUMED_NOT_FROM_PAPER, source: "paper gives no reinitialization equation/frequency"}
+    mpi_decomposition: {choice: SERIAL_SINGLE_PROCESS, provenance: ASSUMED_NOT_FROM_PAPER, source: "runnable reference uses one process; paper MPI decomposition details are absent"}

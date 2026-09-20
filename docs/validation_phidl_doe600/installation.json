@@ -1,0 +1,43 @@
+{
+  "installed_files": [
+    "config/phidl_doe600.yaml",
+    "docs/PHIDL_DOE600_KR.md",
+    "python/ecsp_doe/__init__.py",
+    "python/ecsp_doe/geometry.py",
+    "python/ecsp_doe/physics.py",
+    "python/ecsp_doe/sampling.py",
+    "python/ecsp_doe/selection.py",
+    "python/ecsp_doe/storage.py",
+    "python/ecsp_doe/topology.py",
+    "python/ecsp_doe/workflow.py",
+    "python/requirements-phidl-doe.txt",
+    "python/tests/test_phidl_doe_geometry.py",
+    "python/tests/test_phidl_doe_physics.py",
+    "python/tests/test_phidl_doe_workflow.py",
+    "python/tests/test_phidl_handoff_reuse.py",
+    "tools/resume_final_only.py",
+    "tools/run_phidl_doe600.py"
+  ],
+  "sha256": {
+    "config/phidl_doe600.yaml": "cba43e37aa28a004877a0be63a903d2da9af11f5890867a222f324b815e02669",
+    "docs/PHIDL_DOE600_KR.md": "18837f15ba1679d21c52691e96a88c60f75929c46f7f27fe3b06020c87116229",
+    "python/ecsp_doe/__init__.py": "8ce3e5dfe7e5bbdc0a3573f5ff8bf72da7ed05de31e806138ae848d36517a86d",
+    "python/ecsp_doe/geometry.py": "fe811765596e836a2f6394c62c43c01486c00ba3123acca316b1d2b8cdb8945e",
+    "python/ecsp_doe/physics.py": "f151a54aa89b7d43af5b483bd82cc13de89ae921cb4a73f00751f69e5b41b5a3",
+    "python/ecsp_doe/sampling.py": "a5d4fff373827ac6bcbd14da9a9a4fd66bba5e3cfbee37379bd584f1307c2992",
+    "python/ecsp_doe/selection.py": "3f233a620ed12302e2dc26e9aed97817191cc73ef09748c70f5def8d21ff3ef5",
+    "python/ecsp_doe/storage.py": "f1c176cf9f73cb5af0df1c7227b225344a5622a29c60860152bfa94e886fd5c1",
+    "python/ecsp_doe/topology.py": "a2e29ad44825beccbe512729ef997fd5c28da8911bdf8da9e1bcafa7c7360d72",
+    "python/ecsp_doe/workflow.py": "71ddec481ab1c37c974c67c1ef0de405bf0bf55b2d4046527616ff2af445178d",
+    "python/requirements-phidl-doe.txt": "089108b0111b37a0be5be88a9544594f5f67e70e9cd6ba662339c2b4269f28ec",
+    "python/tests/test_phidl_doe_geometry.py": "092ec844e08417e26670f9274d5095657765b2d5c42fab3f1b59c749a4241f55",
+    "python/tests/test_phidl_doe_physics.py": "08ae782bb5b60813c422e4a28377cd0b00c8a8dda711ebf0d280617e50c03f3b",
+    "python/tests/test_phidl_doe_workflow.py": "aa85e14eb6a9857803e8121f7b2cad3075127fc95b0848ad3350f998d2ceb8fa",
+    "python/tests/test_phidl_handoff_reuse.py": "55370fc03b594c581b5a4f5686efbb0974d2591dba4a8a5176995b85255d1448",
+    "tools/resume_final_only.py": "03ed341e298dd3978283866c10b20ed18df7537cd30aea6fc92b1a9ffce27d6f",
+    "tools/run_phidl_doe600.py": "3c289821545b4091741e7f8e81816f043f681db1a4b49b5fa54f2fbb37e78b31"
+  },
+  "backup_directory": "/Users/kimjiin/Desktop/ECSP_v8_4_2_A100CPU8_GeometrySafe/.codex_backups/phidl_doe600_20260916_024617",
+  "geometry_only_validation_directory": "/Users/kimjiin/Desktop/ECSP_v8_4_2_A100CPU8_GeometrySafe/runs/doe600_phidl_geometry_validation",
+  "production_physics_started": false
+}

@@ -1,0 +1,5 @@
+{
+  "power_on_rejected_by_power_off_wrapper": true,
+  "CPU_only_A100_preflight_refused": true,
+  "silent_CPU_substitution": false
+}

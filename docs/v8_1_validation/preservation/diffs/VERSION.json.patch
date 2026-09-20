@@ -1,0 +1,454 @@
+--- v8.0.0/VERSION.json
++++ v8.1.0/VERSION.json
+@@ -1,8 +1,8 @@
+ {
+-  "version": "8.0.0-BC-global-preflame-condensed-propagation-v795-preserved",
+-  "base_version": "7.9.5",
+-  "release_date": "2026-09-04",
+-  "release_revision": "v8.0.0-bc-global-np-local-bv-two-channel-global-chemistry-condensed-levelset",
++  "version": "8.1.0-BCNative-Hybrid-A100-CPU8",
++  "base_version": "8.0.0",
++  "release_date": "2026-09-05",
++  "release_revision": "v8.1.0-native-cpp17-fp64-standalone-cuda-batched-vmin",
+   "geometry_schema_version": "grammar_line_arc_branch_multicomponent_surface_v2",
+   "model_scope": "configurable_square_condensed_propellant_surface_contact_electrodes_with_opt_in_bc_global_preflame_and_post_onset_condensed_propagation",
+   "propellant_domain_mm": [
+@@ -67,7 +67,196 @@
+   "flame_progress_variable": false,
+   "openfoam_runtime": false,
+   "gas_phase_cfd": false,
+-  "test_status": {
++  "predictive_status": "literature_nominal_uncalibrated_pending_experimental_parameter_identification_and_validation",
++  "cpp_solver_revision": "v7_9_4_cpp_fp64_surface_contact_vmin_search_ready",
++  "area_matched_staggered_baseline": {
++    "enabled_by_default": true,
++    "layout": "hidden_bus_vertical_2anode_2cathode",
++    "visible_fingers_per_polarity": 2,
++    "visible_component_count": {
++      "anode": 2,
++      "cathode": 2,
++      "total": 4
++    },
++    "electrical_terminal_count": {
++      "anode": 1,
++      "cathode": 1
++    },
++    "horizontal_contact_order": [
++      "anode",
++      "cathode",
++      "anode",
++      "cathode"
++    ],
++    "same_polarity_finger_lengths_equal": true,
++    "all_four_finger_widths_equal": true,
++    "hidden_bus_in_contact_mask": false,
++    "hidden_bus_contact_area_fraction": 0.0,
++    "target_interdigitation_overlap_fraction": 0.5,
++    "minimum_interdigitation_overlap_fraction": 0.45,
++    "area_source": "recommended actual contact area when available, otherwise geometry target",
++    "domain_source": "geometry.domain_mm",
++    "width_bounds_source": "geometry.minimum_width_mm_and_maximum_width_mm",
++    "minimum_gap_source": "geometry.minimum_gap_mm",
++    "physics_source": "same_cpp_fp64_evaluator_as_recommended_design",
++    "included_in_nsga2_population": false,
++    "included_in_pareto_selection": false,
++    "existing_run_backfill_supported": true,
++    "infeasible_policy": "fail_explicitly_never_substitute_connected_comb_or_different_finger_count",
++    "area_match_priority": [
++      "recommended_physics_grid_contact_area_average",
++      "recommended_design_grid_contact_area_average",
++      "configured_target_area_fraction_per_polarity"
++    ]
++  },
++  "propellant_domain_mm_default": [
++    20.0,
++    20.0
++  ],
++  "target_contact_area_fraction_per_polarity_default": 0.2,
++  "runtime_geometry_source": "active YAML/effective_config; supports 20x20 and 25x25 experiments",
++  "objective_revision": {
++    "objectives_minimise": [
++      "ignition_delay_s",
++      "area_undecomposed_fraction_at_2s",
++      "minimum_ignition_voltage_V",
++      "current_congestion"
++    ],
++    "reference_voltage_objectives": [
++      "ignition_delay_s",
++      "area_undecomposed_fraction_at_2s",
++      "current_congestion"
++    ],
++    "reference_voltage_default_V": 260.0,
++    "minimum_ignition_voltage_definition": "lowest numerically-valid applied voltage in configured search interval that reaches the same condensed-phase ignition criterion within the evaluation horizon; conservative upper igniting bracket is reported",
++    "energy_to_ignition": "retained_as_diagnostic_not_objective",
++    "legacy_energy_at_2s": "retained_as_diagnostic_not_objective",
++    "post_optimization_baseline_comparison": "raw_unpenalized_objectives_with_reference_numerical_validity_and_vmin_search_validity_flags"
++  },
++  "minimum_ignition_voltage_search": {
++    "enabled_by_default": true,
++    "lower_bound_V": 20.0,
++    "upper_bound_V": 260.0,
++    "tolerance_V": 5.0,
++    "maximum_bisection_iterations": 8,
++    "reported_value": "conservative_upper_igniting_bracket",
++    "successful_trial_early_stop": true,
++    "same_condensed_phase_ignition_criterion": true,
++    "right_censor_policy": "if no ignition at upper bound, objective uses upper bound plus configured finite penalty and candidate remains ignition-infeasible",
++    "left_censor_policy": "if lower bound ignites, report lower bound with left-censored flag",
++    "numerical_validity": "uses optimization numerical cap thresholds for each voltage trial"
++  },
++  "a100_primary_physics_backend": "torch_cuda_fp64_batched_surface_contact",
++  "hybrid_physics_backend": "hybrid_cuda_cpu",
++  "hybrid_cpu_backend": "cpp_fp64_cpu_hybrid_buffered",
++  "legacy_cpu_backend": "cpp_fp64_cpu",
++  "legacy_cpu_source_preserved": true,
++  "legacy_cpu_source_sha256": "453168254960d20d93e0e52c4eac4f0638c391297baaa544691980acc0cb0e94",
++  "hybrid_scheduler": {
++    "policy": "shared_dynamic_trial_queue_with_cpu_work_stealing",
++    "target_vcpus": 48,
++    "default_cpu_solver_processes": 40,
++    "reserved_host_vcpus": 8,
++    "default_cuda_batch_size": 64,
++    "minimum_cuda_batch_size": 8,
++    "cpu_trials_reserved_in_small_vmin_waves": 16,
++    "cuda_failure_policy": "halve_batch_once_then_requeue_to_cpp_cpu",
++    "tail_utilization_note": "one device may be temporarily idle in dependency-limited waves below the minimum CUDA batch size"
++  },
++  "hybrid_precision": {
++    "a100": "float64",
++    "cpu": "float64",
++    "tf32": false
++  },
++  "hybrid_state_transfer_policy": "mask_and_flat_config_once_to_gpu; full_trial_state_resident_on_gpu; scalar_metrics_returned_at_end",
++  "a100_validation_status": "not_executed_in_packaging_environment_no_nvidia_gpu; mandatory_preflight_included",
++  "hybrid_default_experiment_geometry": {
++    "domain_mm": 20.0,
++    "target_contact_area_fraction_per_polarity": 0.2,
++    "minimum_width_mm": 1.0,
++    "maximum_width_mm": 5.0,
++    "minimum_gap_mm": 2.0,
++    "grid_size_design": 96,
++    "grid_size_physics": 193
++  },
++  "hybrid_profile_geometry_source": "config/nsga2_condensed_phase_no_f_a100_cpu48_hybrid.yaml",
++  "legacy_cpu_profile_contact_area_fraction_per_polarity": 0.175,
++  "legacy_v7_9_5_features_preserved": true,
++  "bc_global_preflame": {
++    "enabled_by_default": false,
++    "evaluator_backend": "bc_global_preflame",
++    "paper_equations_used": [
++      2,
++      4,
++      5,
++      6,
++      7,
++      8,
++      9,
++      11,
++      13,
++      15,
++      16,
++      17,
++      22,
++      23,
++      24
++    ],
++    "paper_equations_not_used_in_preflame": [
++      3,
++      18,
++      25,
++      26,
++      27,
++      28,
++      29,
++      30,
++      31
++    ],
++    "equation_32_role": "postprocessing_identity_only_not_added_as_a_second_heat_source",
++    "global_reaction": "1.45 LiClO4 + PVA_repeat -> 2 CO2 + 2 H2O + 0.4 O2 + 1.45 LiCl",
++    "kinetics": "two conversion-dependent exothermic channels; approximate Fig. 8 digitisation",
++    "wet_recipe_mass_fractions": {
++      "LP": 0.3158,
++      "water": 0.5842,
++      "PVA": 0.09,
++      "H3BO3": 0.01,
++      "glycerol": 0.0,
++      "W": 0.0
++    },
++    "cured_water_mass_fraction_nominal": 0.2,
++    "objectives_minimise": [
++      "condensed_decomposition_onset_time",
++      "remaining_reactive_LP_plus_PVA_mass_fraction_at_2s",
++      "minimum_onset_voltage",
++      "J99_over_meanJ"
++    ],
++    "onset_criterion": "T >= 523.15 K AND Xg >= 0.01 over >=1% propellant area",
++    "legacy_proxy_closures_used": false
++  },
++  "post_onset_condensed_propagation": {
++    "enabled_by_default_in_bc_profile": true,
++    "gas_phase_cfd": false,
++    "handoff_fields": [
++      "T",
++      "Xg",
++      "alpha1",
++      "alpha2",
++      "qJ(t)",
++      "qEchem(t)",
++      "propellantMask"
++    ],
++    "selection": "preflame Pareto plus 15% near-Pareto max-min geometry diversity",
++    "outputs": [
++      "unreacted_area_fraction",
++      "effective_regression_velocity",
++      "established_time",
++      "reaction_front_nonuniformity",
++      "signed_distance_level_set"
++    ],
++    "staggered_same_pipeline": true
++  },
++  "inherited_v8_0_0_test_status": {
+     "pytest": "56_passed_v8_0_0",
+     "python_compile": "55_files_passed_v8_0_0",
+     "cpp_warning_build": "passed_v7_9_5",
+@@ -108,193 +297,53 @@
+     "actual_a100_bc_global_end_to_end": "not_run_no_nvidia_device_in_packaging_environment",
+     "experimental_calibration": "not_performed"
+   },
+-  "predictive_status": "literature_nominal_uncalibrated_pending_experimental_parameter_identification_and_validation",
+-  "cpp_solver_revision": "v7_9_4_cpp_fp64_surface_contact_vmin_search_ready",
+-  "area_matched_staggered_baseline": {
+-    "enabled_by_default": true,
+-    "layout": "hidden_bus_vertical_2anode_2cathode",
+-    "visible_fingers_per_polarity": 2,
+-    "visible_component_count": {
+-      "anode": 2,
+-      "cathode": 2,
+-      "total": 4
++  "test_status": {
++    "pytest": {
++      "passed": 80,
++      "skipped": 2,
++      "skip_reason": "CUDA device unavailable"
+     },
+-    "electrical_terminal_count": {
+-      "anode": 1,
+-      "cathode": 1
+-    },
+-    "horizontal_contact_order": [
+-      "anode",
+-      "cathode",
+-      "anode",
+-      "cathode"
+-    ],
+-    "same_polarity_finger_lengths_equal": true,
+-    "all_four_finger_widths_equal": true,
+-    "hidden_bus_in_contact_mask": false,
+-    "hidden_bus_contact_area_fraction": 0.0,
+-    "target_interdigitation_overlap_fraction": 0.5,
+-    "minimum_interdigitation_overlap_fraction": 0.45,
+-    "area_source": "recommended actual contact area when available, otherwise geometry target",
+-    "domain_source": "geometry.domain_mm",
+-    "width_bounds_source": "geometry.minimum_width_mm_and_maximum_width_mm",
+-    "minimum_gap_source": "geometry.minimum_gap_mm",
+-    "physics_source": "same_cpp_fp64_evaluator_as_recommended_design",
+-    "included_in_nsga2_population": false,
+-    "included_in_pareto_selection": false,
+-    "existing_run_backfill_supported": true,
+-    "infeasible_policy": "fail_explicitly_never_substitute_connected_comb_or_different_finger_count",
+-    "area_match_priority": [
+-      "recommended_physics_grid_contact_area_average",
+-      "recommended_design_grid_contact_area_average",
+-      "configured_target_area_fraction_per_polarity"
+-    ]
+-  },
+-  "propellant_domain_mm_default": [
+-    20.0,
+-    20.0
+-  ],
+-  "target_contact_area_fraction_per_polarity_default": 0.2,
+-  "runtime_geometry_source": "active YAML/effective_config; supports 20x20 and 25x25 experiments",
+-  "objective_revision": {
+-    "objectives_minimise": [
+-      "ignition_delay_s",
+-      "area_undecomposed_fraction_at_2s",
+-      "minimum_ignition_voltage_V",
+-      "current_congestion"
+-    ],
+-    "reference_voltage_objectives": [
+-      "ignition_delay_s",
+-      "area_undecomposed_fraction_at_2s",
+-      "current_congestion"
+-    ],
+-    "reference_voltage_default_V": 260.0,
+-    "minimum_ignition_voltage_definition": "lowest numerically-valid applied voltage in configured search interval that reaches the same condensed-phase ignition criterion within the evaluation horizon; conservative upper igniting bracket is reported",
+-    "energy_to_ignition": "retained_as_diagnostic_not_objective",
+-    "legacy_energy_at_2s": "retained_as_diagnostic_not_objective",
+-    "post_optimization_baseline_comparison": "raw_unpenalized_objectives_with_reference_numerical_validity_and_vmin_search_validity_flags"
+-  },
+-  "minimum_ignition_voltage_search": {
+-    "enabled_by_default": true,
+-    "lower_bound_V": 20.0,
+-    "upper_bound_V": 260.0,
+-    "tolerance_V": 5.0,
+-    "maximum_bisection_iterations": 8,
+-    "reported_value": "conservative_upper_igniting_bracket",
+-    "successful_trial_early_stop": true,
+-    "same_condensed_phase_ignition_criterion": true,
+-    "right_censor_policy": "if no ignition at upper bound, objective uses upper bound plus configured finite penalty and candidate remains ignition-infeasible",
+-    "left_censor_policy": "if lower bound ignites, report lower bound with left-censored flag",
+-    "numerical_validity": "uses optimization numerical cap thresholds for each voltage trial"
+-  },
+-  "a100_primary_physics_backend": "torch_cuda_fp64_batched_surface_contact",
+-  "hybrid_physics_backend": "hybrid_cuda_cpu",
+-  "hybrid_cpu_backend": "cpp_fp64_cpu_hybrid_buffered",
+-  "legacy_cpu_backend": "cpp_fp64_cpu",
+-  "legacy_cpu_source_preserved": true,
+-  "legacy_cpu_source_sha256": "453168254960d20d93e0e52c4eac4f0638c391297baaa544691980acc0cb0e94",
+-  "hybrid_scheduler": {
+-    "policy": "shared_dynamic_trial_queue_with_cpu_work_stealing",
+-    "target_vcpus": 48,
+-    "default_cpu_solver_processes": 40,
+-    "reserved_host_vcpus": 8,
+-    "default_cuda_batch_size": 64,
+-    "minimum_cuda_batch_size": 8,
+-    "cpu_trials_reserved_in_small_vmin_waves": 16,
+-    "cuda_failure_policy": "halve_batch_once_then_requeue_to_cpp_cpu",
+-    "tail_utilization_note": "one device may be temporarily idle in dependency-limited waves below the minimum CUDA batch size"
+-  },
+-  "hybrid_precision": {
+-    "a100": "float64",
+-    "cpu": "float64",
+-    "tf32": false
+-  },
+-  "hybrid_state_transfer_policy": "mask_and_flat_config_once_to_gpu; full_trial_state_resident_on_gpu; scalar_metrics_returned_at_end",
+-  "a100_validation_status": "not_executed_in_packaging_environment_no_nvidia_gpu; mandatory_preflight_included",
+-  "hybrid_default_experiment_geometry": {
+-    "domain_mm": 20.0,
+-    "target_contact_area_fraction_per_polarity": 0.2,
+-    "minimum_width_mm": 1.0,
+-    "maximum_width_mm": 5.0,
+-    "minimum_gap_mm": 2.0,
+-    "grid_size_design": 96,
+-    "grid_size_physics": 193
+-  },
+-  "hybrid_profile_geometry_source": "config/nsga2_condensed_phase_no_f_a100_cpu48_hybrid.yaml",
+-  "legacy_cpu_profile_contact_area_fraction_per_polarity": 0.175,
+-  "legacy_v7_9_5_features_preserved": true,
+-  "bc_global_preflame": {
+-    "enabled_by_default": false,
+-    "evaluator_backend": "bc_global_preflame",
+-    "paper_equations_used": [
+-      2,
+-      4,
+-      5,
+-      6,
+-      7,
+-      8,
+-      9,
+-      11,
+-      13,
+-      15,
+-      16,
+-      17,
+-      22,
+-      23,
+-      24
+-    ],
+-    "paper_equations_not_used_in_preflame": [
+-      3,
+-      18,
+-      25,
+-      26,
+-      27,
+-      28,
+-      29,
+-      30,
+-      31
+-    ],
+-    "equation_32_role": "postprocessing_identity_only_not_added_as_a_second_heat_source",
+-    "global_reaction": "1.45 LiClO4 + PVA_repeat -> 2 CO2 + 2 H2O + 0.4 O2 + 1.45 LiCl",
+-    "kinetics": "two conversion-dependent exothermic channels; approximate Fig. 8 digitisation",
+-    "wet_recipe_mass_fractions": {
+-      "LP": 0.3158,
+-      "water": 0.5842,
+-      "PVA": 0.09,
+-      "H3BO3": 0.01,
+-      "glycerol": 0.0,
+-      "W": 0.0
+-    },
+-    "cured_water_mass_fraction_nominal": 0.2,
+-    "objectives_minimise": [
+-      "condensed_decomposition_onset_time",
+-      "remaining_reactive_LP_plus_PVA_mass_fraction_at_2s",
+-      "minimum_onset_voltage",
+-      "J99_over_meanJ"
+-    ],
+-    "onset_criterion": "T >= 523.15 K AND Xg >= 0.01 over >=1% propellant area",
+-    "legacy_proxy_closures_used": false
+-  },
+-  "post_onset_condensed_propagation": {
+-    "enabled_by_default_in_bc_profile": true,
+-    "gas_phase_cfd": false,
+-    "handoff_fields": [
+-      "T",
+-      "Xg",
+-      "alpha1",
+-      "alpha2",
+-      "qJ(t)",
+-      "qEchem(t)",
+-      "propellantMask"
+-    ],
+-    "selection": "preflame Pareto plus 15% near-Pareto max-min geometry diversity",
+-    "outputs": [
+-      "unreacted_area_fraction",
+-      "effective_regression_velocity",
+-      "established_time",
+-      "reaction_front_nonuniformity",
+-      "signed_distance_level_set"
+-    ],
+-    "staggered_same_pipeline": true
++    "original_v8_0_0_pytest_passed": 56,
++    "python_compile_files_passed": 68,
++    "shell_syntax_files_passed": 32,
++    "cpu_native_extension": "compiled_and_executed",
++    "cpu_native_standalone": "compiled_and_executed",
++    "cpu_python_parity": "passed_short_multistep_under_identical_strict_solver_tolerances",
++    "cpu_standalone_extension_parity": "bitwise_equal_for_tested_fields_histories_and_handoff",
++    "v8_0_0_requirement_audit": "24_of_24_passed",
++    "legacy_cpp_python_parity": "passed_short_horizon",
++    "legacy_hybrid_cpp_build": "passed",
++    "native_end_to_end_debug": "passed",
++    "cuda_source_static_checks": "7_of_7_passed_not_actual_compilation",
++    "actual_cuda_compilation": "unverified_no_nvcc_cuda_toolkit_or_cuda_enabled_pytorch",
++    "actual_cuda_runtime": "unverified_no_gpu",
++    "actual_a100_batch32_64_benchmark": "unverified_no_gpu",
++    "experimental_calibration": "not_performed_inherited_nominal_physics"
++  },
++  "native_v8_1": {
++    "opt_in": true,
++    "default_gpu_batch_in_new_profiles": 32,
++    "alternative_gpu_batch": 64,
++    "cpu_backend": "C++17_FP64_standalone_executable_linked_to_LibTorch_ATen",
++    "gpu_backend": "C++17_ATen_time_loop_plus_custom_FP64_CUDA_kernels",
++    "cpu_runtime_options": [
++      "standalone",
++      "extension"
++    ],
++    "gpu_runtime": "extension",
++    "hybrid_unit": "whole_candidate_reference_plus_Vmin_search",
++    "cpu_budget_requested": 8,
++    "host_reserve": 2,
++    "cpu_workers_requested": 6,
++    "honors_cgroup_and_affinity": true,
++    "vmin_algorithm": "dependency_wave_bisection_with_per_candidate_voltages_and_fresh_initial_states",
++    "vmin_successful_trial_early_stop": "active_mask_skip_not_tensor_compaction",
++    "reference_and_handoff_runs": "full_horizon_no_onset_early_stop",
++    "final_Vmin_upper_bracket_full_horizon_verification": true,
++    "cuda_oom_policy": "split_and_retry_without_changing_physics; singleton_oom_is_explicit_error",
++    "geometry_semantics": "matches_v8_BC_code_electrode_cells_excluded_from_propellant; does_not_correct_legacy_overlay_metadata",
++    "original_configs_and_launchers": "unchanged; use tools/run_bc_native_* for native paths",
++    "propagation_backend": "unchanged_numpy_cpu",
++    "validation_scope": "software_port_short_horizon_numerical_tests_not_experimental_validation"
+   }
+ }

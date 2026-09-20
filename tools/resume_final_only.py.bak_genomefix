@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+
+import csv
+import json
+import math
+import os
+import re
+import sys
+import time
+import inspect
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "python"))
+
+import ecsp_nsga2.workflow as wf
+import run_nsga2_electrical_solid_loop as cli
+
+
+def convert(value):
+    if value is None:
+        return None
+
+    s = str(value).strip()
+
+    if s == "":
+        return None
+    if s.lower() == "true":
+        return True
+    if s.lower() == "false":
+        return False
+    if s.lower() in {"none", "null"}:
+        return None
+
+    try:
+        x = float(s)
+        if math.isnan(x):
+            return math.nan
+        return x
+    except ValueError:
+        pass
+
+    try:
+        return json.loads(s)
+    except Exception:
+        return s
+
+
+def normalise(name):
+    return re.sub(r"[^a-z0-9]", "", str(name).lower())
+
+
+def objective_columns(header):
+    names = list(wf.OBJECTIVE_NAMES)
+    mapping = {normalise(c): c for c in header}
+    cols = []
+
+    for name in names:
+        possibilities = (
+            normalise(name),
+            normalise("objective_" + name),
+            normalise("objective:" + name),
+        )
+
+        found = None
+        for key in possibilities:
+            if key in mapping:
+                found = mapping[key]
+                break
+
+        if found is None:
+            raise RuntimeError(
+                f"Cannot find objective column for {name}. "
+                f"CSV columns={header}"
+            )
+
+        cols.append(found)
+
+    return names, cols
+
+
+def load_population(workflow):
+    path = workflow.workdir / "generation_002" / "population_selected.csv"
+
+    if not path.exists():
+        raise RuntimeError(f"Missing {path}")
+
+    with path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+        header = list(reader.fieldnames or [])
+
+    names, objcols = objective_columns(header)
+
+    print("[resume-final] objective mapping:")
+    for n, c in zip(names, objcols):
+        print(f"  {n} <- {c}")
+
+    population = []
+
+    for row in rows:
+        values = {k: convert(v) for k, v in row.items()}
+
+        gid = str(values["geometry_id"])
+        tid = str(values.get("topology_id", ""))
+
+        objectives = np.asarray(
+            [float(values[c]) for c in objcols],
+            dtype=np.float64,
+        )
+
+        metrics = dict(values)
+
+        for key in ("metrics_json", "metrics"):
+            v = values.get(key)
+            if isinstance(v, dict):
+                metrics.update(v)
+
+        genome = {}
+        for key in ("genome_json", "genome"):
+            v = values.get(key)
+            if isinstance(v, dict):
+                genome = v
+                break
+
+        if not genome:
+            files = list(
+                workflow.workdir.glob(
+                    f"generation_*/geometries/{gid}.json"
+                )
+            )
+            if files:
+                try:
+                    d = json.loads(files[0].read_text())
+                    genome = d.get("genome", d.get("parameters", {}))
+                except Exception:
+                    pass
+
+        item = SimpleNamespace(
+            geometry_id=gid,
+            topology_id=tid,
+            genome=genome,
+            objectives=objectives,
+            metrics=metrics,
+            constraint_violation=float(
+                values.get("constraint_violation", 0.0) or 0.0
+            ),
+        )
+
+        for k, v in values.items():
+            if isinstance(k, str) and k.isidentifier():
+                setattr(item, k, v)
+
+        population.append(item)
+
+    return population
+
+
+def resume_run(self):
+    population = load_population(self)
+    front = wf.pareto_front(population)
+
+    print(
+        f"[resume-final] loaded population={len(population)} "
+        f"pareto_front={len(front)}"
+    )
+
+    print("[resume-final] selected candidates:")
+    for item in front:
+        print(" ", item.geometry_id)
+
+    # Safety guard: the failed production run selected exactly 17.
+    # Abort before any expensive B/C calculation if reconstruction differs.
+    if len(population) != 200:
+        raise RuntimeError(
+            f"Expected final selected population=200, got {len(population)}"
+        )
+
+    if len(front) != 13:
+        raise RuntimeError(
+            f"Expected pre-flame Pareto front=13, got {len(front)}. "
+            "No physics was rerun."
+        )
+
+    if os.environ.get("ECSP_FINAL_DRYRUN") == "1":
+        print("[resume-final] DRY RUN PASSED; no physics executed")
+        return front[0]
+
+    recommendation = self._finalise(population)
+
+    payload = {
+        "recommended_geometry_id": recommendation.geometry_id,
+        "resumed_final_only": True,
+        "source_generation": 2,
+        "source_population_size": 200,
+        "preflame_physics_recomputed": False,
+        "elapsed_resume_s": time.time() - self.start_time,
+    }
+
+    (self.workdir / "RUN_COMPLETE.json").write_text(
+        json.dumps(payload, indent=2),
+        encoding="utf-8",
+    )
+
+    print(
+        "[resume-final] COMPLETE:",
+        recommendation.geometry_id,
+    )
+
+    return recommendation
+
+
+Workflow = None
+
+for name, obj in vars(wf).items():
+    if (
+        inspect.isclass(obj)
+        and hasattr(obj, "_finalise")
+        and "run" in obj.__dict__
+    ):
+        Workflow = obj
+        break
+
+if Workflow is None:
+    raise RuntimeError("Could not locate NSGA-II workflow class")
+
+Workflow.run = resume_run
+
+raise SystemExit(cli.main())

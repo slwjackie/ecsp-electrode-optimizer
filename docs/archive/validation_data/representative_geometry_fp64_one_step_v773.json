@@ -1,0 +1,17 @@
+{
+  "finalAnodeCathodeCurrentMismatch": 4.309407648635966e-06,
+  "maximumAnodeCathodeCurrentMismatch": 4.309407648635966e-06,
+  "finalNonlinearRobinGaugeConverged": true,
+  "finalNonlinearRobinGaugeIterations": 2.0,
+  "finalNonlinearRobinGaugeTotalIterations": 5.0,
+  "finalNonlinearRobinGaugeOffset_V": 105.23013514581528,
+  "finalNonlinearRobinAnodeCurrent_A": 0.005143889804163316,
+  "finalNonlinearRobinCathodeCurrent_A": 0.00514391197137691,
+  "finalElectricalRelativeResidual": 5.364669694686295e-16,
+  "finalElectricalIterations": 1,
+  "peakMaximumTemperature_K": 298.1528323177724,
+  "backend": "direct_condensed_v772_no_f",
+  "solverRevision": "v7_7_3_exact_global_bv_gauge_balance",
+  "physicsDtype": "float64",
+  "gridSize": 33
+}

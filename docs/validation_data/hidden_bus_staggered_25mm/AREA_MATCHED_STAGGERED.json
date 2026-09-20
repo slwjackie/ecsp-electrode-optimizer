@@ -1,0 +1,120 @@
+{
+  "geometry_id": "AREA_MATCHED_STAGGERED",
+  "topology_id": "BASELINE_HIDDEN_BUS_STAGGERED_2A2C",
+  "baseline_type": "area_matched_staggered",
+  "baseline_layout_revision": "v7.9.2_hidden_bus_vertical_2a2c",
+  "source_role": "post_optimization_reference_only",
+  "included_in_nsga2_population": false,
+  "selection_rule": "fixed A-C-A-C vertical contact order; exactly two equal anode fingers from the top and two equal cathode fingers from the bottom; hidden buses outside the propellant contact plane; geometry-only calibration of common width/length to match the recommended contact area",
+  "domain_mm": 25.0,
+  "target_area_fraction_per_polarity": 0.2,
+  "minimum_gap_mm": 2.0,
+  "minimum_width_mm": 1.0,
+  "maximum_width_mm": 5.0,
+  "parameters": {
+    "fingers_per_polarity": 2,
+    "common_finger_width_px": 16,
+    "common_finger_length_px": 90,
+    "horizontal_gap_px": 10,
+    "left_margin_px": 13,
+    "right_margin_px": 13,
+    "design_grid_size": 120,
+    "physics_grid_size": 241,
+    "target_area_fraction_per_polarity": 0.2,
+    "design_spacing_mm": 0.21008403361344538,
+    "physics_spacing_mm": 0.10416666666666667,
+    "common_finger_width_mm": 3.361344537815126,
+    "common_finger_length_mm": 18.907563025210084,
+    "design_minimum_gap_mm": 2.3109243697478994,
+    "physics_minimum_gap_mm": 2.1875,
+    "design_area_fraction_per_polarity": 0.2,
+    "physics_area_fraction_per_polarity": 0.1994456018319244,
+    "design_vertical_overlap_fraction": 0.5,
+    "physics_vertical_overlap_fraction": 0.5020746887966805,
+    "hidden_bus_contact_area_fraction": 0.0
+  },
+  "anode": {
+    "components": [
+      {
+        "type": "VERTICAL_CONTACT_FINGER",
+        "polarity": "anode",
+        "finger_index": 0,
+        "boundary_origin": "top",
+        "x_start_px": 13,
+        "x_stop_px_exclusive": 29,
+        "y_start_px": 0,
+        "y_stop_px_exclusive": 90,
+        "width_mm": 3.361344537815126,
+        "length_mm": 18.907563025210084,
+        "hidden_bus_id": "anode_hidden_bus",
+        "hidden_bus_in_contact_mask": false,
+        "children": []
+      },
+      {
+        "type": "VERTICAL_CONTACT_FINGER",
+        "polarity": "anode",
+        "finger_index": 1,
+        "boundary_origin": "top",
+        "x_start_px": 65,
+        "x_stop_px_exclusive": 81,
+        "y_start_px": 0,
+        "y_stop_px_exclusive": 90,
+        "width_mm": 3.361344537815126,
+        "length_mm": 18.907563025210084,
+        "hidden_bus_id": "anode_hidden_bus",
+        "hidden_bus_in_contact_mask": false,
+        "children": []
+      }
+    ]
+  },
+  "cathode": {
+    "components": [
+      {
+        "type": "VERTICAL_CONTACT_FINGER",
+        "polarity": "cathode",
+        "finger_index": 0,
+        "boundary_origin": "bottom",
+        "x_start_px": 39,
+        "x_stop_px_exclusive": 55,
+        "y_start_px": 30,
+        "y_stop_px_exclusive": 120,
+        "width_mm": 3.361344537815126,
+        "length_mm": 18.907563025210084,
+        "hidden_bus_id": "cathode_hidden_bus",
+        "hidden_bus_in_contact_mask": false,
+        "children": []
+      },
+      {
+        "type": "VERTICAL_CONTACT_FINGER",
+        "polarity": "cathode",
+        "finger_index": 1,
+        "boundary_origin": "bottom",
+        "x_start_px": 91,
+        "x_stop_px_exclusive": 107,
+        "y_start_px": 30,
+        "y_stop_px_exclusive": 120,
+        "width_mm": 3.361344537815126,
+        "length_mm": 18.907563025210084,
+        "hidden_bus_id": "cathode_hidden_bus",
+        "hidden_bus_in_contact_mask": false,
+        "children": []
+      }
+    ]
+  },
+  "electrode_mask_semantics": "surface_contact_overlay",
+  "visible_contact_components_per_polarity": 2,
+  "electrical_terminal_components_per_polarity": 1,
+  "hidden_bus_assumption": "same-polarity fingers are electrically connected by an ideal out-of-plane/backside bus outside the propellant-contact mask",
+  "hidden_bus_in_contact_mask": false,
+  "hidden_bus_contact_area_fraction": 0.0,
+  "hidden_bus_pixels_in_contact_mask": 0,
+  "horizontal_contact_order": [
+    "anode",
+    "cathode",
+    "anode",
+    "cathode"
+  ],
+  "equal_length_within_each_polarity": true,
+  "equal_width_for_all_four_fingers": true,
+  "deep_interdigitation": true
+}

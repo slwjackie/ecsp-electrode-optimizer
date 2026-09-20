@@ -1,0 +1,90 @@
+{
+  "actual_cuda_or_a100_claim": "NOT_TESTED_NO_HARDWARE_OR_TOOLCHAIN",
+  "actual_mpi_claim": "NOT_TESTED_NO_MPI_RUNTIME",
+  "generated_at_utc": "2026-09-06T18:54:57.465943+00:00",
+  "parent_validation": {
+    "manifest": "PACKAGE_SHA256_MANIFEST_V8_2_1.txt",
+    "manifest_sha256": "64dd9db9738983d8028f64ea24be08d142e7d8ed20dcaa09ce8ec3d39c40bf5a",
+    "status": "PASS",
+    "verified_file_count": 275,
+    "version": "8.2.1-P0P1Fixed-BCNative-Hybrid-A100-CPU8"
+  },
+  "release": "8.3.0-PaperReactiveEuler-Experimental",
+  "release_document_validation": {
+    "convergence_passed_check_count": 13,
+    "status": "PASS",
+    "verdict": "NOT_FULLY_VERIFIED"
+  },
+  "schema": "ecsp.release-build-input/v2",
+  "source_tree_digest_scope": "non-generated regular files copied by build_reactive_v8_3_release.py",
+  "validated_source_tree_sha256": "7a028a2816e3b1a886476fc2c63d3a6761949d6cd6c463364fe20aa16c9a0d25",
+  "validation_evidence": {
+    "VALIDATED_SOURCE_TREE.json": {
+      "bytes": 249,
+      "sha256": "16866e2cd4d8c5a4b9f723372b3cd1a515bc7df3dfac8fbfebbd28d6a9f7397d"
+    },
+    "full_suite.xml": {
+      "bytes": 73334,
+      "sha256": "7dadb8abb937298773fc9754007b439bb348730315ca2340c6513c0ad304bf7f"
+    },
+    "parent_preservation.json": {
+      "bytes": 3310,
+      "sha256": "3f57718ae951f18618b839ab42c8931a4732601e5e06f49dded75c082ce94485"
+    },
+    "reactive_assumed_smoke.json": {
+      "bytes": 342641,
+      "sha256": "9b6b7f825b5d0c9ed86148483f6f4fc60a64324e04cbe178cdf3e7706005a5a6"
+    },
+    "reactive_assumed_smoke.npz": {
+      "bytes": 2586,
+      "sha256": "3f37a3d5b504bdf08e8a5bf2790d15c9ac709beded584ebb3991efb0e12730ec"
+    },
+    "reactive_benchmark.json": {
+      "bytes": 2393,
+      "sha256": "ca02f4ed13232790b2e2536bcfb65408314b6c3a6f6424b8305804ef2a2b554c"
+    },
+    "reactive_suite.xml": {
+      "bytes": 29537,
+      "sha256": "81fb17b3ff5fba6adc3371129f639cf7feee15942ade9ed90ae52e3755334bc6"
+    }
+  },
+  "validation_evidence_semantics": {
+    "VALIDATED_SOURCE_TREE.json": {
+      "schema": "ecsp.validated-source-tree/v1",
+      "source_tree_sha256": "7a028a2816e3b1a886476fc2c63d3a6761949d6cd6c463364fe20aa16c9a0d25",
+      "status": "PASS",
+      "verdict": "NOT_FULLY_VERIFIED"
+    },
+    "full_suite.xml": {
+      "errors": 0,
+      "failures": 0,
+      "schema": "junit-testsuite",
+      "skipped": 2,
+      "status": "PASS",
+      "tests": 478
+    },
+    "parent_preservation.json": {
+      "schema": "ecsp.v821-parent-preservation/v1",
+      "status": "PASS"
+    },
+    "reactive_assumed_smoke.json": {
+      "schema": "ecsp.paper-reactive-result/v1",
+      "status": "PASS",
+      "verdict": "NOT_FULLY_VERIFIED_MISSING_PAPER_INPUTS"
+    },
+    "reactive_benchmark.json": {
+      "run_count": 3,
+      "schema": "ecsp.paper-reactive-benchmark/v1",
+      "status": "PASS"
+    },
+    "reactive_suite.xml": {
+      "errors": 0,
+      "failures": 0,
+      "schema": "junit-testsuite",
+      "skipped": 0,
+      "status": "PASS",
+      "tests": 192
+    }
+  },
+  "verdict": "NOT_FULLY_VERIFIED"
+}

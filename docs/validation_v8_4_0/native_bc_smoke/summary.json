@@ -1,0 +1,15 @@
+{
+  "candidate_count": 4,
+  "each_requested_duration_s": 0.006,
+  "all_complete": true,
+  "maximum_mass_relative_residual": 0.0,
+  "maximum_energy_relative_residual": 7.753715246968632e-16,
+  "maximum_speed_m_per_s": 0.0,
+  "grid_size": [
+    32,
+    32
+  ],
+  "purpose": "debug forced onset / altered kinetics; numerical integration test only",
+  "gas_CFD": false,
+  "experimentally_validated": false
+}

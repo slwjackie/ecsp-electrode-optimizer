@@ -1,0 +1,16 @@
+extends: paper_faithful_assumed_v8_3_0.yaml
+model_mode: ecsp_extended
+strict_paper: false
+description: >-
+  Non-paper extension boundary. The reactive Euler/thermal/level-set solver is
+  retained, while electrical and electrochemical volumetric sources must be
+  supplied at every accepted SSPRK stage by the existing corrected BC-global
+  surface-contact/Butler-Volmer solver. This file does not relabel BV as paper
+  physics and does not silently substitute a constant source when no callback
+  is connected.
+electrical:
+  butler_volmer_enabled: true
+  source_provider:
+    choice: EXISTING_BC_GLOBAL_CALLBACK
+    provenance: ASSUMED_NOT_FROM_PAPER
+    source: "v8.2.1 corrected surface-footprint BV model; absent from the 2024 paper"

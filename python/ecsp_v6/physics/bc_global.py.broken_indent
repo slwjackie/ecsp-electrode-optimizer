@@ -1,0 +1,4082 @@
+from __future__ import annotations
+
+"""Paper-faithful B/C pre-flame ECSP model with reduced global chemistry.
+
+The governing structure follows the high-temperature/no-convection case:
+constant condensed density, Nernst--Planck species transport, local
+Butler--Volmer/Faraday interfacial reaction, charge conservation and condensed
+energy conservation.  The LP/PVA thermochemistry is closed by the
+non-metallized global reaction and two conversion-dependent exothermic channels
+reported for the 31.58/58.42/9/1 wt.% LP/H2O/PVA/H3BO3 recipe.
+
+This module is deliberately separate from ``coupled.py``.  All v7.9.5 legacy
+physics, C++ and CUDA backends remain available unchanged.  The B/C model is an
+opt-in v8 backend and contains no legacy liquid-fraction, passivation,
+gas-coverage, artificial temperature gate, reduced gas scalar or paper
+limiting-current closure.
+"""
+
+from dataclasses import dataclass
+from typing import Any, Mapping, Sequence
+import math
+
+import torch
+
+from .composition_model import CompositionModel
+from .electrochem import initial_state, solve_electrical_and_reaction
+from .errors import BCCandidateBatchError
+from .geometry import GeometryBatch
+from .numerics import (
+    batch_masked_max,
+    batch_masked_mean,
+    batch_quantile_masked,
+    harmonic_mean,
+    physical_floor,
+)
+from .species import (
+    _flux_divergence_charged,
+    _flux_divergence_neutral,
+    _limited_update,
+)
+
+
+BC_GLOBAL_REACTION = (
+    "1.45 LiClO4 + PVA_repeat -> 2 CO2 + 2 H2O + 0.4 O2 + 1.45 LiCl"
+)
+BC_PAPER_EQUATIONS_USED = (2, 4, 5, 6, 7, 8, 9, 11, 13, 15, 16, 17, 22, 23, 24)
+BC_PAPER_EQUATIONS_NOT_USED_IN_PREFLAME = (3, 18, 25, 26, 27, 28, 29, 30, 31)
+BC_EQUATION_32_ROLE = (
+    "postprocessing_identity_only_not_added_as_a_second_heat_source"
+)
+
+BC_SCALAR_HISTORY_FIELDS = (
+    "maxTemperature_K",
+    "meanTemperature_K",
+    "current_A",
+    "power_W",
+    "energy_J",
+    "meanGlobalProgress",
+    "maximumGlobalProgress",
+    "remainingReactiveMassFraction",
+    "onsetAreaFraction",
+    "temperatureQualifiedAreaFraction",
+    "maximumChannel1Rate_per_s",
+    "maximumChannel2Rate_per_s",
+    "currentCongestion",
+    "speciesLimiterFraction",
+    "temperatureCapFraction",
+    "chemicalRateCapFraction",
+    "equation32ElectricalHeatRate_W",
+    "equation32ElectricalHeatEnergy_J",
+    "meanJouleHeat_W_per_m3",
+    "meanElectrochemicalHeat_W_per_m3",
+    "meanChemicalHeat_W_per_m3",
+    "anodeCathodeCurrentMismatch",
+    "thermalDiffusiveCFL",
+    "thermalStabilityCFL",
+)
+
+_BC_NATIVE_STEP_LIMIT = (1 << 31) - 1
+_BC_DEFAULT_MAXIMUM_TIME_STEPS = 100_000
+_BC_DEFAULT_MAXIMUM_HISTORY_ALLOCATION_BYTES = 16 * 1024**3
+
+
+def _strict_resource_integer(raw: Any, name: str, minimum: int, maximum: int) -> int:
+    if isinstance(raw, bool):
+        raise ValueError(f"{name} must be an integer in [{minimum}, {maximum}]")
+    try:
+        numeric = float(raw)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(
+            f"{name} must be an integer in [{minimum}, {maximum}]"
+        ) from exc
+    if (
+        not math.isfinite(numeric)
+        or not numeric.is_integer()
+        or numeric < minimum
+        or numeric > maximum
+    ):
+        raise ValueError(f"{name} must be an integer in [{minimum}, {maximum}]")
+    return int(numeric)
+
+
+def _bc_resource_limits(config: Mapping[str, Any]) -> tuple[int, int]:
+    quality = config.get("numericalQuality", {})
+    if not isinstance(quality, Mapping):
+        raise ValueError("numericalQuality must be a mapping")
+    maximum_steps = _strict_resource_integer(
+        quality.get("maximumTimeSteps", _BC_DEFAULT_MAXIMUM_TIME_STEPS),
+        "numericalQuality.maximumTimeSteps",
+        1,
+        _BC_NATIVE_STEP_LIMIT,
+    )
+    maximum_history_bytes = _strict_resource_integer(
+        quality.get(
+            "maximumHistoryAllocationBytes",
+            _BC_DEFAULT_MAXIMUM_HISTORY_ALLOCATION_BYTES,
+        ),
+        "numericalQuality.maximumHistoryAllocationBytes",
+        8 * len(BC_SCALAR_HISTORY_FIELDS),
+        (1 << 63) - 1,
+    )
+    return maximum_steps, maximum_history_bytes
+
+
+def _positive_time_step_count(
+    duration: float,
+    step_size: float,
+    *,
+    maximum_steps: int = _BC_NATIVE_STEP_LIMIT,
+) -> int:
+    """Return a ceil-like count without a spurious zero-duration final step."""
+    if (
+        not math.isfinite(duration)
+        or not math.isfinite(step_size)
+        or duration <= 0.0
+        or step_size <= 0.0
+    ):
+        raise ValueError("B/C duration and time step must be finite and positive")
+    ratio = duration / step_size
+    if not math.isfinite(ratio) or ratio <= 0.0:
+        raise ValueError("B/C derived time-step ratio is non-finite or non-positive")
+    nearest = round(ratio)
+    tolerance = 64.0 * math.ulp(1.0) * max(1.0, abs(ratio))
+    if abs(ratio - nearest) <= tolerance:
+        count = max(1, int(nearest))
+    else:
+        count = max(1, int(math.floor(ratio)) + 1)
+    if count > maximum_steps:
+        raise ValueError(
+            "B/C time-step count exceeds numericalQuality.maximumTimeSteps: "
+            f"count={count}, maximum={maximum_steps}"
+        )
+    return count
+
+
+def _is_time_grid_aligned(value: float, step_size: float) -> bool:
+    if (
+        not math.isfinite(value)
+        or not math.isfinite(step_size)
+        or step_size <= 0.0
+    ):
+        return False
+    ratio = value / step_size
+    if not math.isfinite(ratio):
+        return False
+    tolerance = 64.0 * math.ulp(1.0) * max(1.0, abs(ratio))
+    return abs(ratio - round(ratio)) <= tolerance
+
+
+def _time_match_tolerance(*values: float) -> float:
+    """Return an ULP-scale tolerance without a one-second absolute floor."""
+    return 64.0 * max(math.ulp(abs(float(value))) for value in values)
+
+
+def _require_unclipped_faradaic_inventory(
+    lp_limited: torch.Tensor,
+    water_limited: torch.Tensor,
+    *,
+    step: int,
+    step_dt: float,
+) -> None:
+    """Fail before committing a Faradaic extent not supported by inventory.
+
+    Clipping only the species sink would leave the nonlinear BV current,
+    electrical field and input-energy integral at the rejected value.  Until
+    an inventory-constrained BV boundary is solved self-consistently, returning
+    such a state is physically inconsistent; production therefore fails
+    closed and asks for a time step small enough to resolve depletion.
+    """
+    limited = lp_limited | water_limited
+    if bool(torch.any(limited).item()):
+        batch_counts = limited.flatten(1).sum(dim=1)
+        bad = torch.nonzero(batch_counts > 0).flatten().detach().cpu().tolist()
+        counts = batch_counts[batch_counts > 0].detach().cpu().tolist()
+        raise BCCandidateBatchError(
+            "Faradaic inventory depletion would clip reaction current without "
+            "a self-consistent BV/potential re-solve; refusing an inconsistent "
+            f"state at step={step}, step_dt={step_dt}, batch_indices={bad}, "
+            f"limited_cells={counts}. Reduce bcGlobal.timeStep_s or use an "
+            "inventory-constrained electrochemical boundary solver.",
+            bad,
+            "faradaic_inventory_depletion",
+        )
+
+
+BC_SOLVER_ONSET_SNAPSHOT_FIELDS = (
+    "temperatureAtOnset_K",
+    "globalProgressAtOnset",
+    "alphaChannel1AtOnset",
+    "alphaChannel2AtOnset",
+    "cationAtOnset_mol_per_m3",
+    "anionAtOnset_mol_per_m3",
+    "mobileLPAtOnset_mol_per_m3",
+    "mobileWaterAtOnset_mol_per_m3",
+    "generatedWaterProductAtOnset_mol_per_m3",
+    "electrochemicalLPConsumedAtOnset_mol_per_m3",
+    "pvaReactiveRepeatAtOnset_mol_per_m3",
+    "potentialAtOnset_V",
+    "xiMax_mol_per_m3",
+    "molarMassLP_kg_per_mol",
+    "molarMassPVARepeat_kg_per_mol",
+    "initialReactiveMass_kg_per_m3",
+    "qJAtOnset_W_per_m3",
+    "qEchemAtOnset_W_per_m3",
+)
+
+BC_REQUIRED_AUTHORIZED_PROPAGATION_HANDOFF_FIELDS = (
+    *BC_SOLVER_ONSET_SNAPSHOT_FIELDS,
+    "propellantMask",
+    "initialMobileLP_mol_per_m3",
+    "initialPVARepeat_mol_per_m3",
+    "initialMobileWater_mol_per_m3",
+    "ignitionDelay_s",
+    "handoffSchemaVersion",
+    "onsetSucceeded",
+    "onsetReportedByPhysics",
+    "numericallyValidForPropagationHandoff",
+    "propagationHandoffAuthorizationReason",
+    "continuedElectricalHeating",
+)
+
+BC_OPTIONAL_PREFLAME_DIAGNOSTIC_HISTORY_FIELDS = (
+    "times_s",
+    "qJ_W_per_m3",
+    "qEchem_W_per_m3",
+    "temperatureHistory_K",
+    "globalProgressHistory",
+)
+
+
+def bc_model_contract() -> dict[str, Any]:
+    """Machine-readable solver and evaluator handoff contracts for audits."""
+    required = list(BC_REQUIRED_AUTHORIZED_PROPAGATION_HANDOFF_FIELDS)
+    return {
+        "scope": "bc_global_preflame_species_electrochemical_thermal",
+        "global_reaction": BC_GLOBAL_REACTION,
+        "paper_equations_used": list(BC_PAPER_EQUATIONS_USED),
+        "paper_equations_not_used_in_preflame": list(
+            BC_PAPER_EQUATIONS_NOT_USED_IN_PREFLAME
+        ),
+        "equation_32_role": BC_EQUATION_32_ROLE,
+        "legacy_proxy_closures_used": False,
+        "gas_phase_cfd_used": False,
+        "solver_onset_snapshot_fields": list(BC_SOLVER_ONSET_SNAPSHOT_FIELDS),
+        "required_authorized_propagation_handoff_fields": required,
+        "optional_preflame_diagnostic_history_fields": list(
+            BC_OPTIONAL_PREFLAME_DIAGNOSTIC_HISTORY_FIELDS
+        ),
+        # Retained as a compatibility key, but now denotes the complete
+        # authorised propagation interface rather than only solver tensors.
+        "post_onset_handoff_fields": required,
+    }
+
+
+@dataclass(frozen=True)
+class BCKineticChannel:
+    alpha_grid: tuple[float, ...]
+    activation_energy_J_per_mol: tuple[float, ...]
+    ln_Af_per_s: tuple[float, ...]
+    heat_release_J_per_kg: float
+    label: str
+    provenance: str
+
+
+def _as_channel(raw: Mapping[str, Any], label: str) -> BCKineticChannel:
+    alpha = tuple(float(x) for x in raw["alpha_grid"])
+    ea = tuple(float(x) for x in raw["activation_energy_J_per_mol"])
+    ln_af = tuple(float(x) for x in raw["ln_Af_per_s"])
+    if len(alpha) < 2 or not (len(alpha) == len(ea) == len(ln_af)):
+        raise ValueError(f"bcGlobal.kinetics.{label}: lookup arrays must have equal length >=2")
+    if any(b <= a for a, b in zip(alpha[:-1], alpha[1:])):
+        raise ValueError(f"bcGlobal.kinetics.{label}.alpha_grid must be strictly increasing")
+    if (
+        not all(math.isfinite(value) for value in (*alpha, *ea, *ln_af))
+        or any(value < 0.0 for value in ea)
+    ):
+        raise ValueError(
+            f"bcGlobal.kinetics.{label}: lookup values must be finite and activation energies non-negative"
+        )
+    if not math.isclose(alpha[0], 0.0, abs_tol=1e-12) or not math.isclose(
+        alpha[-1], 1.0, abs_tol=1e-12
+    ):
+        raise ValueError(f"bcGlobal.kinetics.{label}.alpha_grid must start at 0 and end at 1")
+    heat_release = float(raw["heat_release_J_per_kg"])
+    if not math.isfinite(heat_release) or heat_release < 0.0:
+        raise ValueError(
+            f"bcGlobal.kinetics.{label}.heat_release_J_per_kg must be finite and non-negative"
+        )
+    return BCKineticChannel(
+        alpha_grid=alpha,
+        activation_energy_J_per_mol=ea,
+        ln_Af_per_s=ln_af,
+        heat_release_J_per_kg=heat_release,
+        label=str(raw.get("label", label)),
+        provenance=str(raw.get("provenance", "unspecified")),
+    )
+
+
+def _interp1d(field: torch.Tensor, x: Sequence[float], y: Sequence[float]) -> torch.Tensor:
+    """Piecewise-linear lookup on the same device/dtype as ``field``."""
+    xt = torch.as_tensor(x, device=field.device, dtype=field.dtype)
+    yt = torch.as_tensor(y, device=field.device, dtype=field.dtype)
+    clipped = torch.clamp(field, min=float(x[0]), max=float(x[-1]))
+    upper = torch.bucketize(clipped.contiguous(), xt[1:-1], right=False) + 1
+    lower = upper - 1
+    x0 = xt[lower]
+    x1 = xt[upper]
+    y0 = yt[lower]
+    y1 = yt[upper]
+    weight = (clipped - x0) / torch.clamp(x1 - x0, min=torch.finfo(field.dtype).tiny)
+    return y0 + weight * (y1 - y0)
+
+
+def _property_from_config(
+    temperature: torch.Tensor,
+    raw: Mapping[str, Any] | float | int,
+    *,
+    gas_constant: float,
+) -> torch.Tensor:
+    """Evaluate an explicitly documented measured/literature property model.
+
+    Supported closures are a tabulated linear interpolation or a reference
+    Arrhenius relation.  No water/glycerol/crosslink/liquid multipliers are
+    hidden here.
+    """
+    if isinstance(raw, (int, float)):
+        value = float(raw)
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError("Material-property constants must be finite and non-negative")
+        return torch.full_like(temperature, value)
+    mode = str(raw.get("mode", "table")).lower()
+    if mode == "table":
+        temperatures = tuple(float(x) for x in raw["temperature_K"])
+        values = tuple(float(x) for x in raw["values"])
+        if (
+            len(temperatures) < 2
+            or len(temperatures) != len(values)
+            or any(not math.isfinite(x) for x in (*temperatures, *values))
+            or any(b <= a for a, b in zip(temperatures[:-1], temperatures[1:]))
+            or any(value < 0.0 for value in values)
+        ):
+            raise ValueError(
+                "Material-property tables require finite, non-negative values "
+                "on a strictly increasing temperature grid"
+            )
+        return _interp1d(
+            temperature,
+            temperatures,
+            values,
+        )
+    if mode in {"arrhenius", "reference_arrhenius"}:
+        reference = float(raw["reference_value"])
+        reference_temperature = float(raw["reference_temperature_K"])
+        activation_energy = float(raw.get("activation_energy_J_per_mol", 0.0))
+        if (
+            not all(
+                math.isfinite(value)
+                for value in (reference, reference_temperature, activation_energy)
+            )
+            or reference < 0.0
+            or reference_temperature <= 0.0
+            or activation_energy < 0.0
+        ):
+            raise ValueError(
+                "Arrhenius properties require finite non-negative reference/activation values and positive reference temperature"
+            )
+        t = torch.clamp(temperature, min=1.0)
+        return reference * torch.exp(
+            -activation_energy
+            / gas_constant
+            * (1.0 / t - 1.0 / reference_temperature)
+        )
+    if mode == "constant":
+        value = float(raw["value"])
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError("Material-property constants must be finite and non-negative")
+        return torch.full_like(temperature, value)
+    raise ValueError(f"Unsupported material-property mode: {mode}")
+
+
+def bc_transport_fields(
+    state: dict[str, torch.Tensor],
+    geometry: GeometryBatch,
+    config: dict[str, Any],
+    composition: CompositionModel,
+) -> dict[str, torch.Tensor]:
+    """Strict B/C Nernst--Planck transport closure.
+
+    ``sigmaTotal`` is Nernst--Einstein ionic conductivity only.  Adding a
+    separately measured total ionic conductivity would double count the same
+    migration flux.  Optional electronic conduction is disabled in the strict
+    profile and is available only through an explicitly named augmented mode.
+    """
+    bc = config["bcGlobal"]
+    transport_cfg = bc["transport"]
+    base_transport = config["transport"]
+    electrical = config["electrical"]
+    gas_constant = float(base_transport["gasConstant_J_per_molK"])
+    faraday = float(base_transport["faradayConstant_C_per_mol"])
+    temperature = torch.clamp(state["temperature"], min=1.0)
+    d_cation = _property_from_config(
+        temperature, transport_cfg["cation_diffusivity"], gas_constant=gas_constant
+    )
+    d_anion = _property_from_config(
+        temperature, transport_cfg["anion_diffusivity"], gas_constant=gas_constant
+    )
+    d_water = _property_from_config(
+        temperature, transport_cfg["water_diffusivity"], gas_constant=gas_constant
+    )
+    z_plus = float(base_transport["chargeNumberCation"])
+    z_minus = float(base_transport["chargeNumberAnion"])
+    sigma_ionic = faraday * faraday / (gas_constant * temperature) * (
+        z_plus * z_plus * d_cation * torch.clamp(state["cation"], min=0.0)
+        + z_minus * z_minus * d_anion * torch.clamp(state["anion"], min=0.0)
+    )
+    augmented = bool(bc.get("augmentedElectronicConduction", {}).get("enabled", False))
+    if augmented:
+        sigma_e = _property_from_config(
+            temperature,
+            bc["augmentedElectronicConduction"]["conductivity"],
+            gas_constant=gas_constant,
+        )
+    else:
+        sigma_e = torch.zeros_like(temperature)
+    sigma_total = torch.clamp(
+        sigma_ionic + sigma_e,
+        min=float(electrical["conductivityMinimum_S_per_m"]),
+        max=float(electrical["conductivityMaximum_S_per_m"]),
+    )
+    zero = torch.zeros_like(temperature)
+    electrode_sigma = torch.full_like(
+        temperature, float(electrical["conductivityMaximum_S_per_m"])
+    )
+    concentration_floor = physical_floor(config, "concentration_mol_per_m3", 1e-12)
+    water_activity_scale = max(
+        composition.initial_water_mol_per_m3,
+        concentration_floor,
+        1.0e-30,
+    )
+    water_activity = torch.clamp(
+        state["water"] / water_activity_scale,
+        min=0.0,
+        max=1.0,
+    )
+    return {
+        "Dcation": torch.where(geometry.fixed, zero, d_cation),
+        "Danion": torch.where(geometry.fixed, zero, d_anion),
+        "Dwater": torch.where(geometry.fixed, zero, d_water),
+        "sigmaIonic": torch.where(geometry.fixed, electrode_sigma, sigma_ionic),
+        "sigmaElectronic": torch.where(geometry.fixed, electrode_sigma, sigma_e),
+        "sigmaTotal": torch.where(geometry.fixed, electrode_sigma, sigma_total),
+        "waterActivity": water_activity,
+        "fastIonFraction": zero,
+    }
+
+
+def _invalid_bc_constitutive_cells(
+    transport: Mapping[str, torch.Tensor],
+    heat_capacity: torch.Tensor,
+    thermal_conductivity: torch.Tensor,
+    propellant: torch.Tensor,
+    config: Mapping[str, Any],
+    density: float,
+) -> torch.Tensor:
+    """Flag every active cell whose complete B/C constitutive state is invalid."""
+    invalid = torch.zeros_like(propellant)
+    for name in ("Dcation", "Danion", "Dwater"):
+        value = transport[name]
+        invalid |= ~torch.isfinite(value) | (value < 0.0)
+    for name in ("sigmaIonic", "sigmaElectronic"):
+        value = transport[name]
+        invalid |= ~torch.isfinite(value) | (value < 0.0)
+    sigma_total = transport["sigmaTotal"]
+    sigma_minimum = float(config["electrical"]["conductivityMinimum_S_per_m"])
+    sigma_maximum = float(config["electrical"]["conductivityMaximum_S_per_m"])
+    invalid |= (
+        ~torch.isfinite(sigma_total)
+        | (sigma_total < sigma_minimum)
+        | (sigma_total > sigma_maximum)
+    )
+    for name in ("waterActivity", "fastIonFraction"):
+        value = transport[name]
+        invalid |= ~torch.isfinite(value) | (value < 0.0) | (value > 1.0)
+    invalid |= ~torch.isfinite(heat_capacity) | (heat_capacity <= 0.0)
+    volumetric_heat_capacity = density * heat_capacity
+    invalid |= (
+        ~torch.isfinite(volumetric_heat_capacity)
+        | (volumetric_heat_capacity <= 0.0)
+    )
+    invalid |= ~torch.isfinite(thermal_conductivity) | (thermal_conductivity < 0.0)
+    return invalid & propellant
+
+
+def _raise_if_invalid_bc_constitutive(
+    transport: Mapping[str, torch.Tensor],
+    heat_capacity: torch.Tensor,
+    thermal_conductivity: torch.Tensor,
+    active_propellant: torch.Tensor,
+    config: Mapping[str, Any],
+    *,
+    density: float,
+    accepted_updated_temperature: bool,
+) -> None:
+    invalid = _invalid_bc_constitutive_cells(
+        transport,
+        heat_capacity,
+        thermal_conductivity,
+        active_propellant,
+        config,
+        density,
+    )
+    invalid_lanes = invalid.flatten(1).any(dim=1)
+    if not bool(torch.any(invalid_lanes).item()):
+        return
+    bad = torch.nonzero(invalid_lanes).flatten().detach().cpu().tolist()
+    suffix = (
+        " at the accepted updated temperature"
+        if accepted_updated_temperature
+        else ""
+    )
+    raise BCCandidateBatchError(
+        "B/C thermal properties became non-finite or non-physical, or "
+        f"transport constitutive properties became invalid{suffix}; heat "
+        "capacity must be positive, and conductivity/diffusivity fields must "
+        "be finite and non-negative within configured conductivity bounds",
+        bad,
+        "bc_constitutive_properties",
+    )
+
+
+def _divergence_k_grad(
+    field: torch.Tensor,
+    conductivity: torch.Tensor,
+    propellant: torch.Tensor,
+    spacing: float,
+) -> torch.Tensor:
+    """Finite-volume ``div(k grad(field))`` with zero outer/fixed-cell flux."""
+    batch, rows, columns = field.shape
+    flux_x = torch.zeros(
+        (batch, rows, columns + 1), device=field.device, dtype=field.dtype
+    )
+    flux_y = torch.zeros(
+        (batch, rows + 1, columns), device=field.device, dtype=field.dtype
+    )
+    valid_x = propellant[..., :, :-1] & propellant[..., :, 1:]
+    k_face_x = harmonic_mean(conductivity[..., :, :-1], conductivity[..., :, 1:])
+    qx = k_face_x * (field[..., :, 1:] - field[..., :, :-1]) / spacing
+    flux_x[..., :, 1:columns] = torch.where(valid_x, qx, torch.zeros_like(qx))
+    valid_y = propellant[..., :-1, :] & propellant[..., 1:, :]
+    k_face_y = harmonic_mean(conductivity[..., :-1, :], conductivity[..., 1:, :])
+    qy = k_face_y * (field[..., 1:, :] - field[..., :-1, :]) / spacing
+    flux_y[..., 1:rows, :] = torch.where(valid_y, qy, torch.zeros_like(qy))
+    result = (
+        (flux_x[..., :, 1:] - flux_x[..., :, :-1]) / spacing
+        + (flux_y[..., 1:, :] - flux_y[..., :-1, :]) / spacing
+    )
+    return torch.where(propellant, result, torch.zeros_like(result))
+
+
+def _thermal_diffusive_cfl(
+    conductivity: torch.Tensor,
+    volumetric_heat_capacity: torch.Tensor,
+    propellant: torch.Tensor,
+    spacing: float,
+    step_dt: float,
+) -> torch.Tensor:
+    """Return the local explicit-Euler FV thermal diffusion diagonal."""
+    diagonal = torch.zeros_like(conductivity)
+    valid_x = propellant[..., :, :-1] & propellant[..., :, 1:]
+    k_face_x = torch.where(
+        valid_x,
+        harmonic_mean(
+            conductivity[..., :, :-1], conductivity[..., :, 1:]
+        ),
+        torch.zeros_like(conductivity[..., :, :-1]),
+    )
+    diagonal[..., :, :-1] += k_face_x
+    diagonal[..., :, 1:] += k_face_x
+    valid_y = propellant[..., :-1, :] & propellant[..., 1:, :]
+    k_face_y = torch.where(
+        valid_y,
+        harmonic_mean(
+            conductivity[..., :-1, :], conductivity[..., 1:, :]
+        ),
+        torch.zeros_like(conductivity[..., :-1, :]),
+    )
+    diagonal[..., :-1, :] += k_face_y
+    diagonal[..., 1:, :] += k_face_y
+    cfl = (
+        step_dt
+        * diagonal
+        / (spacing * spacing * volumetric_heat_capacity)
+    )
+    return torch.where(propellant, cfl, torch.zeros_like(cfl))
+
+
+def _channel_rate(
+    alpha: torch.Tensor,
+    temperature: torch.Tensor,
+    channel: BCKineticChannel,
+    gas_constant: float,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ea = _interp1d(alpha, channel.alpha_grid, channel.activation_energy_J_per_mol)
+    ln_af = _interp1d(alpha, channel.alpha_grid, channel.ln_Af_per_s)
+    exponent = torch.clamp(
+        ln_af - ea / (gas_constant * torch.clamp(temperature, min=1.0)),
+        min=-100.0,
+        max=60.0,
+    )
+    rate = torch.exp(exponent)
+    rate = torch.where(alpha < 1.0, rate, torch.zeros_like(rate))
+    return rate, ea, ln_af
+
+
+def _global_progress(
+    alpha_1: torch.Tensor,
+    alpha_2: torch.Tensor,
+    weights: tuple[float, float],
+) -> torch.Tensor:
+    return torch.clamp(weights[0] * alpha_1 + weights[1] * alpha_2, 0.0, 1.0)
+
+
+def _reaction_inventory(
+    progress: torch.Tensor,
+    composition: CompositionModel,
+    *,
+    mobile_lp_mol_per_m3: torch.Tensor | None = None,
+    electrochemical_lp_consumed_mol_per_m3: torch.Tensor | None = None,
+    generated_water_product_mol_per_m3: torch.Tensor | None = None,
+) -> dict[str, torch.Tensor]:
+    """Return the reactive inventory without hiding electrochemical LP loss.
+
+    ``progress`` determines only the *chemical* global-reaction extent.  When
+    the solver supplies ``mobile_lp_mol_per_m3``, that concentration is used as
+    the actual remaining LP inventory; it already contains chemical and
+    electrochemical consumption plus conservative transport.  This prevents
+    the historical error where ``U_rem`` was reconstructed from conversion
+    alone and silently ignored Faradaic LP consumption.
+
+    The optional arguments keep the two water pools explicit.  Product water
+    is a bookkeeping product of the global reaction and is deliberately not
+    interpreted as condensed mobile water available to Nernst--Planck/BV
+    closures.
+    """
+    # Global reaction: 1.45 LP + 1 PVA-repeat -> products.
+    xi_max = min(
+        composition.initial_lp_mol_per_m3 / 1.45,
+        composition.initial_pva_repeat_mol_per_m3,
+    )
+    xi = xi_max * progress
+    lp_remaining_from_chemical_progress = torch.clamp(
+        torch.full_like(progress, composition.initial_lp_mol_per_m3) - 1.45 * xi,
+        min=0.0,
+    )
+    if mobile_lp_mol_per_m3 is None:
+        lp_remaining = lp_remaining_from_chemical_progress
+    else:
+        lp_remaining = torch.clamp(
+            torch.as_tensor(
+                mobile_lp_mol_per_m3,
+                device=progress.device,
+                dtype=progress.dtype,
+            ),
+            min=0.0,
+        )
+        if lp_remaining.shape != progress.shape:
+            raise ValueError("mobile_lp_mol_per_m3 must have the same shape as progress")
+
+    if electrochemical_lp_consumed_mol_per_m3 is None:
+        electrochemical_consumed = torch.zeros_like(progress)
+    else:
+        electrochemical_consumed = torch.clamp(
+            torch.as_tensor(
+                electrochemical_lp_consumed_mol_per_m3,
+                device=progress.device,
+                dtype=progress.dtype,
+            ),
+            min=0.0,
+        )
+        if electrochemical_consumed.shape != progress.shape:
+            raise ValueError(
+                "electrochemical_lp_consumed_mol_per_m3 must have the same shape as progress"
+            )
+    if mobile_lp_mol_per_m3 is None:
+        lp_remaining = torch.clamp(
+            lp_remaining_from_chemical_progress - electrochemical_consumed,
+            min=0.0,
+        )
+
+    if generated_water_product_mol_per_m3 is None:
+        generated_water = 2.0 * xi
+    else:
+        generated_water = torch.clamp(
+            torch.as_tensor(
+                generated_water_product_mol_per_m3,
+                device=progress.device,
+                dtype=progress.dtype,
+            ),
+            min=0.0,
+        )
+        if generated_water.shape != progress.shape:
+            raise ValueError(
+                "generated_water_product_mol_per_m3 must have the same shape as progress"
+            )
+    pva_remaining = torch.clamp(
+        torch.full_like(progress, composition.initial_pva_repeat_mol_per_m3) - xi,
+        min=0.0,
+    )
+    reactive_mass = (
+        composition.molar_mass_lp_kg_per_mol * lp_remaining
+        + composition.molar_mass_pva_repeat_kg_per_mol * pva_remaining
+    )
+    initial_mass = (
+        composition.molar_mass_lp_kg_per_mol * composition.initial_lp_mol_per_m3
+        + composition.molar_mass_pva_repeat_kg_per_mol
+        * composition.initial_pva_repeat_mol_per_m3
+    )
+    if not math.isfinite(initial_mass) or initial_mass <= 0.0:
+        raise ValueError(
+            "Initial reactive mass must be representable as a finite positive "
+            "FP64 value"
+        )
+    return {
+        "xi_mol_per_m3": xi,
+        "xi_max_mol_per_m3": torch.full_like(progress, xi_max),
+        "lpReactive_mol_per_m3": lp_remaining,
+        "lpRemainingFromChemicalProgressOnly_mol_per_m3": lp_remaining_from_chemical_progress,
+        "electrochemicalLPConsumed_mol_per_m3": electrochemical_consumed,
+        "pvaReactiveRepeat_mol_per_m3": pva_remaining,
+        "reactiveMass_kg_per_m3": reactive_mass,
+        "initialReactiveMass_kg_per_m3": torch.full_like(progress, initial_mass),
+        "co2Product_mol_per_m3": 2.0 * xi,
+        "waterProduct_mol_per_m3": generated_water,
+        "generatedWaterProduct_mol_per_m3": generated_water,
+        "oxygenProduct_mol_per_m3": 0.4 * xi,
+        "liClProduct_mol_per_m3": 1.45 * xi,
+    }
+
+
+def _masked_integral_ratio(
+    numerator: torch.Tensor,
+    denominator: torch.Tensor,
+    mask: torch.Tensor,
+) -> torch.Tensor:
+    zero = torch.zeros_like(numerator)
+    masked_numerator = torch.where(mask, numerator, zero)
+    masked_denominator = torch.where(mask, denominator, zero)
+    scale = torch.amax(
+        torch.maximum(torch.abs(masked_numerator), torch.abs(masked_denominator)),
+        dim=(-2, -1),
+    )
+    safe_scale = torch.where(
+        torch.isfinite(scale) & (scale > 0.0), scale, torch.ones_like(scale)
+    )
+    expanded_scale = safe_scale[:, None, None]
+    num = (masked_numerator / expanded_scale).sum(dim=(-2, -1))
+    den = (masked_denominator / expanded_scale).sum(dim=(-2, -1))
+    ratio = num / torch.where(den > 0.0, den, torch.ones_like(den))
+    valid = (
+        torch.isfinite(scale)
+        & (scale > 0.0)
+        & torch.isfinite(num)
+        & torch.isfinite(den)
+        & (den > 0.0)
+        & torch.isfinite(ratio)
+    )
+    return torch.where(valid, ratio, torch.full_like(ratio, torch.nan))
+
+
+def _validate_bc_config(config: dict[str, Any]) -> tuple[BCKineticChannel, BCKineticChannel]:
+    if "bcGlobal" not in config:
+        raise ValueError("B/C solver requires a bcGlobal configuration section")
+    bc = config["bcGlobal"]
+    channels = bc["kinetics"]["channels"]
+    if len(channels) != 2:
+        raise ValueError("bcGlobal currently requires exactly two exothermic channels")
+    parsed = (_as_channel(channels[0], "channel_1"), _as_channel(channels[1], "channel_2"))
+    weights = [float(x) for x in bc["kinetics"]["mass_conversion_weights"]]
+    if (
+        len(weights) != 2
+        or any(not math.isfinite(x) or x < 0.0 for x in weights)
+        or abs(sum(weights) - 1.0) > 1e-12
+    ):
+        raise ValueError("bcGlobal.kinetics.mass_conversion_weights must be two non-negative values summing to 1")
+    heat_basis = str(
+        bc["kinetics"].get(
+            "heat_release_basis",
+            "per_initial_bulk_propellant_channel_contribution",
+        )
+    ).strip().lower()
+    if heat_basis != "per_initial_bulk_propellant_channel_contribution":
+        raise ValueError(
+            "bcGlobal.kinetics.heat_release_basis must be "
+            "per_initial_bulk_propellant_channel_contribution; conversion "
+            "weights must not be applied a second time to channel heat"
+        )
+    maximum_rate = float(bc["kinetics"].get("maximum_rate_per_s", 1.0e6))
+    if not math.isfinite(maximum_rate) or maximum_rate <= 0.0:
+        raise ValueError(
+            "bcGlobal.kinetics.maximum_rate_per_s must be finite and positive"
+        )
+    onset = bc["onsetCriterion"]
+    onset_temperature = float(onset["temperature_K"])
+    if not math.isfinite(onset_temperature) or onset_temperature <= 0.0:
+        raise ValueError("bcGlobal.onsetCriterion.temperature_K must be finite and positive")
+    for name in ("minimum_progress", "minimum_area_fraction"):
+        value = float(onset[name])
+        if not 0.0 < value <= 1.0:
+            raise ValueError(f"bcGlobal.onsetCriterion.{name} must lie in (0,1]")
+    return parsed
+
+
+def _validate_bc_runtime_contract(
+    config: Mapping[str, Any],
+    composition: CompositionModel,
+    geometry: GeometryBatch | None = None,
+) -> None:
+    """Validate the strict B/C contract before any candidate is integrated.
+
+    These checks intentionally mirror the compiled backend.  A malformed
+    physical configuration must not run under Python while being rejected by
+    C++ (or vice versa), and a package-level configuration error must not be
+    misreported as an individual geometry failure.
+    """
+    bc = config["bcGlobal"]
+    interface = config["interface"]
+    coupled = config["coupled"]
+    transport = config["transport"]
+    electrical = config["electrical"]
+    geometry_cfg = config["geometry"]
+    thermal = bc["thermal"]
+    _validate_bc_config(dict(config))
+
+    time_step = float(bc["timeStep_s"])
+    end_time = float(bc["endTime_s"])
+    evaluation_time = float(bc.get("evaluationTime_s", end_time))
+    electrical_interval = float(bc["electricalUpdateInterval_s"])
+    maximum_time_steps, _ = _bc_resource_limits(config)
+    end_tolerance = _time_match_tolerance(end_time, evaluation_time)
+    if (
+        not all(
+            math.isfinite(value)
+            for value in (
+                time_step,
+                end_time,
+                evaluation_time,
+                electrical_interval,
+            )
+        )
+        or time_step <= 0.0
+        or end_time <= 0.0
+        or evaluation_time <= 0.0
+        or evaluation_time > end_time
+        or electrical_interval < time_step
+        or not _is_time_grid_aligned(electrical_interval, time_step)
+        or (
+            not math.isclose(
+                evaluation_time,
+                end_time,
+                rel_tol=0.0,
+                abs_tol=end_tolerance,
+            )
+            and not _is_time_grid_aligned(evaluation_time, time_step)
+        )
+    ):
+        raise ValueError(
+            "Invalid B/C time horizon: require positive finite times, an "
+            "electrical update interval that is an integer multiple of "
+            "timeStep_s and at least one step, and an "
+            "evaluation time at endTime_s or aligned to the time grid"
+        )
+    _positive_time_step_count(
+        end_time, time_step, maximum_steps=maximum_time_steps
+    )
+    _positive_time_step_count(
+        evaluation_time, time_step, maximum_steps=maximum_time_steps
+    )
+    numerical_quality = config.get("numericalQuality", {})
+    if not isinstance(numerical_quality, Mapping):
+        raise ValueError("numericalQuality must be a mapping")
+    thermal_cfl_limit = float(
+        numerical_quality.get(
+            "maximumExplicitThermalCFL",
+            numerical_quality.get("maximumDiffusiveCFLFraction", 1.0),
+        )
+    )
+    if (
+        not math.isfinite(thermal_cfl_limit)
+        or not 0.0 < thermal_cfl_limit <= 1.0
+    ):
+        raise ValueError(
+            "numericalQuality.maximumExplicitThermalCFL must lie in (0, 1]"
+        )
+
+    if str(interface.get("boundaryCouplingModel", "")).lower() != "surface_overlay_bv":
+        raise ValueError(
+            "Strict B/C requires interface.boundaryCouplingModel=surface_overlay_bv"
+        )
+    if str(
+        interface.get("contactModel", "surface_overlay_full_propellant")
+    ).lower() not in {
+        "surface_overlay_full_propellant",
+        "surface_overlay",
+        "surface_contact_overlay",
+    }:
+        raise ValueError(
+            "Strict B/C requires surface contacts over the full propellant domain"
+        )
+    if bool(interface.get("electrodeMasksRemovePropellant", False)):
+        raise ValueError(
+            "Strict B/C surface contacts must not remove propellant cells"
+        )
+    if not bool(interface.get("hiddenBusConnectionAssumed", True)):
+        raise ValueError(
+            "Strict B/C shared-terminal contact masks require a hidden bus connection"
+        )
+    if str(interface.get("currentDirectionModel", "signed_normal")).lower() != "signed_normal":
+        raise ValueError("Strict B/C requires currentDirectionModel=signed_normal")
+    if bool(bc.get("continuedElectricalHeatingAfterOnset", False)):
+        raise ValueError(
+            "Strict pre-flame B/C must freeze each candidate at first onset"
+        )
+    if bool(coupled.get("usePaperMassTransferSaturation", False)) or bool(
+        interface.get("nernst", {}).get("enabled", False)
+    ):
+        raise ValueError(
+            "Strict B/C excludes legacy saturation and Nernst/activity proxies"
+        )
+    if bool(interface.get("includeActivationHeat", False)) or float(
+        interface.get("liquidKineticsGain", 0.0)
+    ) != 0.0:
+        raise ValueError(
+            "Strict B/C excludes legacy activation-heat and liquid-kinetics proxies"
+        )
+    blocking = interface.get("blocking", {})
+    if any(
+        bool(blocking.get(name, {}).get("enabled", False))
+        for name in ("passivation", "gasCoverage")
+    ):
+        raise ValueError("Strict B/C excludes legacy interfacial blocking dynamics")
+    for species, polarity in (
+        ("water", "anode"),
+        ("water", "cathode"),
+        ("lp", "anode"),
+        ("lp", "cathode"),
+    ):
+        channel = interface.get(species, {}).get(polarity)
+        if not isinstance(channel, Mapping):
+            raise ValueError(
+                f"Missing strict B/C Butler-Volmer channel {species}/{polarity}"
+            )
+        stoichiometry_key = (
+            "waterStoichiometry_mol_per_molElectron"
+            if species == "water"
+            else "saltStoichiometry_mol_per_molElectron"
+        )
+        values = {
+            "equilibrium": float(channel.get("equilibriumPotential_V", 0.0)),
+            "exchange": float(
+                channel.get("exchangeCurrentDensity_A_per_m2", 0.0)
+            ),
+            "transfer": float(channel.get("chargeTransferCoefficient", 0.5)),
+            "electrons": float(channel.get("electronNumber", 1.0)),
+            "reverse": float(channel.get("reverseAvailabilityFraction", 1.0)),
+            "enthalpy": float(channel.get("reactionEnthalpy_J_per_mol", 0.0)),
+            "stoichiometry": float(channel.get(stoichiometry_key, 0.0)),
+        }
+        if (
+            any(not math.isfinite(value) for value in values.values())
+            or values["exchange"] < 0.0
+            or not 0.0 <= values["transfer"] <= 1.0
+            or values["electrons"] <= 0.0
+            or values["reverse"] < 0.0
+            or values["enthalpy"] < 0.0
+            or values["stoichiometry"] < 0.0
+        ):
+            raise ValueError(
+                f"Invalid strict B/C Butler-Volmer channel {species}/{polarity}"
+            )
+    potential_solver = config["numerics"]["potentialSolver"]
+    nonlinear_robin = interface.get("nonlinearRobin", {})
+    if not bool(potential_solver.get("failOnNonConvergence", True)) or not bool(
+        nonlinear_robin.get("failOnNonConvergence", True)
+    ):
+        raise ValueError(
+            "Strict B/C requires linear and nonlinear failOnNonConvergence=true"
+        )
+
+    def strict_integer(raw: Any, name: str, minimum: int) -> int:
+        if isinstance(raw, bool):
+            raise ValueError(f"{name} must be an integer >= {minimum}")
+        try:
+            numeric = float(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{name} must be an integer >= {minimum}") from exc
+        if (
+            not math.isfinite(numeric)
+            or not numeric.is_integer()
+            or numeric < minimum
+        ):
+            raise ValueError(f"{name} must be an integer >= {minimum}")
+        return int(numeric)
+
+    method = str(
+        potential_solver.get(
+            "methodCoupled", potential_solver.get("method", "auto")
+        )
+    ).lower()
+    preconditioner = str(
+        potential_solver.get("preconditioner", "jacobi")
+    ).lower()
+    if method not in {"auto", "pcg"} or preconditioner not in {
+        "jacobi",
+        "diagonal",
+        "identity",
+        "none",
+    }:
+        raise ValueError(
+            "Strict B/C uses equilibrated PCG with a symmetric Jacobi/identity "
+            "preconditioner"
+        )
+    if not bool(potential_solver.get("symmetricEquilibration", True)) or not bool(
+        potential_solver.get("correctionForm", True)
+    ):
+        raise ValueError(
+            "Strict B/C PCG requires symmetricEquilibration=true and "
+            "correctionForm=true"
+        )
+    strict_integer(
+        potential_solver.get("maximumIterationsCoupled", 1500),
+        "numerics.potentialSolver.maximumIterationsCoupled",
+        1,
+    )
+    linear_relative = float(
+        potential_solver.get("relativeToleranceCoupled", 1.0e-9)
+    )
+    linear_absolute = float(potential_solver.get("absoluteTolerance", 1.0e-12))
+    if (
+        not math.isfinite(linear_relative)
+        or linear_relative <= 0.0
+        or not math.isfinite(linear_absolute)
+        or linear_absolute < 0.0
+    ):
+        raise ValueError("Invalid strict B/C linear solver tolerances")
+
+    local_minimum = strict_integer(
+        nonlinear_robin.get("localInterfaceMinimumIterations", 8),
+        "interface.nonlinearRobin.localInterfaceMinimumIterations",
+        1,
+    )
+    local_maximum = strict_integer(
+        nonlinear_robin.get("localInterfaceMaximumIterations", 60),
+        "interface.nonlinearRobin.localInterfaceMaximumIterations",
+        1,
+    )
+    local_newton = strict_integer(
+        nonlinear_robin.get("localNewtonPolishIterations", 2),
+        "interface.nonlinearRobin.localNewtonPolishIterations",
+        0,
+    )
+    outer_maximum = strict_integer(
+        nonlinear_robin.get("maximumIterations", 120),
+        "interface.nonlinearRobin.maximumIterations",
+        2,
+    )
+    outer_minimum = strict_integer(
+        nonlinear_robin.get(
+            "minimumIterationsCoupled",
+            nonlinear_robin.get("minimumIterations", 2),
+        ),
+        "interface.nonlinearRobin.minimumIterationsCoupled",
+        1,
+    )
+    if local_maximum < local_minimum or outer_maximum < outer_minimum:
+        raise ValueError("Invalid strict B/C nonlinear iteration budget ordering")
+    relaxation = float(
+        nonlinear_robin.get(
+            "potentialUnderRelaxation",
+            nonlinear_robin.get("underRelaxation", 0.35),
+        )
+    )
+    potential_tolerance = float(
+        nonlinear_robin.get("potentialTolerance_V", 0.01)
+    )
+    reaction_current_tolerance = float(
+        nonlinear_robin.get("relativeReactionCurrentTolerance", 0.005)
+    )
+    balance_relative = float(
+        nonlinear_robin.get("currentBalanceTolerance", 0.005)
+    )
+    balance_absolute = float(
+        nonlinear_robin.get("currentBalanceAbsoluteTolerance_A", 1.0e-12)
+    )
+    local_absolute = float(
+        nonlinear_robin.get("localRobinResidualTolerance_A_per_m2", 0.01)
+    )
+    local_relative = float(
+        nonlinear_robin.get("localRobinRelativeResidualTolerance", 1.0e-4)
+    )
+    roundoff_factor = float(
+        nonlinear_robin.get("localRoundoffSafetyFactor", 2.0)
+    )
+    if (
+        not all(
+            math.isfinite(value)
+            for value in (
+                relaxation,
+                potential_tolerance,
+                reaction_current_tolerance,
+                balance_relative,
+                balance_absolute,
+                local_absolute,
+                local_relative,
+                roundoff_factor,
+            )
+        )
+        or not 0.0 < relaxation <= 1.0
+        or potential_tolerance < 0.0
+        or reaction_current_tolerance < 0.0
+        or balance_relative < 0.0
+        or balance_absolute < 0.0
+        or (balance_relative == 0.0 and balance_absolute == 0.0)
+        or local_absolute < 0.0
+        or local_relative < 0.0
+        or (local_absolute == 0.0 and local_relative == 0.0)
+        or roundoff_factor < 1.0
+    ):
+        raise ValueError("Invalid strict B/C nonlinear solver tolerances")
+    exponential_limit = float(interface.get("exponentialArgumentLimit", 45.0))
+    if not math.isfinite(exponential_limit) or exponential_limit <= 0.0:
+        raise ValueError(
+            "interface.exponentialArgumentLimit must be finite and positive"
+        )
+
+    # Python's gauge routine historically clamped malformed optional values.
+    # Validate them before that routine so a bad strict configuration cannot
+    # silently acquire backend-dependent semantics.
+    gauge_integer_fields = (
+        ("gaugeMaximumIterations", 1, 24),
+        ("gaugeMinimumIterations", 1, 1),
+    )
+    resolved_gauge: dict[str, int] = {}
+    for name, minimum, default in gauge_integer_fields:
+        resolved_gauge[name] = strict_integer(
+            nonlinear_robin.get(name, default),
+            f"interface.nonlinearRobin.{name}",
+            minimum,
+        )
+    if resolved_gauge["gaugeMaximumIterations"] < resolved_gauge["gaugeMinimumIterations"]:
+        raise ValueError("Invalid strict B/C gauge iteration budget ordering")
+    gauge_relaxation = float(
+        nonlinear_robin.get("gaugeUnderRelaxation", 1.0)
+    )
+    gauge_step = float(nonlinear_robin.get("gaugeMaximumStep_V", 5.0))
+    gauge_derivative_floor = float(
+        nonlinear_robin.get("gaugeDerivativeFloor_A_per_V", 1.0e-14)
+    )
+    gauge_margin = float(nonlinear_robin.get("gaugeBracketMargin_V", 25.0))
+    if (
+        not all(
+            math.isfinite(value)
+            for value in (
+                gauge_relaxation,
+                gauge_step,
+                gauge_derivative_floor,
+                gauge_margin,
+            )
+        )
+        or not 0.0 < gauge_relaxation <= 1.0
+        or gauge_step <= 0.0
+        or gauge_derivative_floor < 0.0
+        or gauge_margin < 0.0
+    ):
+        raise ValueError("Invalid strict B/C nonlinear gauge settings")
+
+    gas_constant = float(transport["gasConstant_J_per_molK"])
+    faraday = float(transport["faradayConstant_C_per_mol"])
+    z_plus = float(transport["chargeNumberCation"])
+    z_minus = float(transport["chargeNumberAnion"])
+    if not all(math.isfinite(value) and value > 0.0 for value in (gas_constant, faraday)):
+        raise ValueError("B/C gas and Faraday constants must be finite and positive")
+    if z_plus != 1.0 or z_minus != -1.0:
+        raise ValueError(
+            "B/C electroneutral averaging requires a 1:1 binary electrolyte"
+        )
+    minimum_fraction = float(transport["concentrationMinimumFraction"])
+    maximum_multiple = float(transport["concentrationMaximumMultiple"])
+    maximum_relative_change = float(
+        transport["maximumRelativeConcentrationChangePerStep"]
+    )
+    limiter_rtol = float(
+        config["numerics"].get("limiterComparisonRelativeTolerance", 1.0e-7)
+    )
+    if (
+        not all(
+            math.isfinite(value)
+            for value in (
+                minimum_fraction,
+                maximum_multiple,
+                maximum_relative_change,
+                limiter_rtol,
+            )
+        )
+        or not 0.0 <= minimum_fraction < 1.0
+        or maximum_multiple < 1.0
+        or maximum_relative_change <= 0.0
+        or limiter_rtol < 0.0
+    ):
+        raise ValueError("Invalid strict B/C concentration limiter settings")
+    floors = config["numerics"].get("physicalFloors", {})
+    if not isinstance(floors, Mapping):
+        raise ValueError("numerics.physicalFloors must be a mapping")
+    resolved_floors = {
+        "concentration_mol_per_m3": float(
+            floors.get("concentration_mol_per_m3", 1.0e-12)
+        ),
+        "current_A": float(floors.get("current_A", 1.0e-15)),
+        "currentDensity_A_per_m2": float(
+            floors.get("currentDensity_A_per_m2", 1.0e-12)
+        ),
+        "currentDensitySlope_A_per_m2_V": float(
+            floors.get("currentDensitySlope_A_per_m2_V", 1.0e-12)
+        ),
+        "conductivity_S_per_m": float(
+            floors.get("conductivity_S_per_m", 1.0e-12)
+        ),
+    }
+    if (
+        any(
+            not math.isfinite(value) or value < 0.0
+            for value in resolved_floors.values()
+        )
+        or any(
+            resolved_floors[name] <= 0.0
+            for name in (
+                "current_A",
+                "currentDensity_A_per_m2",
+                "conductivity_S_per_m",
+            )
+        )
+    ):
+        raise ValueError(
+            "Invalid strict B/C physical floors; current, current-density "
+            "and conductivity floors must be strictly positive"
+        )
+
+    domain_size = float(geometry_cfg["domainSize_m"])
+    surface_layer = float(geometry_cfg["surfaceLayerThickness_m"])
+    contact_length = float(interface["contactNormalConductionLength_m"])
+    if not all(
+        math.isfinite(value) and value > 0.0
+        for value in (domain_size, surface_layer, contact_length)
+    ):
+        raise ValueError(
+            "B/C domain size, surface-layer thickness and contact-normal length "
+            "must be finite and positive"
+        )
+    if geometry is not None:
+        if (
+            geometry.anode.ndim != 3
+            or geometry.cathode.shape != geometry.anode.shape
+            or geometry.propellant.shape != geometry.anode.shape
+            or geometry.fixed.shape != geometry.anode.shape
+            or geometry.anode.shape[-2] != geometry.anode.shape[-1]
+            or geometry.anode.shape[-1] != geometry.grid_size
+            or geometry.anode.shape[0] != geometry.batch_size
+        ):
+            raise ValueError(
+                "B/C GeometryBatch tensors must be square [batch, grid_size, grid_size]"
+            )
+        geometry_domain = float(geometry.domain_size_m)
+        domain_tolerance = 64.0 * max(
+            math.ulp(abs(domain_size)), math.ulp(abs(geometry_domain))
+        )
+        if (
+            not math.isfinite(geometry_domain)
+            or geometry_domain <= 0.0
+            or abs(geometry_domain - domain_size) > domain_tolerance
+        ):
+            raise ValueError(
+                "GeometryBatch.domain_size_m must equal geometry.domainSize_m"
+            )
+        spacing = domain_size / geometry.grid_size
+        cell_area = spacing * spacing
+        cell_volume = cell_area * surface_layer
+        if (
+            not math.isfinite(spacing)
+            or spacing <= 0.0
+            or not math.isfinite(cell_area)
+            or cell_area <= 0.0
+            or not math.isfinite(cell_volume)
+            or cell_volume <= 0.0
+        ):
+            raise ValueError(
+                "B/C cell spacing, area and surface-layer volume must be "
+                "representable as positive finite FP64 values"
+            )
+
+    cathode_voltage = float(electrical["cathodeVoltage_V"])
+    sigma_min = float(electrical["conductivityMinimum_S_per_m"])
+    sigma_max = float(electrical["conductivityMaximum_S_per_m"])
+    if (
+        not math.isfinite(cathode_voltage)
+        or not math.isfinite(sigma_min)
+        or not math.isfinite(sigma_max)
+        or sigma_min <= 0.0
+        or sigma_max < sigma_min
+    ):
+        raise ValueError("Invalid B/C cathode voltage or conductivity bounds")
+    if geometry is not None:
+        spacing = domain_size / geometry.grid_size
+        cell_area = spacing * spacing
+        source_scale = cell_area / surface_layer
+        maximum_contact_conductance = sigma_max / contact_length
+        if (
+            not math.isfinite(source_scale)
+            or source_scale <= 0.0
+            or not math.isfinite(maximum_contact_conductance)
+            or maximum_contact_conductance <= 0.0
+        ):
+            raise ValueError(
+                "B/C surface-source and contact-conductance scales must be "
+                "representable as positive finite FP64 values"
+            )
+
+    shared_initial = float(config["thermal"]["initialTemperature_K"])
+    electrical_initial = float(
+        electrical.get("initialTemperature_K", shared_initial)
+    )
+    bc_initial = float(thermal.get("initialTemperature_K", shared_initial))
+    initial_values = (shared_initial, electrical_initial, bc_initial)
+    if not all(math.isfinite(value) and value > 0.0 for value in initial_values):
+        raise ValueError("All B/C initial temperatures must be finite positive Kelvin")
+    if not all(
+        math.isclose(value, bc_initial, rel_tol=0.0, abs_tol=1e-12)
+        for value in initial_values[:2]
+    ):
+        raise ValueError(
+            "B/C base, electrical and bcGlobal initial temperatures must agree"
+        )
+
+    ambient = float(thermal.get("ambientTemperature_K", 298.15))
+    minimum_temperature = float(thermal.get("minimumTemperature_K", 200.0))
+    maximum_temperature = float(thermal.get("maximumTemperature_K", 3000.0))
+    convection = float(thermal.get("convectionCoefficient_W_per_m2K", 0.0))
+    emissivity = float(thermal.get("emissivity", 0.0))
+    stefan_boltzmann = float(
+        thermal.get("stefanBoltzmann_W_per_m2K4", 5.670374419e-8)
+    )
+    if (
+        not all(
+            math.isfinite(value)
+            for value in (
+                ambient,
+                minimum_temperature,
+                maximum_temperature,
+                convection,
+                emissivity,
+                stefan_boltzmann,
+            )
+        )
+        or ambient <= 0.0
+        or minimum_temperature <= 0.0
+        or maximum_temperature <= minimum_temperature
+        or not minimum_temperature <= bc_initial <= maximum_temperature
+        or not minimum_temperature <= ambient <= maximum_temperature
+        or convection < 0.0
+        or not 0.0 <= emissivity <= 1.0
+        or stefan_boltzmann <= 0.0
+    ):
+        raise ValueError("Invalid strict B/C thermal bounds or heat-loss coefficients")
+
+    snapshot_interval = float(bc.get("handoffSnapshotInterval_s", 0.02))
+    if not math.isfinite(snapshot_interval) or snapshot_interval <= 0.0:
+        raise ValueError(
+            "bcGlobal.handoffSnapshotInterval_s must be finite and positive"
+        )
+
+    required_positive = (
+        float(composition.initial_cation_mol_per_m3),
+        float(composition.initial_anion_mol_per_m3),
+        float(composition.initial_lp_mol_per_m3),
+        float(composition.initial_pva_repeat_mol_per_m3),
+        float(composition.molar_mass_lp_kg_per_mol),
+        float(composition.molar_mass_pva_repeat_kg_per_mol),
+    )
+    initial_water = float(composition.initial_water_mol_per_m3)
+    composition_density = float(composition.density_kg_per_m3)
+    configured_density = thermal.get("density_kg_per_m3")
+    resolved_density = (
+        composition_density
+        if configured_density is None
+        else float(configured_density)
+    )
+    if (
+        not all(math.isfinite(value) and value > 0.0 for value in required_positive)
+        or not math.isfinite(initial_water)
+        or initial_water < 0.0
+        or not math.isfinite(composition_density)
+        or composition_density <= 0.0
+        or not math.isfinite(resolved_density)
+        or resolved_density <= 0.0
+    ):
+        raise ValueError(
+            "Invalid B/C initial composition, thermal density, or reactive "
+            "molar masses"
+        )
+    concentration_scale = max(
+        1.0,
+        abs(composition.initial_cation_mol_per_m3),
+        abs(composition.initial_anion_mol_per_m3),
+        abs(composition.initial_lp_mol_per_m3),
+    )
+    concentration_tolerance = 64.0 * math.ulp(1.0) * concentration_scale
+    if (
+        abs(
+            composition.initial_cation_mol_per_m3
+            - composition.initial_anion_mol_per_m3
+        )
+        > concentration_tolerance
+        or abs(
+            composition.initial_lp_mol_per_m3
+            - 0.5
+            * (
+                composition.initial_cation_mol_per_m3
+                + composition.initial_anion_mol_per_m3
+            )
+        )
+        > concentration_tolerance
+    ):
+        raise ValueError(
+            "Strict B/C requires initial cation=anion=mobile LP for the 1:1 "
+            "electroneutral inventory closure"
+        )
+
+
+def _serialize_handoff(
+    times: list[float],
+    qj: list[torch.Tensor],
+    qe: list[torch.Tensor],
+) -> dict[str, Any]:
+    if not times:
+        return {"times_s": None, "qJ_W_per_m3": None, "qEchem_W_per_m3": None}
+    return {
+        "times_s": torch.as_tensor(times, device=qj[0].device, dtype=qj[0].dtype),
+        "qJ_W_per_m3": torch.stack(qj, dim=0),
+        "qEchem_W_per_m3": torch.stack(qe, dim=0),
+    }
+
+
+def _select_active_batch(
+    values: Mapping[str, Any], indices: torch.Tensor, batch_size: int
+) -> dict[str, Any]:
+    """Select leading batch axes without touching static configuration values."""
+    selected: dict[str, Any] = {}
+    for key, value in values.items():
+        if (
+            isinstance(value, torch.Tensor)
+            and value.ndim >= 1
+            and value.shape[0] == batch_size
+        ):
+            selected[key] = value.index_select(0, indices)
+        elif isinstance(value, Mapping):
+            selected[key] = _select_active_batch(value, indices, batch_size)
+        else:
+            selected[key] = value
+    return selected
+
+
+def _scatter_active_batch(
+    previous: Mapping[str, Any],
+    updated: Mapping[str, Any],
+    indices: torch.Tensor,
+    batch_size: int,
+) -> dict[str, Any]:
+    """Scatter a subset solve back while preserving already-frozen lanes."""
+    result = dict(previous)
+    subset_size = int(indices.numel())
+    for key, value in updated.items():
+        old = previous.get(key)
+        if (
+            isinstance(value, torch.Tensor)
+            and value.ndim >= 1
+            and value.shape[0] == subset_size
+            and isinstance(old, torch.Tensor)
+            and old.ndim >= 1
+            and old.shape[0] == batch_size
+        ):
+            merged = old.clone()
+            merged.index_copy_(0, indices, value)
+            result[key] = merged
+        elif isinstance(value, Mapping) and isinstance(old, Mapping):
+            result[key] = _scatter_active_batch(
+                old, value, indices, batch_size
+            )
+        elif old is None:
+            # A newly introduced batch tensor cannot be expanded safely because
+            # there is no physically defined value for frozen lanes.
+            if (
+                isinstance(value, torch.Tensor)
+                and value.ndim >= 1
+                and value.shape[0] == subset_size
+                and subset_size != batch_size
+            ):
+                raise RuntimeError(
+                    f"Subset electrical solve introduced unmergeable field {key}"
+                )
+            result[key] = value
+        else:
+            result[key] = old
+    return result
+
+
+def _scatter_solver_diagnostics(
+    previous: Any,
+    updated: Any,
+    indices: torch.Tensor,
+    batch_size: int,
+) -> Any:
+    def merge_tensor(old: torch.Tensor | None, new: torch.Tensor | None):
+        if new is None:
+            return old
+        if old is None:
+            if int(indices.numel()) != batch_size:
+                raise RuntimeError(
+                    "Subset solver introduced diagnostics without frozen-lane values"
+                )
+            return new
+        merged = old.clone()
+        merged.index_copy_(0, indices, new)
+        return merged
+
+    return type(previous)(
+        iterations=merge_tensor(previous.iterations, updated.iterations),
+        relative_residual=merge_tensor(
+            previous.relative_residual, updated.relative_residual
+        ),
+        converged=merge_tensor(previous.converged, updated.converged),
+        method=updated.method,
+        restarts=merge_tensor(previous.restarts, updated.restarts),
+        refinement_rounds=merge_tensor(
+            previous.refinement_rounds, updated.refinement_rounds
+        ),
+        fallback_used=merge_tensor(
+            previous.fallback_used, updated.fallback_used
+        ),
+    )
+
+
+def continue_bc_onset_batch_to_evaluation(
+    onset_fields: Mapping[str, torch.Tensor | float],
+    config: dict[str, Any],
+    composition: CompositionModel,
+    ignition_delay_s: torch.Tensor,
+    evaluation_time_s: float,
+    dtype: torch.dtype,
+) -> dict[str, torch.Tensor]:
+    """Advance early-onset lanes to one common objective evaluation time.
+
+    The pre-flame electrical/BV problem ends at first condensed onset.  This
+    continuation advances only condensed conduction, heat loss and the same
+    two-channel inventory-constrained global chemistry, with electrical heat
+    identically zero.  It is deliberately batched and artifact-free so the
+    fixed-time U_rem objective remains practical on CPU and CUDA.
+    """
+    if dtype != torch.float64:
+        raise ValueError("B/C objective continuation requires torch.float64")
+    _validate_bc_runtime_contract(config, composition)
+    channel_1, channel_2 = _validate_bc_config(config)
+    bc = config["bcGlobal"]
+    evaluation_time = float(evaluation_time_s)
+    if not math.isfinite(evaluation_time) or evaluation_time <= 0.0:
+        raise ValueError("Objective evaluation time must be finite and positive")
+    delay = torch.as_tensor(ignition_delay_s, dtype=dtype)
+    if delay.ndim != 1:
+        raise ValueError("ignition_delay_s must be a one-dimensional batch tensor")
+
+    required_fields = (
+        "temperatureAtOnset_K",
+        "globalProgressAtOnset",
+        "alphaChannel1AtOnset",
+        "alphaChannel2AtOnset",
+        "mobileLPAtOnset_mol_per_m3",
+        "mobileWaterAtOnset_mol_per_m3",
+        "generatedWaterProductAtOnset_mol_per_m3",
+        "electrochemicalLPConsumedAtOnset_mol_per_m3",
+        "pvaReactiveRepeatAtOnset_mol_per_m3",
+        "propellantMask",
+    )
+    missing = [name for name in required_fields if name not in onset_fields]
+    if missing:
+        raise ValueError(
+            "Objective continuation is missing onset fields: "
+            + ", ".join(missing)
+        )
+    temperature = torch.as_tensor(
+        onset_fields["temperatureAtOnset_K"], device=delay.device, dtype=dtype
+    ).clone()
+    if temperature.ndim != 3 or temperature.shape[0] != delay.numel():
+        raise ValueError(
+            "Objective continuation fields must be [batch, rows, columns]"
+        )
+    if temperature.shape[-2] != temperature.shape[-1] or temperature.shape[-1] < 2:
+        raise ValueError("Objective continuation requires a square grid >=2")
+
+    def field(name: str) -> torch.Tensor:
+        value = torch.as_tensor(
+            onset_fields[name], device=temperature.device, dtype=dtype
+        ).clone()
+        if value.shape != temperature.shape:
+            raise ValueError(f"{name} must match temperatureAtOnset_K shape")
+        return value
+
+    alpha_1 = field("alphaChannel1AtOnset")
+    alpha_2 = field("alphaChannel2AtOnset")
+    progress = field("globalProgressAtOnset")
+    mobile_lp = field("mobileLPAtOnset_mol_per_m3")
+    mobile_water = field("mobileWaterAtOnset_mol_per_m3")
+    generated_water = field("generatedWaterProductAtOnset_mol_per_m3")
+    electrochemical_lp_consumed = field(
+        "electrochemicalLPConsumedAtOnset_mol_per_m3"
+    )
+    reactive_pva = field("pvaReactiveRepeatAtOnset_mol_per_m3")
+    propellant = torch.as_tensor(
+        onset_fields["propellantMask"],
+        device=temperature.device,
+        dtype=torch.bool,
+    )
+    if propellant.shape != temperature.shape or not bool(torch.all(propellant).item()):
+        raise ValueError(
+            "Corrected objective continuation requires full-domain propellant"
+        )
+
+    time_tolerance = 64.0 * torch.finfo(dtype).eps * max(
+        abs(evaluation_time),
+        abs(float(bc["endTime_s"])),
+        torch.finfo(dtype).tiny,
+    )
+    early = (
+        torch.isfinite(delay)
+        & (delay >= 0.0)
+        & (delay < evaluation_time - time_tolerance)
+    )
+    invalid_finite_delay = torch.isfinite(delay) & (
+        (delay < 0.0) | (delay > float(bc["endTime_s"]) + time_tolerance)
+    )
+    if bool(torch.any(invalid_finite_delay).item()):
+        bad = torch.nonzero(invalid_finite_delay).flatten().detach().cpu().tolist()
+        raise BCCandidateBatchError(
+            "Ignition delay lies outside the configured B/C horizon",
+            bad,
+            "continuation_invalid_ignition_delay",
+        )
+    duration = torch.where(
+        early,
+        torch.full_like(delay, evaluation_time) - delay,
+        torch.zeros_like(delay),
+    )
+    continued3 = early[:, None, None]
+    weights = tuple(float(value) for value in bc["kinetics"]["mass_conversion_weights"])
+    expected_progress = _global_progress(alpha_1, alpha_2, weights)
+    xi_max = min(
+        composition.initial_lp_mol_per_m3 / 1.45,
+        composition.initial_pva_repeat_mol_per_m3,
+    )
+    expected_pva = torch.clamp(
+        torch.full_like(progress, composition.initial_pva_repeat_mol_per_m3)
+        - xi_max * progress,
+        min=0.0,
+    )
+    expected_product = 2.0 * xi_max * progress
+    onset_fields_to_check = (
+        temperature,
+        alpha_1,
+        alpha_2,
+        progress,
+        mobile_lp,
+        mobile_water,
+        generated_water,
+        electrochemical_lp_consumed,
+        reactive_pva,
+    )
+    if bool(torch.any(early).item()):
+        active_values = continued3.expand_as(temperature)
+        invalid_onset = torch.zeros_like(early)
+        for value in onset_fields_to_check:
+            invalid_onset |= (
+                active_values & ~torch.isfinite(value)
+            ).flatten(1).any(dim=1)
+        for value in onset_fields_to_check[1:]:
+            invalid_onset |= (
+                active_values & (value < 0.0)
+            ).flatten(1).any(dim=1)
+        invalid_onset |= (
+            active_values & (temperature <= 0.0)
+        ).flatten(1).any(dim=1)
+        invalid_onset |= (
+            active_values & (alpha_1 > 1.0)
+        ).flatten(1).any(dim=1)
+        invalid_onset |= (
+            active_values & (alpha_2 > 1.0)
+        ).flatten(1).any(dim=1)
+        invalid_onset |= (
+            active_values & (progress > 1.0)
+        ).flatten(1).any(dim=1)
+
+        def inconsistent(
+            actual: torch.Tensor,
+            expected: torch.Tensor,
+            *,
+            rtol: float,
+            atol: float,
+        ) -> torch.Tensor:
+            close = torch.abs(actual - expected) <= atol + rtol * torch.abs(expected)
+            return (active_values & ~close).flatten(1).any(dim=1)
+
+        invalid_onset |= inconsistent(
+            progress, expected_progress, rtol=1.0e-11, atol=1.0e-12
+        )
+        invalid_onset |= inconsistent(
+            reactive_pva, expected_pva, rtol=1.0e-10, atol=1.0e-10
+        )
+        invalid_onset |= inconsistent(
+            generated_water, expected_product, rtol=1.0e-10, atol=1.0e-10
+        )
+        invalid_onset &= early
+        if bool(torch.any(invalid_onset).item()):
+            bad = torch.nonzero(invalid_onset).flatten().detach().cpu().tolist()
+            raise BCCandidateBatchError(
+                "Invalid or non-conservative B/C onset state",
+                bad,
+                "continuation_invalid_onset_state",
+            )
+
+    base_progress = progress.clone()
+    base_mobile_lp = mobile_lp.clone()
+    base_reactive_pva = reactive_pva.clone()
+    base_generated_water = generated_water.clone()
+    base_electrochemical_lp = electrochemical_lp_consumed.clone()
+    peak_temperature = torch.amax(temperature, dim=(-2, -1))
+    maximum_temperature_cap_fraction = torch.zeros_like(delay)
+    maximum_chemical_rate_cap_fraction = torch.zeros_like(delay)
+    maximum_diffusive_cfl = torch.zeros_like(delay)
+    maximum_stability_cfl = torch.zeros_like(delay)
+
+    if bool(torch.any(early).item()):
+        dt = float(bc["timeStep_s"])
+        max_duration = float(torch.max(duration).item())
+        maximum_time_steps, _ = _bc_resource_limits(config)
+        steps = _positive_time_step_count(
+            max_duration, dt, maximum_steps=maximum_time_steps
+        )
+        density_raw = bc["thermal"].get("density_kg_per_m3")
+        density = (
+            composition.density_kg_per_m3
+            if density_raw is None
+            else float(density_raw)
+        )
+        gas_constant = float(config["transport"]["gasConstant_J_per_molK"])
+        maximum_rate = float(bc["kinetics"].get("maximum_rate_per_s", 1.0e6))
+        thermal = bc["thermal"]
+        ambient = float(thermal.get("ambientTemperature_K", 298.15))
+        minimum_temperature = float(thermal.get("minimumTemperature_K", 200.0))
+        maximum_temperature = float(thermal.get("maximumTemperature_K", 3000.0))
+        convection = float(thermal.get("convectionCoefficient_W_per_m2K", 0.0))
+        emissivity = float(thermal.get("emissivity", 0.0))
+        sigma_sb = float(
+            thermal.get("stefanBoltzmann_W_per_m2K4", 5.670374419e-8)
+        )
+        thickness = float(config["geometry"]["surfaceLayerThickness_m"])
+        spacing = float(config["geometry"]["domainSize_m"]) / temperature.shape[-1]
+        cell_area = spacing * spacing
+        cell_volume = cell_area * thickness
+        if (
+            not math.isfinite(spacing)
+            or spacing <= 0.0
+            or not math.isfinite(cell_area)
+            or cell_area <= 0.0
+            or not math.isfinite(cell_volume)
+            or cell_volume <= 0.0
+        ):
+            raise ValueError(
+                "B/C continuation cell spacing, area and layer volume must "
+                "be representable as positive finite FP64 values"
+            )
+        quality = config.get("numericalQuality", {})
+        if not isinstance(quality, Mapping):
+            quality = {}
+        thermal_limit = float(
+            quality.get(
+                "maximumExplicitThermalCFL",
+                quality.get("maximumDiffusiveCFLFraction", 1.0),
+            )
+        )
+        cfl_tolerance = 64.0 * torch.finfo(dtype).eps * max(
+            1.0, thermal_limit
+        )
+        count = float(temperature.shape[-2] * temperature.shape[-1])
+        zero = torch.zeros_like(temperature)
+        # Keep failure bookkeeping on the accelerator.  Pulling a tensor to the
+        # host from inside this loop serialises every CUDA timestep and largely
+        # defeats the batched continuation.  Codes preserve the original
+        # within-step fail-closed ordering: inventory, properties, CFL, then
+        # the updated temperature.
+        first_failure_step = torch.full_like(delay, -1, dtype=torch.int64)
+        first_failure_code = torch.zeros_like(delay, dtype=torch.int8)
+        integrated_duration = torch.zeros_like(delay)
+
+        for step in range(steps):
+            step_start = step * dt
+            remaining_duration = duration - step_start
+            active = remaining_duration > 0.0
+            step_match_tolerance = (
+                64.0
+                * torch.finfo(dtype).eps
+                * torch.maximum(
+                    torch.abs(remaining_duration),
+                    torch.full_like(remaining_duration, abs(dt)),
+                )
+            )
+            final_lane_step = remaining_duration <= dt + step_match_tolerance
+            lane_dt = torch.where(
+                active,
+                torch.where(
+                    final_lane_step,
+                    remaining_duration,
+                    torch.full_like(remaining_duration, dt),
+                ),
+                torch.zeros_like(remaining_duration),
+            )
+            active3 = active[:, None, None]
+            step_dt3 = lane_dt[:, None, None]
+            integrated_duration = torch.where(
+                active,
+                torch.where(
+                    final_lane_step,
+                    duration,
+                    torch.minimum(
+                        duration,
+                        torch.full_like(duration, (step + 1) * dt),
+                    ),
+                ),
+                integrated_duration,
+            )
+            raw_rate_1, _, _ = _channel_rate(
+                alpha_1, temperature, channel_1, gas_constant
+            )
+            raw_rate_2, _, _ = _channel_rate(
+                alpha_2, temperature, channel_2, gas_constant
+            )
+            rate_cap = active3 & (
+                (raw_rate_1 > maximum_rate) | (raw_rate_2 > maximum_rate)
+            )
+            rate_cap_fraction = rate_cap.sum(dim=(-2, -1)).to(dtype) / count
+            maximum_chemical_rate_cap_fraction = torch.maximum(
+                maximum_chemical_rate_cap_fraction, rate_cap_fraction
+            )
+            bounded_rate_1 = torch.where(
+                active3, torch.clamp(raw_rate_1, 0.0, maximum_rate), zero
+            )
+            bounded_rate_2 = torch.where(
+                active3, torch.clamp(raw_rate_2, 0.0, maximum_rate), zero
+            )
+            proposed_alpha_1 = torch.clamp(
+                alpha_1 + step_dt3 * bounded_rate_1, 0.0, 1.0
+            )
+            proposed_alpha_2 = torch.clamp(
+                alpha_2 + step_dt3 * bounded_rate_2, 0.0, 1.0
+            )
+            delta_alpha_1 = torch.clamp(proposed_alpha_1 - alpha_1, min=0.0)
+            delta_alpha_2 = torch.clamp(proposed_alpha_2 - alpha_2, min=0.0)
+            proposed_delta_progress = (
+                weights[0] * delta_alpha_1 + weights[1] * delta_alpha_2
+            )
+            proposed_xi = xi_max * proposed_delta_progress
+            maximum_xi = torch.minimum(
+                torch.clamp(mobile_lp, min=0.0) / 1.45,
+                torch.clamp(reactive_pva, min=0.0),
+            )
+            scale = torch.where(
+                proposed_xi > 0.0,
+                torch.clamp(
+                    maximum_xi
+                    / torch.where(
+                        proposed_xi > 0.0,
+                        proposed_xi,
+                        torch.ones_like(proposed_xi),
+                    ),
+                    0.0,
+                    1.0,
+                ),
+                torch.ones_like(proposed_xi),
+            )
+            scale = torch.where(active3, scale, torch.zeros_like(scale))
+            accepted_delta_alpha_1 = delta_alpha_1 * scale
+            accepted_delta_alpha_2 = delta_alpha_2 * scale
+            next_alpha_1 = torch.where(
+                active3, alpha_1 + accepted_delta_alpha_1, alpha_1
+            )
+            next_alpha_2 = torch.where(
+                active3, alpha_2 + accepted_delta_alpha_2, alpha_2
+            )
+            next_progress = _global_progress(
+                next_alpha_1, next_alpha_2, weights
+            )
+            accepted_progress = torch.where(
+                active3,
+                torch.clamp(next_progress - progress, min=0.0),
+                zero,
+            )
+            accepted_xi = xi_max * accepted_progress
+            mobile_lp = torch.where(
+                active3, torch.clamp(mobile_lp - 1.45 * accepted_xi, min=0.0), mobile_lp
+            )
+            reactive_pva = torch.where(
+                active3, torch.clamp(reactive_pva - accepted_xi, min=0.0), reactive_pva
+            )
+            generated_water = torch.where(
+                active3, generated_water + 2.0 * accepted_xi, generated_water
+            )
+            alpha_1 = next_alpha_1
+            alpha_2 = next_alpha_2
+            progress = torch.where(active3, next_progress, progress)
+            active_step_dt = torch.where(
+                active3, step_dt3, torch.ones_like(step_dt3)
+            )
+            accepted_rate_1 = accepted_delta_alpha_1 / active_step_dt
+            accepted_rate_2 = accepted_delta_alpha_2 / active_step_dt
+
+            progress_change = progress - base_progress
+            expected_mobile_lp = torch.clamp(
+                base_mobile_lp - 1.45 * xi_max * progress_change, min=0.0
+            )
+            expected_reactive_pva = torch.clamp(
+                base_reactive_pva - xi_max * progress_change, min=0.0
+            )
+            expected_generated_water = (
+                base_generated_water + 2.0 * xi_max * progress_change
+            )
+            check = continued3.expand_as(temperature)
+            inventory_violation = check & (
+                ~torch.isclose(
+                    mobile_lp,
+                    expected_mobile_lp,
+                    rtol=1.0e-10,
+                    atol=1.0e-10,
+                    equal_nan=False,
+                )
+                | ~torch.isclose(
+                    reactive_pva,
+                    expected_reactive_pva,
+                    rtol=1.0e-10,
+                    atol=1.0e-10,
+                    equal_nan=False,
+                )
+                | ~torch.isclose(
+                    generated_water,
+                    expected_generated_water,
+                    rtol=1.0e-10,
+                    atol=1.0e-10,
+                    equal_nan=False,
+                )
+                | (electrochemical_lp_consumed != base_electrochemical_lp)
+            )
+            inventory_failure = inventory_violation.flatten(1).any(dim=1)
+
+            cp = _property_from_config(
+                temperature, thermal["heat_capacity"], gas_constant=gas_constant
+            )
+            conductivity = _property_from_config(
+                temperature,
+                thermal["thermal_conductivity"],
+                gas_constant=gas_constant,
+            )
+            thermal_capacity = density * cp
+            active_cells = active3.expand_as(temperature)
+            invalid_properties = active_cells & (
+                ~torch.isfinite(cp)
+                | (cp <= 0.0)
+                | ~torch.isfinite(thermal_capacity)
+                | (thermal_capacity <= 0.0)
+                | ~torch.isfinite(conductivity)
+                | (conductivity < 0.0)
+            )
+            property_failure = invalid_properties.flatten(1).any(dim=1)
+            diffusive_cfl = _thermal_diffusive_cfl(
+                conductivity,
+                thermal_capacity,
+                propellant,
+                spacing,
+                step_dt3,
+            )
+            loss_jacobian = (
+                convection / thickness
+                + 4.0
+                * emissivity
+                * sigma_sb
+                / thickness
+                * torch.maximum(
+                    temperature, torch.full_like(temperature, ambient)
+                )
+                ** 3
+            )
+            stability_cfl = diffusive_cfl + step_dt3 * loss_jacobian / (
+                thermal_capacity
+            )
+            diffusive_max = torch.amax(
+                torch.where(active3, diffusive_cfl, zero), dim=(-2, -1)
+            )
+            stability_max = torch.amax(
+                torch.where(active3, stability_cfl, zero), dim=(-2, -1)
+            )
+            maximum_diffusive_cfl = torch.maximum(
+                maximum_diffusive_cfl, diffusive_max
+            )
+            maximum_stability_cfl = torch.maximum(
+                maximum_stability_cfl, stability_max
+            )
+            invalid_cfl_cells = active_cells & (
+                ~torch.isfinite(stability_cfl) | (stability_cfl < 0.0)
+            )
+            cfl_failure = (
+                invalid_cfl_cells.flatten(1).any(dim=1)
+                | ~torch.isfinite(stability_max)
+                | (stability_max < 0.0)
+                | (stability_max > thermal_limit + cfl_tolerance)
+            )
+            # Each fitted channel heat is its contribution per kilogram of
+            # initial bulk propellant.  The conversion weights define the
+            # global progress coordinate; applying them again to heat would
+            # double-weight the channel enthalpies.
+            chemical_heat = density * (
+                channel_1.heat_release_J_per_kg * accepted_rate_1
+                + channel_2.heat_release_J_per_kg * accepted_rate_2
+            )
+            chemical_energy_density = density * (
+                channel_1.heat_release_J_per_kg * accepted_delta_alpha_1
+                + channel_2.heat_release_J_per_kg * accepted_delta_alpha_2
+            )
+            heat_loss = (
+                convection / thickness * (temperature - ambient)
+                + emissivity
+                * sigma_sb
+                / thickness
+                * (temperature**4 - ambient**4)
+            )
+            conduction = _divergence_k_grad(
+                temperature, conductivity, propellant, spacing
+            )
+            thermal_energy_density = (
+                step_dt3 * (conduction - heat_loss) + chemical_energy_density
+            )
+            raw_temperature = temperature + thermal_energy_density / thermal_capacity
+            temperature_cap = active3 & (
+                (raw_temperature < minimum_temperature)
+                | (raw_temperature > maximum_temperature)
+            )
+            temperature_cap_fraction = (
+                temperature_cap.sum(dim=(-2, -1)).to(dtype) / count
+            )
+            maximum_temperature_cap_fraction = torch.maximum(
+                maximum_temperature_cap_fraction, temperature_cap_fraction
+            )
+            temperature_failure = (
+                active_cells & ~torch.isfinite(raw_temperature)
+            ).flatten(1).any(dim=1)
+            next_temperature = torch.where(
+                active3,
+                torch.clamp(
+                    raw_temperature,
+                    min=minimum_temperature,
+                    max=maximum_temperature,
+                ),
+                temperature,
+            )
+            next_cp = _property_from_config(
+                next_temperature,
+                thermal["heat_capacity"],
+                gas_constant=gas_constant,
+            )
+            next_conductivity = _property_from_config(
+                next_temperature,
+                thermal["thermal_conductivity"],
+                gas_constant=gas_constant,
+            )
+            post_update_property_failure = (
+                active_cells
+                & (
+                    ~torch.isfinite(next_cp)
+                    | (next_cp <= 0.0)
+                    | ~torch.isfinite(next_conductivity)
+                    | (next_conductivity < 0.0)
+                )
+            ).flatten(1).any(dim=1)
+            step_failure_code = torch.where(
+                inventory_failure,
+                torch.ones_like(first_failure_code),
+                torch.where(
+                    property_failure,
+                    torch.full_like(first_failure_code, 2),
+                    torch.where(
+                        cfl_failure,
+                        torch.full_like(first_failure_code, 3),
+                        torch.where(
+                            temperature_failure,
+                            torch.full_like(first_failure_code, 4),
+                            torch.where(
+                                post_update_property_failure,
+                                torch.full_like(first_failure_code, 5),
+                                torch.zeros_like(first_failure_code),
+                            ),
+                        ),
+                    ),
+                ),
+            )
+            unrecorded_failure = (
+                (first_failure_step < 0) & (step_failure_code > 0)
+            )
+            first_failure_step = torch.where(
+                unrecorded_failure,
+                torch.full_like(first_failure_step, step),
+                first_failure_step,
+            )
+            first_failure_code = torch.where(
+                unrecorded_failure, step_failure_code, first_failure_code
+            )
+            temperature = next_temperature
+            peak_temperature = torch.maximum(
+                peak_temperature, torch.amax(temperature, dim=(-2, -1))
+            )
+
+        # One compact synchronization after the entire CUDA timestep loop is
+        # sufficient to retain strict diagnostics.  Select the earliest
+        # failure and the original within-step check priority so invalid runs
+        # fail with the same category as the synchronous implementation.
+        failure_records = torch.stack(
+            (first_failure_step, first_failure_code), dim=1
+        ).detach().cpu().tolist()
+        failed = [
+            (index, int(record[0]), int(record[1]))
+            for index, record in enumerate(failure_records)
+            if int(record[0]) >= 0
+        ]
+        if failed:
+            first_step = min(record[1] for record in failed)
+            first_code = min(
+                record[2] for record in failed if record[1] == first_step
+            )
+            if first_code == 1:
+                bad = [
+                    record[0]
+                    for record in failed
+                    if record[1] == first_step and record[2] == first_code
+                ]
+                raise BCCandidateBatchError(
+                    "B/C objective continuation inventory invariant failed",
+                    bad,
+                    "continuation_inventory_invariant",
+                )
+            if first_code in {2, 5}:
+                bad = [
+                    record[0]
+                    for record in failed
+                    if record[1] == first_step and record[2] in {2, 5}
+                ]
+                raise BCCandidateBatchError(
+                    "B/C objective continuation thermal properties are invalid",
+                    bad,
+                    "continuation_thermal_properties",
+                )
+            if first_code == 3:
+                bad = [
+                    record[0]
+                    for record in failed
+                    if record[1] == first_step and record[2] == first_code
+                ]
+                raise BCCandidateBatchError(
+                    "B/C objective continuation total explicit thermal "
+                    f"stability CFL exceeded; batch_indices={bad}",
+                    bad,
+                    "continuation_thermal_stability_cfl",
+                )
+            bad = [
+                record[0]
+                for record in failed
+                if record[1] == first_step and record[2] == first_code
+            ]
+            raise BCCandidateBatchError(
+                "B/C objective continuation produced non-finite temperature",
+                bad,
+                "continuation_nonfinite_temperature",
+            )
+
+        duration_tolerance = 64.0 * torch.finfo(dtype).eps * torch.maximum(
+            torch.abs(duration),
+            torch.full_like(duration, torch.finfo(dtype).tiny),
+        )
+        invalid_integrated_duration = early & (
+            ~torch.isfinite(integrated_duration)
+            | (torch.abs(integrated_duration - duration) > duration_tolerance)
+        )
+        if bool(torch.any(invalid_integrated_duration).item()):
+            bad = (
+                torch.nonzero(invalid_integrated_duration)
+                .flatten()
+                .detach()
+                .cpu()
+                .tolist()
+            )
+            raise BCCandidateBatchError(
+                "B/C objective continuation did not integrate the complete "
+                "candidate-specific duration",
+                bad,
+                "continuation_incomplete_time_horizon",
+            )
+
+    inventory = _reaction_inventory(
+        progress,
+        composition,
+        mobile_lp_mol_per_m3=mobile_lp,
+        electrochemical_lp_consumed_mol_per_m3=electrochemical_lp_consumed,
+        generated_water_product_mol_per_m3=generated_water,
+    )
+    remaining = _masked_integral_ratio(
+        inventory["reactiveMass_kg_per_m3"],
+        inventory["initialReactiveMass_kg_per_m3"],
+        propellant,
+    )
+    mass_tolerance = 128.0 * torch.finfo(dtype).eps
+    invalid_remaining = early & (
+        ~torch.isfinite(remaining)
+        | (remaining < -mass_tolerance)
+        | (remaining > 1.0 + mass_tolerance)
+    )
+    if bool(torch.any(invalid_remaining).item()):
+        bad = torch.nonzero(invalid_remaining).flatten().detach().cpu().tolist()
+        raise BCCandidateBatchError(
+            "B/C objective continuation remaining mass is outside [0, 1]",
+            bad,
+            "continuation_remaining_reactive_mass",
+        )
+    remaining = torch.clamp(remaining, 0.0, 1.0)
+    onset = bc["onsetCriterion"]
+    qualified = (
+        (temperature >= float(onset["temperature_K"]))
+        & (progress >= float(onset["minimum_progress"]))
+        & propellant
+    )
+    count = propellant.sum(dim=(-2, -1)).to(dtype)
+    return {
+        "continuedMask": early,
+        "continuationDuration_s": duration,
+        "remainingReactiveMassFractionAtEvaluationTime": remaining,
+        "meanGlobalProgressAtEvaluationTime": batch_masked_mean(
+            progress, propellant
+        ),
+        "temperatureOnsetAreaFractionAtEvaluationTime": (
+            qualified.sum(dim=(-2, -1)).to(dtype) / count
+        ),
+        "maximumTemperatureAtEvaluationTime_K": batch_masked_max(
+            temperature, propellant
+        ),
+        "peakMaximumTemperature_K": peak_temperature,
+        "maximumTemperatureCapFraction": maximum_temperature_cap_fraction,
+        "maximumChemicalRateCapFraction": maximum_chemical_rate_cap_fraction,
+        "maximumThermalDiffusiveCFL": maximum_diffusive_cfl,
+        "maximumThermalStabilityCFL": maximum_stability_cfl,
+        "evaluationStateTime_s": torch.where(
+            early,
+            torch.full_like(delay, evaluation_time),
+            torch.full_like(delay, torch.nan),
+        ),
+        "temperatureAtEvaluation_K": temperature,
+        "alphaChannel1AtEvaluation": alpha_1,
+        "alphaChannel2AtEvaluation": alpha_2,
+        "globalProgressAtEvaluation": progress,
+        "mobileLPAtEvaluation_mol_per_m3": mobile_lp,
+        "mobileWaterAtEvaluation_mol_per_m3": mobile_water,
+        "generatedWaterProductAtEvaluation_mol_per_m3": generated_water,
+        "electrochemicalLPConsumedAtEvaluation_mol_per_m3": (
+            electrochemical_lp_consumed
+        ),
+        "pvaReactiveRepeatAtEvaluation_mol_per_m3": reactive_pva,
+        **inventory,
+    }
+
+
+def complete_bc_evaluation_output(
+    output: dict[str, Any],
+    onset_fields: Mapping[str, torch.Tensor | float],
+    config: dict[str, Any],
+    composition: CompositionModel,
+    dtype: torch.dtype,
+) -> dict[str, Any]:
+    """Replace frozen-onset placeholders with one fixed-time objective state."""
+    evaluation_time = float(output["evaluationTime_s"])
+    maximum_time_steps, _ = _bc_resource_limits(config)
+    continuation = continue_bc_onset_batch_to_evaluation(
+        onset_fields,
+        config,
+        composition,
+        torch.as_tensor(output["ignitionDelay_s"]),
+        evaluation_time,
+        dtype,
+    )
+    continued = continuation["continuedMask"]
+
+    def replace(key: str, continuation_key: str) -> None:
+        current = torch.as_tensor(output[key], device=continued.device)
+        value = continuation[continuation_key]
+        output[key] = torch.where(continued, value, current)
+
+    for key, continuation_key in (
+        (
+            "areaAveragedUndecomposedFractionAt2s",
+            "remainingReactiveMassFractionAtEvaluationTime",
+        ),
+        (
+            "areaAveragedUndecomposedFractionAtEvaluationTime",
+            "remainingReactiveMassFractionAtEvaluationTime",
+        ),
+        (
+            "remainingReactiveMassFractionAt2s",
+            "remainingReactiveMassFractionAtEvaluationTime",
+        ),
+        (
+            "remainingReactiveMassFractionAtEvaluationTime",
+            "remainingReactiveMassFractionAtEvaluationTime",
+        ),
+        ("meanGlobalProgressAt2s", "meanGlobalProgressAtEvaluationTime"),
+        (
+            "meanGlobalProgressAtEvaluationTime",
+            "meanGlobalProgressAtEvaluationTime",
+        ),
+        (
+            "temperatureOnsetAreaFractionAt2s",
+            "temperatureOnsetAreaFractionAtEvaluationTime",
+        ),
+    ):
+        replace(key, continuation_key)
+
+    remaining_at_evaluation = output[
+        "remainingReactiveMassFractionAtEvaluationTime"
+    ]
+    progress_at_evaluation = output["meanGlobalProgressAtEvaluationTime"]
+    physical_tolerance = 128.0 * torch.finfo(dtype).eps
+    invalid_evaluation = (
+        ~torch.isfinite(remaining_at_evaluation)
+        | ~torch.isfinite(progress_at_evaluation)
+        | (remaining_at_evaluation < -physical_tolerance)
+        | (remaining_at_evaluation > 1.0 + physical_tolerance)
+        | (progress_at_evaluation < -physical_tolerance)
+        | (progress_at_evaluation > 1.0 + physical_tolerance)
+    )
+    if bool(torch.any(invalid_evaluation).item()):
+        bad = torch.nonzero(invalid_evaluation).flatten().detach().cpu().tolist()
+        raise BCCandidateBatchError(
+            "B/C common evaluation state has a non-finite or out-of-range "
+            "reactive-mass/progress objective",
+            bad,
+            "continuation_common_evaluation_state",
+        )
+    output["remainingReactiveMassFractionAtEvaluationTime"] = torch.clamp(
+        remaining_at_evaluation, 0.0, 1.0
+    )
+    output["areaAveragedUndecomposedFractionAtEvaluationTime"] = output[
+        "remainingReactiveMassFractionAtEvaluationTime"
+    ]
+    output["remainingReactiveMassFractionAt2s"] = output[
+        "remainingReactiveMassFractionAtEvaluationTime"
+    ]
+    output["areaAveragedUndecomposedFractionAt2s"] = output[
+        "remainingReactiveMassFractionAtEvaluationTime"
+    ]
+    output["meanGlobalProgressAtEvaluationTime"] = torch.clamp(
+        progress_at_evaluation, 0.0, 1.0
+    )
+    output["meanGlobalProgressAt2s"] = output[
+        "meanGlobalProgressAtEvaluationTime"
+    ]
+
+    output["maximumTemperatureAtEvaluationTime_K"] = torch.where(
+        continued,
+        continuation["maximumTemperatureAtEvaluationTime_K"],
+        output.get(
+            "maximumTemperatureAtEvaluationTime_K",
+            output["histories"]["maxTemperature_K"][
+                min(
+                    _positive_time_step_count(
+                        evaluation_time,
+                        float(config["bcGlobal"]["timeStep_s"]),
+                        maximum_steps=maximum_time_steps,
+                    )
+                    - 1,
+                    output["histories"]["maxTemperature_K"].shape[0] - 1,
+                )
+            ],
+        ),
+    )
+    output["peakMaximumTemperature_K"] = torch.where(
+        continued,
+        torch.maximum(
+            output["peakMaximumTemperature_K"],
+            continuation["peakMaximumTemperature_K"],
+        ),
+        output["peakMaximumTemperature_K"],
+    )
+    for key in (
+        "maximumTemperatureCapFraction",
+        "maximumChemicalRateCapFraction",
+        "maximumThermalDiffusiveCFL",
+        "maximumThermalStabilityCFL",
+    ):
+        output[key] = torch.where(
+            continued,
+            torch.maximum(output[key], continuation[key]),
+            output[key],
+        )
+    if "stabilityDiagnostics" in output:
+        output["stabilityDiagnostics"][
+            "maximum_thermal_diffusive_CFL"
+        ] = output["maximumThermalDiffusiveCFL"]
+        output["stabilityDiagnostics"][
+            "maximum_total_explicit_thermal_CFL"
+        ] = output["maximumThermalStabilityCFL"]
+    output["equation32ElectricalHeatRateAtEvaluationTime_W"] = torch.where(
+        continued,
+        torch.zeros_like(output["equation32ElectricalHeatRateAtEvaluationTime_W"]),
+        output["equation32ElectricalHeatRateAtEvaluationTime_W"],
+    )
+    output["evaluationStateTime_s"] = torch.full_like(
+        torch.as_tensor(output["ignitionDelay_s"]), evaluation_time
+    )
+    output["objectiveEvaluationStateTime_s"] = output["evaluationStateTime_s"]
+    output["preflameTerminationEffectiveResistance_ohm"] = output[
+        "finalEffectiveResistance_ohm"
+    ]
+    output["evaluationEffectiveResistance_ohm"] = torch.where(
+        continued,
+        torch.full_like(output["finalEffectiveResistance_ohm"], torch.nan),
+        output["preContinuationEffectiveResistanceAtEvaluationTime_ohm"],
+    )
+    output["finalEffectiveResistanceLegacyAliasDeprecated"] = (
+        "preflameTerminationEffectiveResistance_ohm"
+    )
+    output["evaluationStateModel"] = (
+        "preflame_electrical_to_first_onset_then_zero_electrical_"
+        "condensed_continuation_to_common_evaluation_time"
+    )
+    output["postIgnitionClosure"] = (
+        "zero_electrical_condensed_thermal_chemistry_continuation_"
+        "to_objective_evaluation_time"
+    )
+    output["preflameHistories"] = output["histories"]
+    output["preflameHistorySemantics"] = {
+        "scope": "preflame_only_through_each_lane_first_onset",
+        "fixedLengthTail": "state_and_cumulative_values_held;_instantaneous_values_zero",
+        "representsObjectiveContinuation": False,
+    }
+
+    end_time = float(config["bcGlobal"]["endTime_s"])
+    tolerance = _time_match_tolerance(end_time, evaluation_time)
+    if abs(evaluation_time - end_time) <= tolerance:
+        output["finalMeanChemicalProgress"] = output[
+            "meanGlobalProgressAtEvaluationTime"
+        ]
+        output["finalGlobalProgress"] = output[
+            "meanGlobalProgressAtEvaluationTime"
+        ]
+        output["finalAreaAveragedUndecomposedFraction"] = output[
+            "remainingReactiveMassFractionAtEvaluationTime"
+        ]
+        output["finalRemainingReactiveMassFraction"] = output[
+            "remainingReactiveMassFractionAtEvaluationTime"
+        ]
+        if "finalFields" in output:
+            preflame_fields = output["finalFields"]
+            output["preflameTerminationFields"] = preflame_fields
+
+            def merge_field(
+                original_key: str, continuation_key: str
+            ) -> torch.Tensor:
+                original = preflame_fields[original_key]
+                return torch.where(
+                    continued[:, None, None],
+                    continuation[continuation_key],
+                    original,
+                )
+
+            evaluation_fields = {
+                "temperature_K": merge_field(
+                    "temperature_K", "temperatureAtEvaluation_K"
+                ),
+                # No electrical boundary problem is solved after onset.  Keep
+                # the last converged pre-flame potential as a diagnostic field;
+                # it is not an evaluation-time energized state.
+                "potential_V": preflame_fields["potential_V"],
+                "cation_mol_per_m3": merge_field(
+                    "cation_mol_per_m3", "mobileLPAtEvaluation_mol_per_m3"
+                ),
+                "anion_mol_per_m3": merge_field(
+                    "anion_mol_per_m3", "mobileLPAtEvaluation_mol_per_m3"
+                ),
+                "water_mol_per_m3": merge_field(
+                    "water_mol_per_m3", "mobileWaterAtEvaluation_mol_per_m3"
+                ),
+                "mobileWater_mol_per_m3": merge_field(
+                    "mobileWater_mol_per_m3",
+                    "mobileWaterAtEvaluation_mol_per_m3",
+                ),
+                "generatedWaterProduct_mol_per_m3": merge_field(
+                    "generatedWaterProduct_mol_per_m3",
+                    "generatedWaterProductAtEvaluation_mol_per_m3",
+                ),
+                "electrochemicalLPConsumed_mol_per_m3": merge_field(
+                    "electrochemicalLPConsumed_mol_per_m3",
+                    "electrochemicalLPConsumedAtEvaluation_mol_per_m3",
+                ),
+                "alphaChannel1": merge_field(
+                    "alphaChannel1", "alphaChannel1AtEvaluation"
+                ),
+                "alphaChannel2": merge_field(
+                    "alphaChannel2", "alphaChannel2AtEvaluation"
+                ),
+                "globalProgress": merge_field(
+                    "globalProgress", "globalProgressAtEvaluation"
+                ),
+            }
+            for key in (
+                "xi_mol_per_m3",
+                "xi_max_mol_per_m3",
+                "lpReactive_mol_per_m3",
+                "lpRemainingFromChemicalProgressOnly_mol_per_m3",
+                "totalLPConsumed_mol_per_m3",
+                "pvaReactiveRepeat_mol_per_m3",
+                "reactiveMass_kg_per_m3",
+                "initialReactiveMass_kg_per_m3",
+                "co2Product_mol_per_m3",
+                "waterProduct_mol_per_m3",
+                "oxygenProduct_mol_per_m3",
+                "liClProduct_mol_per_m3",
+            ):
+                if key in preflame_fields and key in continuation:
+                    evaluation_fields[key] = merge_field(key, key)
+            output["evaluationFields"] = evaluation_fields
+            output["finalFields"] = evaluation_fields
+            output["evaluationFieldSemantics"] = {
+                "potential_V": "last_converged_preflame_field_not_energized_at_evaluation_time",
+                "allOtherFields": "common_objective_evaluation_time",
+            }
+    output["evaluationStateCompletion"] = {
+        "completedAtCommonEvaluationTime": True,
+        "earlyOnsetLaneCount": int(torch.count_nonzero(continued).item()),
+        "electricalHeatingAfterOnset": False,
+        "onsetFieldsRemainImmutable": True,
+    }
+    output["postOnsetContinuationApplied"] = continued
+    output["postOnsetContinuationDuration_s"] = continuation[
+        "continuationDuration_s"
+    ]
+    if "nativeExecution" in output:
+        output["nativeExecution"].update(
+            {
+                "preflameEngineStateEvolutionPolicy": "freeze_at_first_onset",
+                "objectiveContinuationEngine": (
+                    "shared_torch_fp64_condensed_thermal_chemistry"
+                ),
+                "stateEvolutionPolicy": (
+                    "native_preflame_to_onset_then_shared_zero_electrical_"
+                    "condensed_continuation_to_evaluation_time"
+                ),
+                "postOnsetHistorySemantics": (
+                    "preflame_history_tail_is_not_the_objective_continuation"
+                ),
+            }
+        )
+    return output
+
+
+def run_bc_global_batch(
+    geometry: GeometryBatch,
+    config: dict[str, Any],
+    composition: CompositionModel,
+    voltage: float | Sequence[float] | torch.Tensor,
+    dtype: torch.dtype,
+    *,
+    save_fields: bool = False,
+    save_handoff: bool = False,
+    stop_on_onset: bool = False,
+) -> dict[str, Any]:
+    """Integrate the B/C pre-flame model at scalar or per-candidate voltages.
+
+    Every candidate is frozen at its first accepted condensed-phase onset.
+    Consequently, a batched run may continue unresolved candidates without
+    advancing already successful candidates into an unsupported post-onset
+    regime.  ``stop_on_onset`` labels onset-search/handoff trials explicitly;
+    all-success batches terminate early in either mode because no pre-flame
+    state remains to advance.
+    """
+    channel_1, channel_2 = _validate_bc_config(config)
+    _validate_bc_runtime_contract(config, composition, geometry)
+    bc = config["bcGlobal"]
+    thermal_cfg = bc["thermal"]
+    gas_constant = float(config["transport"]["gasConstant_J_per_molK"])
+    faraday = float(config["transport"]["faradayConstant_C_per_mol"])
+    density_raw = bc["thermal"].get("density_kg_per_m3")
+    density = composition.density_kg_per_m3 if density_raw is None else float(density_raw)
+    dt = float(bc["timeStep_s"])
+    end_time = float(bc["endTime_s"])
+    evaluation_time = float(bc.get("evaluationTime_s", end_time))
+    if dtype != torch.float64:
+        raise ValueError("B/C reference integration requires torch.float64")
+    voltage_batch = torch.as_tensor(
+        voltage, device=geometry.anode.device, dtype=dtype
+    )
+    if voltage_batch.ndim == 0:
+        voltage_batch = voltage_batch.expand(geometry.batch_size)
+    elif voltage_batch.ndim != 1 or voltage_batch.numel() != geometry.batch_size:
+        raise ValueError(
+            "B/C voltage must be a scalar or one value per geometry candidate"
+        )
+    cathode_voltage = float(config["electrical"]["cathodeVoltage_V"])
+    if not bool(
+        torch.all(
+            torch.isfinite(voltage_batch) & (voltage_batch > cathode_voltage)
+        ).item()
+    ):
+        raise ValueError("B/C voltage must be finite and above the cathode voltage")
+    if not math.isfinite(density) or density <= 0.0:
+        raise ValueError("B/C condensed density must be finite and positive")
+    if not math.isfinite(dt) or dt <= 0.0:
+        raise ValueError("bcGlobal.timeStep_s must be finite and positive")
+    if not math.isfinite(end_time) or end_time <= 0.0:
+        raise ValueError("bcGlobal.endTime_s must be finite and positive")
+    if (
+        not math.isfinite(evaluation_time)
+        or evaluation_time <= 0.0
+        or evaluation_time > end_time
+    ):
+        raise ValueError("bcGlobal.evaluationTime_s must lie in (0, endTime_s]")
+    end_tolerance = _time_match_tolerance(end_time, evaluation_time)
+    if (
+        abs(evaluation_time - end_time) > end_tolerance
+        and not _is_time_grid_aligned(evaluation_time, dt)
+    ):
+        raise ValueError(
+            "bcGlobal.evaluationTime_s must equal endTime_s or align with the "
+            "timeStep_s grid; otherwise a ceil-indexed nonlinear state would "
+            "be labelled with the wrong evaluation time"
+        )
+    electrical_interval = float(bc["electricalUpdateInterval_s"])
+    if not math.isfinite(electrical_interval) or electrical_interval <= 0.0:
+        raise ValueError(
+            "bcGlobal.electricalUpdateInterval_s must be finite and positive"
+        )
+    if (
+        electrical_interval < dt
+        or not _is_time_grid_aligned(electrical_interval, dt)
+    ):
+        raise ValueError(
+            "bcGlobal.electricalUpdateInterval_s must be an integer multiple "
+            "of timeStep_s and at least one time step"
+        )
+    numerical_quality = config.get("numericalQuality", {})
+    if not isinstance(numerical_quality, Mapping):
+        numerical_quality = {}
+    thermal_cfl_limit = float(
+        numerical_quality.get(
+            "maximumExplicitThermalCFL",
+            numerical_quality.get("maximumDiffusiveCFLFraction", 1.0),
+        )
+    )
+    if (
+        not math.isfinite(thermal_cfl_limit)
+        or not 0.0 < thermal_cfl_limit <= 1.0
+    ):
+        raise ValueError(
+            "numericalQuality.maximumExplicitThermalCFL must lie in (0, 1]"
+        )
+    boundary_model = str(
+        config.get("interface", {}).get("boundaryCouplingModel", "")
+    ).lower()
+    if boundary_model != "surface_overlay_bv":
+        raise ValueError(
+            "B/C production integration requires surface_overlay_bv boundary coupling"
+        )
+    if geometry.grid_size < 2:
+        raise ValueError("B/C geometry grid_size must be at least two")
+    if (
+        not torch.all(geometry.propellant)
+        or torch.any(geometry.fixed)
+        or torch.any(geometry.anode & geometry.cathode)
+        or not torch.all(geometry.anode.flatten(1).any(dim=1))
+        or not torch.all(geometry.cathode.flatten(1).any(dim=1))
+    ):
+        raise ValueError(
+            "B/C surface contacts require full-domain propellant, no fixed bulk "
+            "cells, disjoint non-empty anode/cathode footprints"
+        )
+    maximum_time_steps, maximum_history_bytes = _bc_resource_limits(config)
+    steps = _positive_time_step_count(
+        end_time, dt, maximum_steps=maximum_time_steps
+    )
+    if steps < 1:
+        raise ValueError("B/C simulation requires at least one time step")
+    scalar_history_bytes = (
+        len(BC_SCALAR_HISTORY_FIELDS)
+        * steps
+        * geometry.batch_size
+        * torch.empty((), dtype=dtype).element_size()
+    )
+    retained_history_bytes = scalar_history_bytes
+    if save_handoff:
+        snapshot_interval_for_budget = float(
+            bc.get("handoffSnapshotInterval_s", 0.02)
+        )
+        snapshot_period = max(snapshot_interval_for_budget, dt)
+        snapshot_count_upper_bound = min(
+            steps,
+            2
+            + _positive_time_step_count(
+                end_time,
+                snapshot_period,
+                maximum_steps=maximum_time_steps,
+            ),
+        )
+        snapshot_values = (
+            4
+            * snapshot_count_upper_bound
+            * geometry.batch_size
+            * geometry.grid_size
+            * geometry.grid_size
+        )
+        # Snapshots are retained individually and then stacked for handoff;
+        # budget the transient peak rather than only the final tensor.
+        retained_history_bytes += (
+            2 * snapshot_values * torch.empty((), dtype=dtype).element_size()
+        )
+    if retained_history_bytes > maximum_history_bytes:
+        raise ValueError(
+            "B/C retained-history allocation exceeds "
+            "numericalQuality.maximumHistoryAllocationBytes: "
+            f"required={retained_history_bytes}, maximum={maximum_history_bytes}"
+        )
+    # The raster is a cell-centred finite-volume grid.  N*N equal control
+    # areas with dx=L/N integrate to the exact declared L*L footprint.
+    spacing = float(config["geometry"]["domainSize_m"]) / geometry.grid_size
+    prop = geometry.propellant
+    prop_count = torch.clamp(prop.sum(dim=(-2, -1)).to(dtype), min=1.0)
+    state = initial_state(geometry, config, composition, voltage_batch, dtype)
+    zero = torch.zeros_like(state["temperature"])
+    state.update(
+        {
+            "alphaChannel1": zero.clone(),
+            "alphaChannel2": zero.clone(),
+            "globalProgress": zero.clone(),
+            # Product water and condensed mobile water are different pools.
+            # Only ``water`` participates in transport/BV closures.
+            "generatedWaterProduct": zero.clone(),
+            "electrochemicalLPConsumed": zero.clone(),
+        }
+    )
+
+    weights = tuple(float(x) for x in bc["kinetics"]["mass_conversion_weights"])
+    solve_every = max(1, int(round(electrical_interval / dt)))
+    current_floor = physical_floor(config, "current_A", 1e-15)
+    current_density_floor = physical_floor(config, "currentDensity_A_per_m2", 1e-12)
+    concentration_floor = physical_floor(config, "concentration_mol_per_m3", 1e-12)
+
+    transport = bc_transport_fields(state, geometry, config, composition)
+    initial_cp = _property_from_config(
+        state["temperature"],
+        thermal_cfg["heat_capacity"],
+        gas_constant=gas_constant,
+    )
+    initial_k = _property_from_config(
+        state["temperature"],
+        thermal_cfg["thermal_conductivity"],
+        gas_constant=gas_constant,
+    )
+    _raise_if_invalid_bc_constitutive(
+        transport,
+        initial_cp,
+        initial_k,
+        prop,
+        config,
+        density=density,
+        accepted_updated_temperature=False,
+    )
+    electrical, reaction, solver_diagnostics = solve_electrical_and_reaction(
+        state,
+        transport,
+        geometry,
+        config,
+        composition,
+        voltage_batch,
+        spacing,
+        static=False,
+    )
+    state["potential"] = electrical["potential"]
+    last_solver_diagnostics = solver_diagnostics
+    all_linear_solves_converged = solver_diagnostics.converged.clone()
+    all_nonlinear_solves_converged = reaction.get(
+        "nonlinearRobinConverged",
+        torch.ones_like(all_linear_solves_converged),
+    ).clone()
+    mean_j = batch_masked_mean(electrical["Jmagnitude"], prop)
+    p99_j = batch_quantile_masked(electrical["Jmagnitude"], prop, 0.99)
+    congestion = p99_j / torch.clamp(mean_j, min=current_density_floor)
+
+    histories = {
+        name: torch.zeros((steps, geometry.batch_size), device=prop.device, dtype=dtype)
+        for name in BC_SCALAR_HISTORY_FIELDS
+    }
+    ignition_delay = torch.full(
+        (geometry.batch_size,), torch.nan, device=prop.device, dtype=dtype
+    )
+    ignition_temperature = state["temperature"].clone()
+    ignition_progress = state["globalProgress"].clone()
+    ignition_alpha_1 = state["alphaChannel1"].clone()
+    ignition_alpha_2 = state["alphaChannel2"].clone()
+    ignition_cation = state["cation"].clone()
+    ignition_anion = state["anion"].clone()
+    ignition_mobile_water = state["water"].clone()
+    ignition_generated_water = state["generatedWaterProduct"].clone()
+    ignition_electrochemical_lp_consumed = state[
+        "electrochemicalLPConsumed"
+    ].clone()
+    ignition_potential = state["potential"].clone()
+    ignition_qj = electrical["jouleHeat_W_per_m3"].clone()
+    ignition_qe = reaction["qTotal_W_per_m3"].clone()
+
+    onset_cfg = bc["onsetCriterion"]
+    onset_temperature = float(onset_cfg["temperature_K"])
+    onset_progress = float(onset_cfg["minimum_progress"])
+    onset_area_fraction = float(onset_cfg["minimum_area_fraction"])
+    initially_qualified = (
+        (state["temperature"] >= onset_temperature)
+        & (state["globalProgress"] >= onset_progress)
+        & prop
+    )
+    initial_onset_fraction = (
+        initially_qualified.sum(dim=(-2, -1)).to(dtype) / prop_count
+    )
+    ignition_delay = torch.where(
+        initial_onset_fraction >= onset_area_fraction,
+        torch.zeros_like(ignition_delay),
+        ignition_delay,
+    )
+    maximum_rate = float(bc["kinetics"].get("maximum_rate_per_s", 1.0e6))
+    temperature_min = float(thermal_cfg.get("minimumTemperature_K", 200.0))
+    temperature_max = float(thermal_cfg.get("maximumTemperature_K", 3000.0))
+    ambient_temperature = float(thermal_cfg.get("ambientTemperature_K", 298.15))
+    convection = float(thermal_cfg.get("convectionCoefficient_W_per_m2K", 0.0))
+    emissivity = float(thermal_cfg.get("emissivity", 0.0))
+    sigma_sb = float(thermal_cfg.get("stefanBoltzmann_W_per_m2K4", 5.670374419e-8))
+    thickness = float(config["geometry"]["surfaceLayerThickness_m"])
+
+    snapshot_interval = float(bc.get("handoffSnapshotInterval_s", 0.02))
+    next_snapshot = 0.0
+    snapshot_times: list[float] = []
+    qj_snapshots: list[torch.Tensor] = []
+    qe_snapshots: list[torch.Tensor] = []
+    full_snapshots: dict[str, list[torch.Tensor]] = {
+        "temperature_K": [],
+        "globalProgress": [],
+    }
+
+    initial_inventory = _reaction_inventory(zero, composition)
+    initial_reactive_mass = initial_inventory["initialReactiveMass_kg_per_m3"]
+    previous_energy = torch.zeros((geometry.batch_size,), device=prop.device, dtype=dtype)
+    previous_equation32_energy = torch.zeros(
+        (geometry.batch_size,), device=prop.device, dtype=dtype
+    )
+    cell_volume_m3 = spacing * spacing * thickness
+    frozen_qj = electrical["jouleHeat_W_per_m3"].clone()
+    frozen_qe = reaction["qTotal_W_per_m3"].clone()
+    frozen_chemical_heat = zero.clone()
+    frozen_current = reaction["totalCurrent_A"].clone()
+    frozen_congestion = congestion.clone()
+    executed_steps = 0
+    terminated_after_all_onsets = False
+
+    for step in range(steps):
+        active = torch.isnan(ignition_delay)
+        active3 = active[:, None, None]
+        active_prop = active3 & prop
+        step_start = step * dt
+        step_dt = end_time - step_start if step == steps - 1 else dt
+        if not math.isfinite(step_dt) or step_dt <= 0.0:
+            raise RuntimeError(
+                "B/C integrator generated a non-positive time step; "
+                f"step={step}, step_dt={step_dt}, end={end_time}, dt={dt}"
+            )
+        t = end_time if step == steps - 1 else step_start + step_dt
+        transport = bc_transport_fields(state, geometry, config, composition)
+        cp = _property_from_config(
+            state["temperature"],
+            thermal_cfg["heat_capacity"],
+            gas_constant=gas_constant,
+        )
+        k = _property_from_config(
+            state["temperature"],
+            thermal_cfg["thermal_conductivity"],
+            gas_constant=gas_constant,
+        )
+        _raise_if_invalid_bc_constitutive(
+            transport,
+            cp,
+            k,
+            active_prop,
+            config,
+            density=density,
+            accepted_updated_temperature=False,
+        )
+        if step > 0 and step % solve_every == 0:
+            frozen_potential = state["potential"]
+            active_indices = torch.nonzero(active).flatten()
+            if int(active_indices.numel()) == geometry.batch_size:
+                next_electrical, next_reaction, next_solver_diagnostics = (
+                    solve_electrical_and_reaction(
+                        state,
+                        transport,
+                        geometry,
+                        config,
+                        composition,
+                        voltage_batch,
+                        spacing,
+                        static=False,
+                    )
+                )
+            elif int(active_indices.numel()) > 0:
+                active_geometry = GeometryBatch(
+                    geometry_ids=[
+                        geometry.geometry_ids[int(index)]
+                        for index in active_indices.detach().cpu().tolist()
+                    ],
+                    anode=geometry.anode.index_select(0, active_indices),
+                    cathode=geometry.cathode.index_select(0, active_indices),
+                    fixed=geometry.fixed.index_select(0, active_indices),
+                    propellant=geometry.propellant.index_select(0, active_indices),
+                    grid_size=geometry.grid_size,
+                    domain_size_m=geometry.domain_size_m,
+                    minimum_gap_m=geometry.minimum_gap_m,
+                )
+                active_state = _select_active_batch(
+                    state, active_indices, geometry.batch_size
+                )
+                active_transport = _select_active_batch(
+                    transport, active_indices, geometry.batch_size
+                )
+                active_voltage = voltage_batch.index_select(0, active_indices)
+                try:
+                    (
+                        active_electrical,
+                        active_reaction,
+                        active_solver_diagnostics,
+                    ) = solve_electrical_and_reaction(
+                        active_state,
+                        active_transport,
+                        active_geometry,
+                        config,
+                        composition,
+                        active_voltage,
+                        spacing,
+                        static=False,
+                    )
+                except BCCandidateBatchError as exc:
+                    active_original_indices = (
+                        active_indices.detach().cpu().tolist()
+                    )
+                    mapped_indices = [
+                        active_original_indices[index]
+                        for index in exc.candidate_indices
+                    ]
+                    raise BCCandidateBatchError(
+                        str(exc), mapped_indices, exc.category
+                    ) from exc
+                next_electrical = _scatter_active_batch(
+                    electrical,
+                    active_electrical,
+                    active_indices,
+                    geometry.batch_size,
+                )
+                next_reaction = _scatter_active_batch(
+                    reaction,
+                    active_reaction,
+                    active_indices,
+                    geometry.batch_size,
+                )
+                next_solver_diagnostics = _scatter_solver_diagnostics(
+                    last_solver_diagnostics,
+                    active_solver_diagnostics,
+                    active_indices,
+                    geometry.batch_size,
+                )
+            else:  # All-onset batches terminate below before another update.
+                raise RuntimeError(
+                    "B/C attempted an electrical update with no active pre-flame lanes"
+                )
+            electrical = next_electrical
+            reaction = next_reaction
+            last_solver_diagnostics = next_solver_diagnostics
+            all_linear_solves_converged = torch.where(
+                active,
+                all_linear_solves_converged
+                & last_solver_diagnostics.converged,
+                all_linear_solves_converged,
+            )
+            current_nonlinear_converged = reaction.get(
+                "nonlinearRobinConverged",
+                torch.ones_like(all_nonlinear_solves_converged),
+            )
+            all_nonlinear_solves_converged = torch.where(
+                active,
+                all_nonlinear_solves_converged & current_nonlinear_converged,
+                all_nonlinear_solves_converged,
+            )
+            state["potential"] = torch.where(
+                active3, electrical["potential"], frozen_potential
+            )
+            mean_j = batch_masked_mean(electrical["Jmagnitude"], prop)
+            p99_j = batch_quantile_masked(electrical["Jmagnitude"], prop, 0.99)
+            congestion = p99_j / torch.clamp(mean_j, min=current_density_floor)
+
+        raw_rate_1, ea_1, ln_af_1 = _channel_rate(
+            state["alphaChannel1"], state["temperature"], channel_1, gas_constant
+        )
+        raw_rate_2, ea_2, ln_af_2 = _channel_rate(
+            state["alphaChannel2"], state["temperature"], channel_2, gas_constant
+        )
+        rate_cap_mask = (
+            ((raw_rate_1 > maximum_rate) | (raw_rate_2 > maximum_rate))
+            & active_prop
+        )
+        bounded_rate_1 = torch.where(
+            active_prop, torch.clamp(raw_rate_1, 0.0, maximum_rate), zero
+        )
+        bounded_rate_2 = torch.where(
+            active_prop, torch.clamp(raw_rate_2, 0.0, maximum_rate), zero
+        )
+        old_progress = state["globalProgress"]
+
+        # First advance conservative transport.  Faradaic and chemical source
+        # terms are then accepted explicitly against the available inventory;
+        # folding all three into _limited_update used to make the species loss
+        # disagree with the progress and heat release whenever its numerical
+        # limiter clipped the combined rate.
+        if bool(config["coupled"].get("useFullNernstPlanckTransport", True)):
+            cation_rate = -_flux_divergence_charged(
+                state["cation"],
+                transport["Dcation"],
+                state["potential"],
+                state["temperature"],
+                float(config["transport"]["chargeNumberCation"]),
+                gas_constant,
+                faraday,
+                prop,
+                spacing,
+            )
+            anion_rate = -_flux_divergence_charged(
+                state["anion"],
+                transport["Danion"],
+                state["potential"],
+                state["temperature"],
+                float(config["transport"]["chargeNumberAnion"]),
+                gas_constant,
+                faraday,
+                prop,
+                spacing,
+            )
+            water_rate = -_flux_divergence_neutral(
+                state["water"], transport["Dwater"], prop, spacing
+            )
+        else:
+            cation_rate = zero.clone()
+            anion_rate = zero.clone()
+            water_rate = zero.clone()
+
+        transported_cation, lim_c = _limited_update(
+            state["cation"],
+            cation_rate,
+            step_dt,
+            config,
+            composition.initial_cation_mol_per_m3,
+        )
+        transported_anion, lim_a = _limited_update(
+            state["anion"],
+            anion_rate,
+            step_dt,
+            config,
+            composition.initial_anion_mol_per_m3,
+        )
+        transported_water, lim_w = _limited_update(
+            state["water"],
+            water_rate,
+            step_dt,
+            config,
+            composition.initial_water_mol_per_m3,
+        )
+
+        # Equation (4): bulk electroneutrality for a 1:1 electrolyte.
+        neutral = 0.5 * (transported_cation + transported_anion)
+        minimum_fraction = float(config["transport"]["concentrationMinimumFraction"])
+        lp_minimum = max(
+            concentration_floor,
+            minimum_fraction
+            * max(
+                composition.initial_cation_mol_per_m3,
+                composition.initial_anion_mol_per_m3,
+            ),
+        )
+        water_minimum = max(
+            concentration_floor,
+            minimum_fraction * composition.initial_water_mol_per_m3,
+        )
+
+        # Conservative electroneutral projection for the NP transport step.
+        #
+        # The transport substep is redistribution only; Faradaic and chemical
+        # LP consumption are applied below.  A positivity limiter can otherwise
+        # create/remove a small amount of ion-pair inventory when cells hit the
+        # concentration floor.  Preserve the pre-transport total number of
+        # mobile Li+/ClO4- pairs while retaining the transported spatial shape.
+        pair_before_transport = 0.5 * (
+            state["cation"] + state["anion"]
+        )
+
+        active_float = active_prop.to(dtype=neutral.dtype)
+        active_cell_count = active_float.sum(dim=(-2, -1))
+
+       =neutral.dtype)
+        active_cell_count = active_float.sum(dim=(-2, -1))
+
+        target_pair_sum = (
+            pair_before_transport * active_float
+        ).sum(dim=(-2, -1))
+
+        lp_floor_field = torch.full_like(neutral, lp_minimum)
+        neutral_above_floor = torch.maximum(neutral, lp_floor_field)
+
+        excess_above_floor = torch.where(
+            active_prop,
+            neutral_above_floor - lp_floor_field,
+            zero,
+        )
+        excess_sum = excess_above_floor.sum(dim=(-2, -1))
+
+        target_excess = torch.clamp(
+            target_pair_sum - lp_minimum * active_cell_count,
+            min=0.0,
+        )
+
+        impossible_projection = (
+            (active_cell_count > 0.0)
+            & (target_excess > 0.0)
+            & (excess_sum <= 0.0)
+        )
+        if bool(torch.any(impossible_projection).item()):
+            raise RuntimeError(
+                "Cannot conservatively project NP ion-pair inventory "
+                "while respecting the concentration floor"
+            )
+
+        conservation_scale = torch.where(
+            excess_sum > 0.0,
+            target_excess / torch.clamp(excess_sum, min=1.0e-300),
+            torch.ones_like(excess_sum),
+        )
+
+        projected_neutral = (
+            lp_floor_field
+            + excess_above_floor * conservation_scale[:, None, None]
+        )
+
+        neutral = torch.where(
+            active_prop,
+            projected_neutral,
+            neutral,
+        )
+
+        # FP64 regression guard: the transport-only substep must conserve
+        # total mobile ion-pair inventory candidate-by-candidate.
+        projected_pair_sum = (
+            neutral * active_float
+        ).sum(dim=(-2, -1))
+
+        projection_error = torch.abs(
+            projected_pair_sum - target_pair_sum
+        )
+        projection_scale = torch.clamp(
+            torch.abs(target_pair_sum),
+            min=1.0,
+        )
+
+        if bool(
+            torch.any(
+                (active_cell_count > 0.0)
+                & (projection_error > 5.0e-12 * projection_scale)
+            ).item()
+        ):
+            raise RuntimeError(
+                "Conservative NP ion-pair projection failed"
+            )
+
+        requested_electrochemical_lp = torch.where(
+            active_prop,
+            torch.clamp(reaction["saltSink_mol_per_m3_s"], min=0.0) * step_dt,
+            zero,
+        )
+        available_lp = torch.clamp(neutral - lp_minimum, min=0.0)
+        accepted_electrochemical_lp = torch.minimum(
+            requested_electrochemical_lp, available_lp
+        )
+        # ``concentration_floor`` is a state floor, not permission to consume
+        # an unavailable sub-floor amount.  Any rejected positive Faradaic
+        # extent would otherwise leave current/power inconsistent with species
+        # and heat, so detect it without an absolute dead band.
+        electrochemical_lp_limited = (
+            requested_electrochemical_lp > accepted_electrochemical_lp
+        ) & active_prop
+        neutral = neutral - accepted_electrochemical_lp
+
+        requested_electrochemical_water = torch.where(
+            active_prop,
+            torch.clamp(reaction["waterSink_mol_per_m3_s"], min=0.0) * step_dt,
+            zero,
+        )
+        available_water = torch.clamp(transported_water - water_minimum, min=0.0)
+        accepted_electrochemical_water = torch.minimum(
+            requested_electrochemical_water, available_water
+        )
+        electrochemical_water_limited = (
+            requested_electrochemical_water > accepted_electrochemical_water
+        ) & active_prop
+        _require_unclipped_faradaic_inventory(
+            electrochemical_lp_limited,
+            electrochemical_water_limited,
+            step=step,
+            step_dt=step_dt,
+        )
+        mobile_water = transported_water - accepted_electrochemical_water
+
+        # Advance both kinetic channels, then scale their increments together
+        # if the common LP/PVA reaction inventory cannot support the proposal.
+        # The accepted increments below are the single source of truth for
+        # progress, chemical species, products and chemical heat.
+        proposed_alpha_1 = torch.clamp(
+            state["alphaChannel1"] + step_dt * bounded_rate_1, 0.0, 1.0
+        )
+        proposed_alpha_2 = torch.clamp(
+            state["alphaChannel2"] + step_dt * bounded_rate_2, 0.0, 1.0
+        )
+        proposed_delta_alpha_1 = torch.clamp(
+            proposed_alpha_1 - state["alphaChannel1"], min=0.0
+        )
+        proposed_delta_alpha_2 = torch.clamp(
+            proposed_alpha_2 - state["alphaChannel2"], min=0.0
+        )
+        proposed_delta_progress = (
+            weights[0] * proposed_delta_alpha_1
+            + weights[1] * proposed_delta_alpha_2
+        )
+        xi_max = min(
+            composition.initial_lp_mol_per_m3 / 1.45,
+            composition.initial_pva_repeat_mol_per_m3,
+        )
+        proposed_xi_increment = xi_max * proposed_delta_progress
+        pva_remaining_before_step = torch.clamp(
+            torch.full_like(old_progress, composition.initial_pva_repeat_mol_per_m3)
+            - xi_max * old_progress,
+            min=0.0,
+        )
+        maximum_xi_increment = torch.minimum(
+            torch.clamp(neutral - lp_minimum, min=0.0) / 1.45,
+            pva_remaining_before_step,
+        )
+        # Scale every strictly positive proposal.  The configurable
+        # concentration floor is not a reaction threshold: treating a
+        # sub-floor proposal as automatically accepted lets exhausted LP/PVA
+        # create progress, product and heat.
+        xi_scale = torch.where(
+            proposed_xi_increment > 0.0,
+            torch.clamp(
+                maximum_xi_increment
+                / torch.where(
+                    proposed_xi_increment > 0.0,
+                    proposed_xi_increment,
+                    torch.ones_like(proposed_xi_increment),
+                ),
+                min=0.0,
+                max=1.0,
+            ),
+            torch.ones_like(proposed_xi_increment),
+        )
+        accepted_delta_alpha_1 = proposed_delta_alpha_1 * xi_scale
+        accepted_delta_alpha_2 = proposed_delta_alpha_2 * xi_scale
+        new_alpha_1 = state["alphaChannel1"] + accepted_delta_alpha_1
+        new_alpha_2 = state["alphaChannel2"] + accepted_delta_alpha_2
+        new_progress = _global_progress(new_alpha_1, new_alpha_2, weights)
+        progress_increment = torch.clamp(new_progress - old_progress, min=0.0)
+        accepted_xi_increment = xi_max * progress_increment
+        neutral = neutral - 1.45 * accepted_xi_increment
+
+        accepted_rate_1 = accepted_delta_alpha_1 / step_dt
+        accepted_rate_2 = accepted_delta_alpha_2 / step_dt
+        state["cation"] = torch.where(active_prop, neutral, state["cation"])
+        state["anion"] = torch.where(active_prop, neutral, state["anion"])
+        state["water"] = torch.where(active_prop, mobile_water, state["water"])
+        state["alphaChannel1"] = torch.where(
+            active_prop, new_alpha_1, state["alphaChannel1"]
+        )
+        state["alphaChannel2"] = torch.where(
+            active_prop, new_alpha_2, state["alphaChannel2"]
+        )
+        state["globalProgress"] = torch.where(
+            active_prop, new_progress, state["globalProgress"]
+        )
+        state["generatedWaterProduct"] = torch.where(
+            active_prop,
+            state["generatedWaterProduct"] + 2.0 * accepted_xi_increment,
+            state["generatedWaterProduct"],
+        )
+        state["electrochemicalLPConsumed"] = torch.where(
+            active_prop,
+            state["electrochemicalLPConsumed"] + accepted_electrochemical_lp,
+            state["electrochemicalLPConsumed"],
+        )
+
+        # Availability limiting must scale electrochemical heat by reaction
+        # channel, otherwise a depleted reactant can still release the heat of
+        # a rejected Faradaic extent.  interface_reactions exposes the water
+        # and LP heat contributions separately for this conservation closure.
+        lp_acceptance_scale = torch.where(
+            requested_electrochemical_lp > 0.0,
+            accepted_electrochemical_lp
+            / torch.where(
+                requested_electrochemical_lp > 0.0,
+                requested_electrochemical_lp,
+                torch.ones_like(requested_electrochemical_lp),
+            ),
+            torch.ones_like(requested_electrochemical_lp),
+        )
+        water_acceptance_scale = torch.where(
+            requested_electrochemical_water > 0.0,
+            accepted_electrochemical_water
+            / torch.where(
+                requested_electrochemical_water > 0.0,
+                requested_electrochemical_water,
+                torch.ones_like(requested_electrochemical_water),
+            ),
+            torch.ones_like(requested_electrochemical_water),
+        )
+        if "qWater_W_per_m3" in reaction and "qLP_W_per_m3" in reaction:
+            accepted_electrochemical_heat = (
+                reaction["qWater_W_per_m3"] * water_acceptance_scale
+                + reaction["qLP_W_per_m3"] * lp_acceptance_scale
+            )
+        else:
+            if bool(
+                torch.any(
+                    electrochemical_lp_limited | electrochemical_water_limited
+                ).item()
+            ):
+                raise RuntimeError(
+                    "Electrochemical inventory limiting requires separate "
+                    "qWater_W_per_m3 and qLP_W_per_m3 reaction fields"
+                )
+            accepted_electrochemical_heat = reaction["qTotal_W_per_m3"]
+
+        thermal_capacity = density * cp
+        thermal_diffusive_cfl = _thermal_diffusive_cfl(
+            k, thermal_capacity, prop, spacing, step_dt
+        )
+        # The explicit loss term has its own diagonal stability restriction.
+        # Bounding d(eps*sigma*T^4)/dT with max(T,T_ambient) guarantees that
+        # pure convection/radiation cooling moves monotonically toward the
+        # ambient state instead of oscillating while remaining inside broad
+        # temperature clipping bounds.
+        loss_jacobian = (
+            convection / thickness
+            + 4.0
+            * emissivity
+            * sigma_sb
+            / thickness
+            * torch.maximum(
+                state["temperature"],
+                torch.full_like(state["temperature"], ambient_temperature),
+            )
+            ** 3
+        )
+        thermal_loss_cfl = step_dt * loss_jacobian / (density * cp)
+        thermal_stability_cfl = thermal_diffusive_cfl + torch.where(
+            prop, thermal_loss_cfl, zero
+        )
+        active_thermal_stability_cfl = torch.where(
+            active_prop, thermal_stability_cfl, zero
+        )
+        diffusive_cfl_max = torch.amax(
+            torch.where(active_prop, thermal_diffusive_cfl, zero),
+            dim=(-2, -1),
+        )
+        stability_cfl_max = torch.amax(
+            active_thermal_stability_cfl, dim=(-2, -1)
+        )
+        cfl_tolerance = 64.0 * torch.finfo(dtype).eps * max(
+            1.0, thermal_cfl_limit
+        )
+        invalid_cfl_lanes = (
+            (~torch.isfinite(thermal_stability_cfl) & active_prop)
+            .flatten(1)
+            .any(dim=1)
+            | (stability_cfl_max > thermal_cfl_limit + cfl_tolerance)
+        )
+        if bool(torch.any(invalid_cfl_lanes).item()):
+            bad = (
+                torch.nonzero(invalid_cfl_lanes)
+                .flatten()
+                .detach()
+                .cpu()
+                .tolist()
+            )
+            raise BCCandidateBatchError(
+                "B/C total explicit thermal stability CFL (diffusion plus "
+                "convection/radiation loss) exceeds the configured "
+                f"limit {thermal_cfl_limit}; batch_indices={bad}, "
+                f"maximum={stability_cfl_max.detach().cpu().tolist()}. Reduce "
+                "bcGlobal.timeStep_s.",
+                bad,
+                "thermal_stability_cfl",
+            )
+        chemical_heat = density * (
+            channel_1.heat_release_J_per_kg * accepted_rate_1
+            + channel_2.heat_release_J_per_kg * accepted_rate_2
+        )
+        chemical_energy_density = density * (
+            channel_1.heat_release_J_per_kg * accepted_delta_alpha_1
+            + channel_2.heat_release_J_per_kg * accepted_delta_alpha_2
+        )
+        frozen_qj = torch.where(
+            active3, electrical["jouleHeat_W_per_m3"], frozen_qj
+        )
+        frozen_qe = torch.where(
+            active3, accepted_electrochemical_heat, frozen_qe
+        )
+        frozen_chemical_heat = torch.where(
+            active3, chemical_heat, frozen_chemical_heat
+        )
+        frozen_current = torch.where(
+            active, reaction["totalCurrent_A"], frozen_current
+        )
+        frozen_congestion = torch.where(active, congestion, frozen_congestion)
+        loss = (
+            convection / thickness * (state["temperature"] - ambient_temperature)
+            + emissivity
+            * sigma_sb
+            / thickness
+            * (state["temperature"] ** 4 - ambient_temperature**4)
+        )
+        conduction = _divergence_k_grad(state["temperature"], k, prop, spacing)
+        nonchemical_heat = (
+            conduction
+            + electrical["jouleHeat_W_per_m3"]
+            + accepted_electrochemical_heat
+            - loss
+        )
+        thermal_energy_density = (
+            step_dt * nonchemical_heat + chemical_energy_density
+        )
+        raw_temperature = (
+            state["temperature"] + thermal_energy_density / thermal_capacity
+        )
+        invalid_energy_lanes = (
+            (
+                (~torch.isfinite(chemical_heat))
+                | (~torch.isfinite(thermal_energy_density))
+                | (~torch.isfinite(raw_temperature))
+            )
+            & active_prop
+        ).flatten(1).any(dim=1)
+        if bool(torch.any(invalid_energy_lanes).item()):
+            bad = (
+                torch.nonzero(invalid_energy_lanes)
+                .flatten()
+                .detach()
+                .cpu()
+                .tolist()
+            )
+            raise BCCandidateBatchError(
+                "B/C energy update produced a non-finite state",
+                bad,
+                "nonfinite_energy_update",
+            )
+        temperature_cap = (
+            ((raw_temperature < temperature_min) | (raw_temperature > temperature_max))
+            & active_prop
+        )
+        accepted_temperature = torch.where(
+            active_prop,
+            torch.clamp(raw_temperature, min=temperature_min, max=temperature_max),
+            state["temperature"],
+        )
+        accepted_cp = _property_from_config(
+            accepted_temperature,
+            thermal_cfg["heat_capacity"],
+            gas_constant=gas_constant,
+        )
+        accepted_k = _property_from_config(
+            accepted_temperature,
+            thermal_cfg["thermal_conductivity"],
+            gas_constant=gas_constant,
+        )
+        accepted_state = dict(state)
+        accepted_state["temperature"] = accepted_temperature
+        accepted_transport = bc_transport_fields(
+            accepted_state, geometry, config, composition
+        )
+        _raise_if_invalid_bc_constitutive(
+            accepted_transport,
+            accepted_cp,
+            accepted_k,
+            active_prop,
+            config,
+            density=density,
+            accepted_updated_temperature=True,
+        )
+        state["temperature"] = accepted_temperature
+        expected_progress_now = _global_progress(
+            state["alphaChannel1"], state["alphaChannel2"], weights
+        )
+        invariant_fields = (
+            state["temperature"],
+            state["alphaChannel1"],
+            state["alphaChannel2"],
+            state["globalProgress"],
+            state["cation"],
+            state["anion"],
+            state["water"],
+            state["generatedWaterProduct"],
+            state["electrochemicalLPConsumed"],
+        )
+        invalid_invariant_cells = torch.zeros_like(active_prop)
+        for field in invariant_fields:
+            invalid_invariant_cells |= ~torch.isfinite(field) & active_prop
+        for field in invariant_fields[1:]:
+            invalid_invariant_cells |= (field < 0.0) & active_prop
+        invalid_invariant_cells |= (
+            (state["alphaChannel1"] > 1.0)
+            | (state["alphaChannel2"] > 1.0)
+            | (state["globalProgress"] > 1.0)
+        ) & active_prop
+        progress_tolerance = 1.0e-12 + 1.0e-11 * torch.abs(
+            expected_progress_now
+        )
+        invalid_invariant_cells |= (
+            torch.abs(state["globalProgress"] - expected_progress_now)
+            > progress_tolerance
+        ) & active_prop
+        invalid_invariant_lanes = invalid_invariant_cells.flatten(1).any(dim=1)
+        if bool(torch.any(invalid_invariant_lanes).item()):
+            bad = (
+                torch.nonzero(invalid_invariant_lanes)
+                .flatten()
+                .detach()
+                .cpu()
+                .tolist()
+            )
+            raise BCCandidateBatchError(
+                "B/C reaction/species/temperature invariant failed",
+                bad,
+                "reaction_species_temperature_invariant",
+            )
+
+        inventory = _reaction_inventory(
+            state["globalProgress"],
+            composition,
+            mobile_lp_mol_per_m3=state["cation"],
+            electrochemical_lp_consumed_mol_per_m3=state[
+                "electrochemicalLPConsumed"
+            ],
+            generated_water_product_mol_per_m3=state["generatedWaterProduct"],
+        )
+        remaining_fraction = _masked_integral_ratio(
+            inventory["reactiveMass_kg_per_m3"], initial_reactive_mass, prop
+        )
+        remaining_mass_tolerance = 128.0 * torch.finfo(dtype).eps
+        invalid_remaining_mass = (
+            ~torch.isfinite(remaining_fraction)
+            | (remaining_fraction < -remaining_mass_tolerance)
+            | (remaining_fraction > 1.0 + remaining_mass_tolerance)
+        )
+        if bool(torch.any(invalid_remaining_mass).item()):
+            bad = (
+                torch.nonzero(invalid_remaining_mass)
+                .flatten()
+                .detach()
+                .cpu()
+                .tolist()
+            )
+            raise BCCandidateBatchError(
+                "B/C remaining reactive-mass fraction is non-finite or outside [0, 1]",
+                bad,
+                "remaining_reactive_mass_invariant",
+            )
+        remaining_fraction = torch.clamp(remaining_fraction, 0.0, 1.0)
+        qualified = (
+            (state["temperature"] >= onset_temperature)
+            & (state["globalProgress"] >= onset_progress)
+            & prop
+        )
+        onset_fraction = qualified.sum(dim=(-2, -1)).to(dtype) / prop_count
+        temperature_fraction = (
+            ((state["temperature"] >= onset_temperature) & prop)
+            .sum(dim=(-2, -1))
+            .to(dtype)
+            / prop_count
+        )
+        newly_ignited = active & (onset_fraction >= onset_area_fraction)
+        ignition_delay = torch.where(
+            newly_ignited,
+            torch.full_like(ignition_delay, t),
+            ignition_delay,
+        )
+        mask3 = newly_ignited[:, None, None]
+        ignition_temperature = torch.where(mask3, state["temperature"], ignition_temperature)
+        ignition_progress = torch.where(mask3, state["globalProgress"], ignition_progress)
+        ignition_alpha_1 = torch.where(mask3, state["alphaChannel1"], ignition_alpha_1)
+        ignition_alpha_2 = torch.where(mask3, state["alphaChannel2"], ignition_alpha_2)
+        ignition_cation = torch.where(mask3, state["cation"], ignition_cation)
+        ignition_anion = torch.where(mask3, state["anion"], ignition_anion)
+        ignition_mobile_water = torch.where(
+            mask3, state["water"], ignition_mobile_water
+        )
+        ignition_generated_water = torch.where(
+            mask3, state["generatedWaterProduct"], ignition_generated_water
+        )
+        ignition_electrochemical_lp_consumed = torch.where(
+            mask3,
+            state["electrochemicalLPConsumed"],
+            ignition_electrochemical_lp_consumed,
+        )
+        ignition_potential = torch.where(mask3, state["potential"], ignition_potential)
+        ignition_qj = torch.where(mask3, frozen_qj, ignition_qj)
+        ignition_qe = torch.where(mask3, frozen_qe, ignition_qe)
+
+        current = frozen_current
+        power = current * (voltage_batch - cathode_voltage)
+        energy = previous_energy + torch.where(active, power, torch.zeros_like(power)) * step_dt
+        previous_energy = energy
+        # Paper Eq. (32) is retained strictly as a diagnostic identity, not as
+        # an additional source in Eq. (23).  Both volumetric terms have already
+        # been added once to the temperature equation above.
+        equation32_heat_rate = torch.where(
+            prop,
+            frozen_qj + frozen_qe,
+            zero,
+        ).sum(dim=(-2, -1)) * cell_volume_m3
+        equation32_heat_energy = (
+            previous_equation32_energy
+            + torch.where(
+                active, equation32_heat_rate, torch.zeros_like(equation32_heat_rate)
+            )
+            * step_dt
+        )
+        previous_equation32_energy = equation32_heat_energy
+        histories["maxTemperature_K"][step] = batch_masked_max(state["temperature"], prop)
+        histories["meanTemperature_K"][step] = batch_masked_mean(state["temperature"], prop)
+        histories["current_A"][step] = current
+        histories["power_W"][step] = power
+        histories["energy_J"][step] = energy
+        histories["meanGlobalProgress"][step] = batch_masked_mean(state["globalProgress"], prop)
+        histories["maximumGlobalProgress"][step] = batch_masked_max(state["globalProgress"], prop)
+        histories["remainingReactiveMassFraction"][step] = remaining_fraction
+        histories["onsetAreaFraction"][step] = onset_fraction
+        histories["temperatureQualifiedAreaFraction"][step] = temperature_fraction
+        histories["maximumChannel1Rate_per_s"][step] = batch_masked_max(
+            accepted_rate_1, prop
+        )
+        histories["maximumChannel2Rate_per_s"][step] = batch_masked_max(
+            accepted_rate_2, prop
+        )
+        histories["currentCongestion"][step] = frozen_congestion
+        combined_limiter = (
+            lim_c
+            | lim_a
+            | lim_w
+            | electrochemical_lp_limited
+            | electrochemical_water_limited
+        ) & prop
+        histories["speciesLimiterFraction"][step] = combined_limiter.sum(dim=(-2, -1)).to(dtype) / prop_count
+        histories["temperatureCapFraction"][step] = temperature_cap.sum(dim=(-2, -1)).to(dtype) / prop_count
+        histories["chemicalRateCapFraction"][step] = rate_cap_mask.sum(dim=(-2, -1)).to(dtype) / prop_count
+        histories["equation32ElectricalHeatRate_W"][step] = equation32_heat_rate
+        histories["equation32ElectricalHeatEnergy_J"][step] = equation32_heat_energy
+        histories["meanJouleHeat_W_per_m3"][step] = batch_masked_mean(
+            frozen_qj, prop
+        )
+        histories["meanElectrochemicalHeat_W_per_m3"][step] = batch_masked_mean(
+            frozen_qe, prop
+        )
+        histories["meanChemicalHeat_W_per_m3"][step] = batch_masked_mean(
+            frozen_chemical_heat, prop
+        )
+        histories["anodeCathodeCurrentMismatch"][step] = reaction[
+            "currentBalanceMismatchBeforeCoupling"
+        ]
+        histories["thermalDiffusiveCFL"][step] = diffusive_cfl_max
+        histories["thermalStabilityCFL"][step] = stability_cfl_max
+
+        # Histories are fixed-size for downstream parity.  State and cumulative
+        # quantities are held after onset; instantaneous currents, rates,
+        # sources and numerical diagnostics are zero because no post-onset
+        # electrical solve or pre-flame update exists.
+        instantaneous_names = (
+            "current_A",
+            "power_W",
+            "maximumChannel1Rate_per_s",
+            "maximumChannel2Rate_per_s",
+            "currentCongestion",
+            "speciesLimiterFraction",
+            "temperatureCapFraction",
+            "chemicalRateCapFraction",
+            "equation32ElectricalHeatRate_W",
+            "meanJouleHeat_W_per_m3",
+            "meanElectrochemicalHeat_W_per_m3",
+            "meanChemicalHeat_W_per_m3",
+            "anodeCathodeCurrentMismatch",
+            "thermalDiffusiveCFL",
+            "thermalStabilityCFL",
+        )
+        for name in instantaneous_names:
+            histories[name][step] = torch.where(
+                active, histories[name][step], torch.zeros_like(histories[name][step])
+            )
+        if step > 0:
+            for name, values in histories.items():
+                if name not in instantaneous_names:
+                    values[step] = torch.where(
+                        active, values[step], values[step - 1]
+                    )
+
+        all_candidates_onset = bool(torch.all(torch.isfinite(ignition_delay)).item())
+        snapshot_time_tolerance = _time_match_tolerance(t, next_snapshot)
+        if save_handoff and (
+            t >= next_snapshot - snapshot_time_tolerance
+            or step == steps - 1
+            or all_candidates_onset
+        ):
+            snapshot_times.append(t)
+            # A lane that reached onset in an earlier step has no valid
+            # pre-flame source at this later shared-batch time.  Store zeros
+            # rather than repeating its frozen onset source, which could be
+            # mistaken for a post-onset heating boundary by downstream code.
+            qj_snapshots.append(torch.where(active3, frozen_qj, zero).clone())
+            qe_snapshots.append(torch.where(active3, frozen_qe, zero).clone())
+            full_snapshots["temperature_K"].append(state["temperature"].clone())
+            full_snapshots["globalProgress"].append(state["globalProgress"].clone())
+            next_snapshot += max(snapshot_interval, step_dt)
+
+        executed_steps = step + 1
+        if all_candidates_onset:
+            terminated_after_all_onsets = step + 1 < steps
+            if terminated_after_all_onsets:
+                for name, values in histories.items():
+                    if name in instantaneous_names:
+                        values[step + 1 :] = 0.0
+                    else:
+                        values[step + 1 :] = values[step]
+            break
+
+    times = torch.arange(
+        1, steps + 1, device=prop.device, dtype=dtype
+    ) * dt
+    times[-1] = end_time
+    eval_index = min(
+        _positive_time_step_count(
+            evaluation_time, dt, maximum_steps=maximum_time_steps
+        )
+        - 1,
+        steps - 1,
+    )
+    congestion_to_evaluation = torch.amax(
+        histories["currentCongestion"][: eval_index + 1], dim=0
+    )
+    ignition_success = torch.isfinite(ignition_delay)
+    resistance = (
+        voltage_batch - cathode_voltage
+    ) / torch.clamp(frozen_current, min=current_floor)
+    evaluation_resistance = (
+        voltage_batch - cathode_voltage
+    ) / torch.clamp(histories["current_A"][eval_index], min=current_floor)
+    output: dict[str, Any] = {
+        "ignitionDelay_s": ignition_delay,
+        "condensedPhaseIgnitionDelay_s": ignition_delay,
+        "ignitionSucceeded": ignition_success,
+        "areaAveragedUndecomposedFractionAt2s": histories["remainingReactiveMassFraction"][eval_index],
+        "areaAveragedUndecomposedFractionAtEvaluationTime": histories["remainingReactiveMassFraction"][eval_index],
+        "remainingReactiveMassFractionAt2s": histories["remainingReactiveMassFraction"][eval_index],
+        "remainingReactiveMassFractionAtEvaluationTime": histories["remainingReactiveMassFraction"][eval_index],
+        "meanGlobalProgressAt2s": histories["meanGlobalProgress"][eval_index],
+        "meanGlobalProgressAtEvaluationTime": histories["meanGlobalProgress"][eval_index],
+        "temperatureOnsetAreaFractionAt2s": histories["onsetAreaFraction"][eval_index],
+        "inputElectricalEnergyToIgnition_J": torch.where(
+            ignition_success,
+            torch.stack(
+                [
+                    histories["energy_J"][
+                        min(
+                            _positive_time_step_count(
+                                float(t.item()),
+                                dt,
+                                maximum_steps=maximum_time_steps,
+                            )
+                            - 1,
+                            steps - 1,
+                        ),
+                        i,
+                    ]
+                    if torch.isfinite(t)
+                    else histories["energy_J"][-1, i]
+                    for i, t in enumerate(ignition_delay)
+                ]
+            ),
+            histories["energy_J"][-1],
+        ),
+        "inputElectricalEnergyAt2s_J": histories["energy_J"][eval_index],
+        "inputElectricalEnergyAtEvaluationTime_J": histories["energy_J"][eval_index],
+        "inputElectricalEnergy_J": histories["energy_J"][-1],
+        "peakMaximumTemperature_K": torch.amax(histories["maxTemperature_K"], dim=0),
+        "peakCurrent_A": torch.amax(histories["current_A"], dim=0),
+        # The legacy key remains a full-horizon diagnostic.  Ranking uses the
+        # explicitly named configured evaluation-horizon peak below.
+        "peakCurrentCongestion": torch.amax(histories["currentCongestion"], dim=0),
+        "peakCurrentCongestionToEvaluationTime": congestion_to_evaluation,
+        "peakCurrentCongestionTo2s": congestion_to_evaluation,
+        "finalEffectiveResistance_ohm": resistance,
+        "preContinuationEffectiveResistanceAtEvaluationTime_ohm": (
+            evaluation_resistance
+        ),
+        "maximumSpeciesLimiterFraction": torch.amax(histories["speciesLimiterFraction"], dim=0),
+        "maximumTemperatureCapFraction": torch.amax(histories["temperatureCapFraction"], dim=0),
+        "maximumGasCapFraction": torch.zeros_like(resistance),
+        "maximumChemicalRateCapFraction": torch.amax(histories["chemicalRateCapFraction"], dim=0),
+        "maximumThermalDiffusiveCFL": torch.amax(
+            histories["thermalDiffusiveCFL"], dim=0
+        ),
+        "maximumThermalStabilityCFL": torch.amax(
+            histories["thermalStabilityCFL"], dim=0
+        ),
+        "equation32ElectricalHeatRateAtEvaluationTime_W": histories["equation32ElectricalHeatRate_W"][eval_index],
+        "equation32ElectricalHeatEnergyAtEvaluationTime_J": histories["equation32ElectricalHeatEnergy_J"][eval_index],
+        "equation32ElectricalHeatEnergy_J": histories["equation32ElectricalHeatEnergy_J"][-1],
+        "finalMeanChemicalProgress": histories["meanGlobalProgress"][-1],
+        "finalAreaAveragedUndecomposedFraction": histories["remainingReactiveMassFraction"][-1],
+        "finalRemainingReactiveMassFraction": histories["remainingReactiveMassFraction"][-1],
+        "finalGlobalProgress": histories["meanGlobalProgress"][-1],
+        "maximumAnodeCathodeCurrentMismatch": torch.amax(
+            histories["anodeCathodeCurrentMismatch"], dim=0
+        ),
+        "meanAnodeCathodeCurrentMismatch": torch.mean(
+            histories["anodeCathodeCurrentMismatch"], dim=0
+        ),
+        "finalAnodeCathodeCurrentMismatch": histories[
+            "anodeCathodeCurrentMismatch"
+        ][-1],
+        "solverDiagnostics": last_solver_diagnostics,
+        "allElectricalLinearSolvesConverged": all_linear_solves_converged,
+        "allNonlinearRobinSolvesConverged": all_nonlinear_solves_converged,
+        "histories": histories,
+        "time_s": times,
+        "evaluationTime_s": evaluation_time,
+        "modelStatus": "bc_global_preflame_species_electrochemical_thermal_literature_nominal_uncalibrated",
+        "postIgnitionClosure": "candidate_state_power_and_heat_frozen_at_first_condensed_onset",
+        "preflameTermination": {
+            "stopOnOnsetRequested": bool(stop_on_onset),
+            "candidateStatesFrozenAtFirstOnset": True,
+            "allCandidatesReachedOnset": bool(torch.all(ignition_success).item()),
+            "terminatedAfterAllCandidatesReachedOnset": terminated_after_all_onsets,
+            "executedSteps": executed_steps,
+            "configuredSteps": steps,
+            "historyTailPolicy": (
+                "state_and_cumulative_hold_with_zero_instantaneous_tail"
+            ),
+        },
+        "ignitionCriterion": {
+            "type": "temperature_and_global_conversion_over_minimum_area",
+            "temperature_K": onset_temperature,
+            "minimumGlobalProgress": onset_progress,
+            "minimumAreaFraction": onset_area_fraction,
+            "interpretation": "operational condensed-phase decomposition onset, not visible gas-flame ignition",
+        },
+        "globalReaction": {
+            "equation": BC_GLOBAL_REACTION,
+            "lpStoichiometricCoefficient": -1.45,
+            "pvaRepeatStoichiometricCoefficient": -1.0,
+            "co2StoichiometricCoefficient": 2.0,
+            "waterStoichiometricCoefficient": 2.0,
+            "oxygenStoichiometricCoefficient": 0.4,
+            "liClStoichiometricCoefficient": 1.45,
+            "scope": "reduced_global_chemistry_not_elementary_mechanism",
+        },
+        "kineticChannels": [channel_1.__dict__, channel_2.__dict__],
+        "stabilityDiagnostics": {
+            "spacing_m": spacing,
+            "configured_dt_s": dt,
+            "maximum_thermal_diffusive_CFL": torch.amax(
+                histories["thermalDiffusiveCFL"], dim=0
+            ),
+            "maximum_total_explicit_thermal_CFL": torch.amax(
+                histories["thermalStabilityCFL"], dim=0
+            ),
+            "allowed_maximum_total_explicit_thermal_CFL": thermal_cfl_limit,
+            "thermal_stability_CFL_definition": (
+                "dt*(sum(harmonic_face_k)/dx^2 + h/L + "
+                "4*epsilon*sigma*max(T,Tambient)^3/L)/(rho*cp); "
+                "fail_closed_above_limit"
+            ),
+        },
+        "paperEquationUse": {
+            "used": list(BC_PAPER_EQUATIONS_USED),
+            "not_used_in_preflame": list(BC_PAPER_EQUATIONS_NOT_USED_IN_PREFLAME),
+            "equation32_role": BC_EQUATION_32_ROLE,
+        },
+    }
+    trial_evaluation_unavailable = (
+        bool(stop_on_onset)
+        & ignition_success
+        & (ignition_delay < evaluation_time - end_tolerance)
+    )
+    output["preflameTerminationRemainingReactiveMassFraction"] = histories[
+        "remainingReactiveMassFraction"
+    ][-1]
+    output["preflameTerminationMeanGlobalProgress"] = histories[
+        "meanGlobalProgress"
+    ][-1]
+    output["preflameTerminationMaximumTemperature_K"] = histories[
+        "maxTemperature_K"
+    ][-1]
+    output["maximumTemperatureAtEvaluationTime_K"] = histories[
+        "maxTemperature_K"
+    ][eval_index]
+    output["evaluationStateAvailable"] = ~trial_evaluation_unavailable
+    output["evaluationStateTime_s"] = torch.where(
+        trial_evaluation_unavailable,
+        torch.full_like(ignition_delay, torch.nan),
+        torch.full_like(ignition_delay, evaluation_time),
+    )
+    output["objectiveEvaluationStateTime_s"] = output["evaluationStateTime_s"]
+    if bool(stop_on_onset):
+        unavailable_value = torch.full_like(ignition_delay, torch.nan)
+        for key in (
+            "areaAveragedUndecomposedFractionAt2s",
+            "areaAveragedUndecomposedFractionAtEvaluationTime",
+            "remainingReactiveMassFractionAt2s",
+            "remainingReactiveMassFractionAtEvaluationTime",
+            "meanGlobalProgressAt2s",
+            "meanGlobalProgressAtEvaluationTime",
+            "temperatureOnsetAreaFractionAt2s",
+            "maximumTemperatureAtEvaluationTime_K",
+            "peakCurrentCongestionToEvaluationTime",
+            "peakCurrentCongestionTo2s",
+        ):
+            output[key] = torch.where(
+                trial_evaluation_unavailable, unavailable_value, output[key]
+            )
+    if save_fields:
+        output["finalFields"] = {
+            "temperature_K": state["temperature"],
+            "potential_V": state["potential"],
+            "cation_mol_per_m3": state["cation"],
+            "anion_mol_per_m3": state["anion"],
+            "water_mol_per_m3": state["water"],
+            "mobileWater_mol_per_m3": state["water"],
+            "generatedWaterProduct_mol_per_m3": state[
+                "generatedWaterProduct"
+            ],
+            "electrochemicalLPConsumed_mol_per_m3": state[
+                "electrochemicalLPConsumed"
+            ],
+            "alphaChannel1": state["alphaChannel1"],
+            "alphaChannel2": state["alphaChannel2"],
+            "globalProgress": state["globalProgress"],
+            **_reaction_inventory(
+                state["globalProgress"],
+                composition,
+                mobile_lp_mol_per_m3=state["cation"],
+                electrochemical_lp_consumed_mol_per_m3=state[
+                    "electrochemicalLPConsumed"
+                ],
+                generated_water_product_mol_per_m3=state[
+                    "generatedWaterProduct"
+                ],
+            ),
+        }
+    onset_fields: dict[str, Any] = {
+        "temperatureAtOnset_K": ignition_temperature,
+        "globalProgressAtOnset": ignition_progress,
+        "alphaChannel1AtOnset": ignition_alpha_1,
+        "alphaChannel2AtOnset": ignition_alpha_2,
+        "cationAtOnset_mol_per_m3": ignition_cation,
+        "anionAtOnset_mol_per_m3": ignition_anion,
+        "mobileLPAtOnset_mol_per_m3": 0.5
+        * (ignition_cation + ignition_anion),
+        "mobileWaterAtOnset_mol_per_m3": ignition_mobile_water,
+        "generatedWaterProductAtOnset_mol_per_m3": ignition_generated_water,
+        "electrochemicalLPConsumedAtOnset_mol_per_m3": (
+            ignition_electrochemical_lp_consumed
+        ),
+        "pvaReactiveRepeatAtOnset_mol_per_m3": torch.clamp(
+            torch.full_like(
+                ignition_progress,
+                composition.initial_pva_repeat_mol_per_m3,
+            )
+            - min(
+                composition.initial_lp_mol_per_m3 / 1.45,
+                composition.initial_pva_repeat_mol_per_m3,
+            )
+            * ignition_progress,
+            min=0.0,
+        ),
+        "potentialAtOnset_V": ignition_potential,
+        "xiMax_mol_per_m3": min(
+            composition.initial_lp_mol_per_m3 / 1.45,
+            composition.initial_pva_repeat_mol_per_m3,
+        ),
+        "molarMassLP_kg_per_mol": composition.molar_mass_lp_kg_per_mol,
+        "molarMassPVARepeat_kg_per_mol": (
+            composition.molar_mass_pva_repeat_kg_per_mol
+        ),
+        "initialReactiveMass_kg_per_m3": (
+            composition.molar_mass_lp_kg_per_mol
+            * composition.initial_lp_mol_per_m3
+            + composition.molar_mass_pva_repeat_kg_per_mol
+            * composition.initial_pva_repeat_mol_per_m3
+        ),
+        "initialMobileLP_mol_per_m3": composition.initial_lp_mol_per_m3,
+        "initialPVARepeat_mol_per_m3": (
+            composition.initial_pva_repeat_mol_per_m3
+        ),
+        "initialMobileWater_mol_per_m3": composition.initial_water_mol_per_m3,
+        "qJAtOnset_W_per_m3": ignition_qj,
+        "qEchemAtOnset_W_per_m3": ignition_qe,
+        "propellantMask": prop,
+        "ignitionDelay_s": ignition_delay,
+        "onsetSucceeded": ignition_success,
+        "continuedElectricalHeating": False,
+        "postOnsetElectricalPolicy": "recompute_required_no_preflame_replay",
+        "preflameElectricalHistoryMayBeReplayed": False,
+    }
+    output["onsetFields"] = onset_fields
+    if save_handoff:
+        handoff = _serialize_handoff(snapshot_times, qj_snapshots, qe_snapshots)
+        if full_snapshots["temperature_K"]:
+            handoff["temperatureHistory_K"] = torch.stack(full_snapshots["temperature_K"], dim=0)
+            handoff["globalProgressHistory"] = torch.stack(full_snapshots["globalProgress"], dim=0)
+        handoff.update(onset_fields)
+        output["handoffFields"] = handoff
+    if not stop_on_onset:
+        complete_bc_evaluation_output(
+            output, onset_fields, config, composition, dtype
+        )
+    return output

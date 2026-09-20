@@ -1,0 +1,14 @@
+{
+  "sample_count": 200,
+  "feasible_count": 173,
+  "feasible_fraction": 0.865,
+  "component_pair_counts": {
+    "1A1C": 40,
+    "1A2C": 40,
+    "1A3C": 30,
+    "2A1C": 30,
+    "2A2C": 30,
+    "3A1C": 30
+  },
+  "note": "Direct first-10-variants sample for 20 templates; production workflow retries invalid variants topology-by-topology."
+}

@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "case_count": 1,
+  "geometry_ids": [
+    "G000_T00_1A1C_f430c6_V000"
+  ],
+  "grid_size": 33,
+  "end_time_s": 0.003,
+  "maximum_relative_error": 0.0,
+  "worst_geometry_id": "G000_T00_1A1C_f430c6_V000",
+  "worst_metric": "peakCurrentCongestion",
+  "relative_error_threshold": 0.0005,
+  "metric_specific_absolute_tolerances": {
+    "finalAnodeCathodeCurrentMismatch": 5e-06
+  },
+  "note": "Short-horizon evolving-state port-parity gate; it is not a full 2-s validation or experimental calibration."
+}

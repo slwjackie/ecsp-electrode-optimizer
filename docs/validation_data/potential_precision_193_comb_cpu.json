@@ -1,0 +1,24 @@
+{
+  "grid_size": 193,
+  "fp32": {
+    "method": "pcg_symmetric_equilibrated_correction_fp32_true_residual",
+    "iterations": 280,
+    "restarts": 2,
+    "refinement_rounds": 2,
+    "fallback_used": false,
+    "true_relative_residual": 4.6654150764879887e-07,
+    "converged": true
+  },
+  "fp64": {
+    "method": "pcg_symmetric_equilibrated_correction_fp64_true_residual",
+    "iterations": 405,
+    "restarts": 0,
+    "refinement_rounds": 2,
+    "fallback_used": false,
+    "true_relative_residual": 1.4914832120786368e-13,
+    "converged": true
+  },
+  "maximum_fp32_vs_fp64_potential_error_V": 0.0004781400413094161,
+  "rms_fp32_vs_fp64_potential_error_V": 7.614219989592603e-05,
+  "estimated_local_bv_multiplicative_error_from_rms": 1.001482892023481
+}

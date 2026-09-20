@@ -1,0 +1,12 @@
+{
+  "config_files": 34,
+  "config_leaves": 8520,
+  "effective_rows": 578,
+  "python_defaults": 2086,
+  "python_numeric_literals": 7845,
+  "cpp_declarations": 600,
+  "source_files": 132,
+  "source_lines": 58314,
+  "python_functions": 1396,
+  "parse_errors": []
+}

@@ -1,0 +1,138 @@
+baselines:
+  area_matched_staggered:
+    enabled: true
+    fingers_per_polarity: 2
+    hidden_bus_in_contact_mask: false
+    include_in_nsga2_population: false
+    include_in_pareto_selection: false
+    layout: hidden_bus_vertical_2anode_2cathode
+    maximum_gap_safety_pixels: 8
+    minimum_interdigitation_overlap_fraction: 0.45
+    target_interdigitation_overlap_fraction: 0.5
+condensed_ignition:
+  criterion: first_local_crossing_of_literature_decomposition_onset_temperature
+  interpretation: condensed_phase_decomposition_onset_not_gas_flame
+  minimum_conversion_numerical_guard: 0.0
+  minimum_rate_numerical_guard_per_s: 0.0
+  onset_temperature_K: 622.15
+  onset_temperature_source: non_metallized_M0_reported_decomposition_onset_349C
+  reference_time_s: 2.0
+  sensitivity_onset_temperature_K:
+  - 602.15
+  - 622.15
+  - 642.15
+evaluator:
+  backend: hybrid_cuda_cpu
+  base_config: config/default_lp_pva.yaml
+  base_overrides:
+    numerics:
+      physicsDevice: cpu
+      physicsDtype: float64
+  cpp_auto_build: true
+  cpp_parallel_cases: 1
+  device: cuda
+  end_time_s: 2.0
+  hybrid_cpu_executable: build/ecsp_cpp_solver_hybrid
+  hybrid_cpu_worker_cases: 40
+  hybrid_cuda_allow_partial_final_batch: true
+  hybrid_cuda_batch_size: 64
+  hybrid_cuda_deterministic: true
+  hybrid_cuda_device: cuda:0
+  hybrid_cuda_enabled: true
+  hybrid_cuda_fallback_to_cpu: true
+  hybrid_cuda_max_retries: 1
+  hybrid_cuda_min_batch_size: 8
+  hybrid_poll_interval_s: 0.05
+  hybrid_require_cuda: true
+  voltage_V: 260.0
+  hybrid_cpu_reserve_per_wave: 16
+  grid_size: 193
+  hybrid_reserved_host_vcpus: 8
+  hybrid_allow_cpu_oversubscription: false
+geometry:
+  area_tolerance_fraction: 0.02
+  disconnected_component_powering: implicit_3d_hidden_bus
+  domain_mm: 20.0
+  grid_size: 96
+  margin_mm: 0.75
+  maximum_branch_depth: 2
+  maximum_branches_per_component: 2
+  maximum_components_per_polarity: 3
+  maximum_segment_mm: 5.0
+  maximum_total_components: 4
+  maximum_width_mm: 5.0
+  minimum_gap_mm: 2.0
+  minimum_segment_mm: 0.65
+  minimum_width_mm: 1.0
+  surface_contact_model: overlay_on_full_propellant_domain
+  target_area_fraction_per_polarity: 0.2
+minimum_ignition_voltage_search:
+  enabled: true
+  interpretation: minimum_voltage_for_condensed_phase_ignition_within_2s
+  invalid_search_objective_penalty_V: 100.0
+  lower_bound_V: 20.0
+  maximum_bisection_iterations: 4
+  reported_value: conservative_upper_igniting_bracket
+  right_censor_objective_penalty_V: 50.0
+  stop_successful_trials_at_ignition: true
+  tolerance_V: 15.0
+  upper_bound_V: 260.0
+optimization:
+  algorithm: constrained_grammar_nsga2
+  continuous_ignition_constraint: true
+  early_stop_min_improvement: 0.001
+  early_stop_patience: 2
+  generations: 5
+  initial_topologies: 20
+  mating_diversity_count: 10
+  mating_performance_count: 70
+  mating_topology_count: 20
+  minimum_no_ignition_violation: 1.0e-06
+  no_ignition_constraint_violation: 1.0
+  no_ignition_penalty_s: 2.0
+  numerical_cap_thresholds:
+    chemical_rate: 0.02
+    gas: 0.02
+    species: 0.02
+    temperature: 0.02
+  objectives_minimise:
+  - ignition_delay_s
+  - area_undecomposed_fraction_at_2s
+  - minimum_ignition_voltage_V
+  - current_congestion
+  offspring_fractions:
+    crossover: 0.6
+    mutation: 0.25
+    new_grammar: 0.15
+  offspring_generation_attempts: 40
+  physics_batch_size: 192
+  population_size: 1000
+  require_ignition_for_feasibility: true
+  variants_per_topology: 50
+  vmin_invalid_search_constraint_violation: 1.0
+physics:
+  composition:
+    boric_acid_mass_fraction: 0.02
+    glycerol_mass_fraction: 0.05
+    lithium_perchlorate_mass_fraction: 0.291
+    pva_mass_fraction: 0.1
+    tungsten_mass_fraction: 0.0
+    water_mass_fraction: 0.539
+  end_time_s: 2.0
+  interpretation: condensed_phase_only_no_flame_progress
+  kinetics_policy:
+    fabricate_missing_arrhenius_coefficients: false
+    literature_values_are_priors_not_calibration: true
+    use_existing_v772_global_solid_kinetics_until_validated: true
+  literature_overlay_file: config/literature_nonmetal_lp_pva_gly_ba.yaml
+  retained_water_fraction: null
+  voltage_V: 260.0
+project:
+  device: cuda
+  name: ECSP_NSGA2_Hybrid_A100_48vCPU_FP64_FastVmin
+  seed: 20260828
+workflow:
+  evaluator_scope: electrochemical_solid_thermal_decomposition_only
+  flame_progress_enabled: false
+  gas_phase_cfd_enabled: false
+  openfoam_enabled: false

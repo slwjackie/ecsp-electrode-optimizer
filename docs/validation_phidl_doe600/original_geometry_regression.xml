@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="0.572" timestamp="2026-09-16T02:16:04.587539+09:00" hostname="gimjiin-ui-MacBookPro.local"><testcase classname="python.tests.test_geometry_safe_bootstrap" name="test_fitted_primitives_reproduce_masks_and_do_not_refit_on_reload" time="0.374"><failure message="AssertionError: assert 9.645042786631185 &lt;= 1e-12&#10; +  where 9.645042786631185 = RasterizedGeometry(anode_mask=array([[False, False, False, ..., False, False, False],\n       [False, False, False, ......mum_width_mm': 5.0, 'area_error_pixels': 744.8, 'evaluated_rasters': 221}}, 'fitted_geometry_is_authoritative': True}}).constraint_violation">tmp_path = PosixPath('/private/var/folders/pv/jh7w35ys4qn40jk0vn8xxdrr0000gn/T/pytest-of-kimjiin/pytest-587/test_fitted_primitives_reprodu0')
+
+    def test_fitted_primitives_reproduce_masks_and_do_not_refit_on_reload(tmp_path):
+        c=config();limits=GeometryLimits(**c['geometry'])
+        template=make_topology_templates(20,c['project']['seed'],limits)[3]
+        g=instantiate_variant(template,0,c['project']['seed'],limits)
+        raw=copy.deepcopy(g)
+        r=rasterize_and_validate(g,limits)
+        assert g==raw, 'rasterization must not mutate caller-owned genome'
+&gt;       assert r.constraint_violation&lt;=1e-12
+E       AssertionError: assert 9.645042786631185 &lt;= 1e-12
+E        +  where 9.645042786631185 = RasterizedGeometry(anode_mask=array([[False, False, False, ..., False, False, False],\n       [False, False, False, ......mum_width_mm': 5.0, 'area_error_pixels': 744.8, 'evaluated_rasters': 221}}, 'fitted_geometry_is_authoritative': True}}).constraint_violation
+
+python/tests/test_geometry_safe_bootstrap.py:86: AssertionError</failure></testcase></testsuite></testsuites>

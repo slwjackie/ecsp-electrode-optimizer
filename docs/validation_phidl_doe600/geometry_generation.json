@@ -1,0 +1,29 @@
+{
+  "experiment_config": "config/nsga2_preflame_only_200x3.yaml",
+  "doe_config": "config/phidl_doe600.yaml",
+  "config_hash": "42b6f0f95b7f180215752fbd5a790c42b0a7189753e74c46784cab40de42e8d2",
+  "project_seed": 20260904,
+  "topologies": 100,
+  "valid_stage1_geometries": 300,
+  "unique_graph_signatures": 100,
+  "topology_component_pair_counts": {
+    "[1, 1]": 50,
+    "[2, 2]": 50
+  },
+  "representative_maximum_iou": 0.7979854504756575,
+  "representative_iou_limit": 0.8,
+  "unique_physics_mask_hashes": 300,
+  "target_area_per_polarity_mm2": 70,
+  "area_tolerance_fraction": 0.01,
+  "maximum_raster_area_relative_error": 0.009906306209562794,
+  "minimum_cad_width_mm": 0.8591161528238118,
+  "maximum_cad_width_mm": 1.485738892233264,
+  "maximum_width_adjustment_fraction": 0.07573242187499996,
+  "all_topology_and_existing_solver_grid_checks_pass": true,
+  "design_grid": 96,
+  "physics_grid": 193,
+  "sampling": "Requested-count LHS batches with deterministic rejection resampling",
+  "production_physics_evaluations": 0,
+  "installed_project_resume_identity_verified": true,
+  "installed_project_verified_stage1_records": 300
+}

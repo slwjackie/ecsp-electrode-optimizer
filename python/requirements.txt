@@ -1,0 +1,8 @@
+numpy>=1.26,<3
+pandas>=2.1,<3
+bottleneck>=1.3.6,<2
+scipy>=1.11,<2
+PyYAML>=6.0,<7
+torch>=2.2
+Pillow>=10,<13
+threadpoolctl>=3.2,<4

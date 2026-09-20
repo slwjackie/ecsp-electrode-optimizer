@@ -1,0 +1,10 @@
+# Optional DOE environment; does not change existing NSGA-II dependencies.
+# PHIDL 1.7.2 supports Python >=3.6, fixes NumPy 2 compatibility.
+# Validated here with the production ecsp-m2 Python 3.10.21 / NumPy 2.2.6.
+-r requirements.txt
+phidl==1.7.2
+gdspy==1.6.13
+shapely==2.0.7
+networkx==3.2.1
+scikit-image==0.24.0
+matplotlib==3.10.8

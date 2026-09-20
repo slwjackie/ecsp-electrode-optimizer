@@ -1,0 +1,2 @@
+AddressSanitizer + UndefinedBehaviorSanitizer representative surface-contact case: passed
+C++ -Wall -Wextra -Wpedantic: no warnings

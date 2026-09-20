@@ -1,0 +1,31 @@
+{
+  "source_static_checks": {
+    "shared_fp64_scalar_arithmetic": true,
+    "all_five_cuda_entrypoints": true,
+    "device_guard": true,
+    "current_stream": true,
+    "launch_checks": true,
+    "kernel_parameter_size_assert": true,
+    "no_fast_math": true
+  },
+  "all_source_static_checks_passed": true,
+  "torch_version": "2.10.0+cpu",
+  "torch_cuda_version": null,
+  "cuda_home": null,
+  "nvcc": null,
+  "cuda_device_available": false,
+  "source_sha256": {
+    "bc_engine.cpp": "4e5dbd360816ac7213554becc6cd879c60ed8ea1834604c1362ce1722af36fb1",
+    "bc_engine.h": "692aa509bc9a0fc98f0f332ba246007fd9f352bd2d9ba212bd7e044a5196132e",
+    "bc_ops.h": "c14e7e296700e9b510a529866a34ef35ef173ab268c6ab3579ab83bb1fc1e60d",
+    "bc_ops_cpu.cpp": "475caa2d08c8b214182d186b66e24f4a0f05af984b31d4ca7425c667b9649423",
+    "bc_ops_cuda.cu": "1d4be2926882eaaf09ba7065aafe4b450d0394369ac7d6a6366613f9144a27bf",
+    "bc_scalar.h": "c8a4eba2726592aaa1736db9629a8976d06c50578a2f3c53c5b1ad4afe82f38b",
+    "bindings.cpp": "d9baa85cac7192b814f4043269aeec13e61040b68effa2bc21802d37d5e07702",
+    "standalone.cpp": "2bc0dc72aa46b2c3b999f0fd39fa2105eebe3be0390eecfc38c98c5ad6e8230e"
+  },
+  "target_architecture": "8.0",
+  "compile_status": "not_attempted_missing_cuda_toolchain_or_cuda_pytorch",
+  "runtime_status": "not_tested_by_this_script",
+  "static_checks_are_not_cuda_compilation": true
+}

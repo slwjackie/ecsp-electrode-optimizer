@@ -1,0 +1,16 @@
+{
+  "schema": "ecsp.a100-production-gate/v1",
+  "report_type": "selected_cuda_device_identity",
+  "created_at_utc": "2026-09-08T04:41:48.142870+00:00",
+  "non_certifying_override_requested": false,
+  "status": "failed",
+  "a100_device_identity_verified": false,
+  "non_certifying_override_used": false,
+  "software": {
+    "python_version": "3.13.5",
+    "torch_version": "2.10.0+cpu",
+    "torch_cuda_runtime_version": null,
+    "cudnn_version": null
+  },
+  "failure_reason": "Installed PyTorch has no CUDA runtime support"
+}

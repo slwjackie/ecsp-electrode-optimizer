@@ -1,0 +1,670 @@
+{
+  "capability_validation": {
+    "a100_execution": {
+      "reason": "No reactive CUDA backend exists, so no A100 execution claim is made.",
+      "status": "NOT_TESTED_NO_HARDWARE"
+    },
+    "actual_mpi": {
+      "mpi4py_available": false,
+      "mpi_launcher": null,
+      "reason": "Actual multi-process MPI parity requires both mpi4py and an MPI launcher.",
+      "status": "NOT_TESTED_NO_MPI_RUNTIME"
+    },
+    "cuda_backend": {
+      "reason": "ecsp_reactive is currently a NumPy CPU reference implementation.",
+      "status": "NOT_IMPLEMENTED"
+    }
+  },
+  "checks": {
+    "coupled_solver_grid_and_cfl": {
+      "cfl_refinement": {
+        "fixed_spatial_grid_nx_ny": [
+          20,
+          8
+        ],
+        "paper_cfl_equivalence": "NONE_MANUFACTURED_VALUES_ONLY",
+        "pressure_linf_difference_from_reference_Pa": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "pressure_order_status": "EXACT_INVARIANT_ZERO_ERROR_ORDER_UNDEFINED",
+        "reference_cfl": 0.025,
+        "reference_run": {
+          "accepted_steps": 86,
+          "cell_state_clipping_count": 0,
+          "cfl": 0.025,
+          "density_pressure_temperature_floor_application_count": 0,
+          "dx_m": 0.05,
+          "dy_m": 1.0,
+          "expected_regression_speed_m_per_s": 0.2,
+          "flow_pressure_linf_error_Pa": 0.0,
+          "flow_temperature_rms_error_K": 0.0033775524551390144,
+          "flow_total_energy_density_rms_error_J_per_m3": 0.003377552455139008,
+          "material_level_set_rms_error_m": 0.009593125187586952,
+          "maximum_abs_regression_speed_error_m_per_s": 0.007969669855226569,
+          "maximum_normalized_conservation_residual": 5.206992064898483e-15,
+          "normalized_total_energy_balance_residual": 5.206992064898483e-15,
+          "nx": 20,
+          "ny": 8,
+          "positivity_face_fallback_count": 0,
+          "positivity_face_fallback_max_abs_state_correction": 0.0,
+          "reaction_rate_cap_application_count": 0,
+          "regression_speed_m_per_s_by_threshold": {
+            "0.3": 0.19508669191328126,
+            "0.5": 0.20097582503750433,
+            "0.7": 0.19203033014477344
+          },
+          "reinitialization_count": 0,
+          "stage_failure_policy": "TRANSACTIONAL_RETRY_TO_REPORTED_STAGE_LIMIT;_NO_PARTIAL_COMMIT;FAIL_CLOSED_ON_EXHAUSTION;NO_PHYSICAL_CLIPPING"
+        },
+        "reference_status": "SMALL_CFL_SAME_SPATIAL_OPERATOR_NUMERICAL_REFERENCE_NOT_EXACT_SOLUTION",
+        "regression_speed_abs_difference_from_reference_m_per_s_by_threshold": {
+          "0.3": [
+            2.7712306915894658e-05,
+            3.342572564568602e-06,
+            4.222576591161875e-07
+          ],
+          "0.5": [
+            4.50503902016397e-06,
+            7.29985472347483e-07,
+            1.0424966945254965e-07
+          ],
+          "0.7": [
+            1.7903512726236137e-05,
+            2.2089473528108527e-06,
+            2.80367346283672e-07
+          ]
+        },
+        "regression_speed_observed_orders_by_threshold": {
+          "0.3": [
+            3.051496027699342,
+            2.9847633837247245
+          ],
+          "0.5": [
+            2.6255999440231674,
+            2.807824943503901
+          ],
+          "0.7": [
+            3.018811737040283,
+            2.9779687974785984
+          ]
+        },
+        "runs": [
+          {
+            "accepted_steps": 6,
+            "cell_state_clipping_count": 0,
+            "cfl": 0.4,
+            "density_pressure_temperature_floor_application_count": 0,
+            "dx_m": 0.05,
+            "dy_m": 1.0,
+            "expected_regression_speed_m_per_s": 0.2,
+            "flow_pressure_linf_error_Pa": 0.0,
+            "flow_temperature_rms_error_K": 0.0033834882698459672,
+            "flow_total_energy_density_rms_error_J_per_m3": 0.003383488269845968,
+            "material_level_set_rms_error_m": 0.009592874591805035,
+            "maximum_abs_regression_speed_error_m_per_s": 0.007987573367952805,
+            "maximum_normalized_conservation_residual": 2.846773667773166e-16,
+            "normalized_total_energy_balance_residual": 5.241263026290827e-17,
+            "nx": 20,
+            "ny": 8,
+            "positivity_face_fallback_count": 0,
+            "positivity_face_fallback_max_abs_state_correction": 0.0,
+            "reaction_rate_cap_application_count": 0,
+            "regression_speed_m_per_s_by_threshold": {
+              "0.3": 0.19511440422019716,
+              "0.5": 0.20097131999848417,
+              "0.7": 0.1920124266320472
+            },
+            "reinitialization_count": 0,
+            "stage_failure_policy": "TRANSACTIONAL_RETRY_TO_REPORTED_STAGE_LIMIT;_NO_PARTIAL_COMMIT;FAIL_CLOSED_ON_EXHAUSTION;NO_PHYSICAL_CLIPPING"
+          },
+          {
+            "accepted_steps": 11,
+            "cell_state_clipping_count": 0,
+            "cfl": 0.2,
+            "density_pressure_temperature_floor_application_count": 0,
+            "dx_m": 0.05,
+            "dy_m": 1.0,
+            "expected_regression_speed_m_per_s": 0.2,
+            "flow_pressure_linf_error_Pa": 0.0,
+            "flow_temperature_rms_error_K": 0.0033783118617034553,
+            "flow_total_energy_density_rms_error_J_per_m3": 0.0033783118617034813,
+            "material_level_set_rms_error_m": 0.009593093605039281,
+            "maximum_abs_regression_speed_error_m_per_s": 0.00797187880257938,
+            "maximum_normalized_conservation_residual": 6.073362302772433e-16,
+            "normalized_total_energy_balance_residual": 6.073362302772433e-16,
+            "nx": 20,
+            "ny": 8,
+            "positivity_face_fallback_count": 0,
+            "positivity_face_fallback_max_abs_state_correction": 0.0,
+            "reaction_rate_cap_application_count": 0,
+            "regression_speed_m_per_s_by_threshold": {
+              "0.3": 0.19509003448584583,
+              "0.5": 0.20097509505203198,
+              "0.7": 0.19202812119742063
+            },
+            "reinitialization_count": 0,
+            "stage_failure_policy": "TRANSACTIONAL_RETRY_TO_REPORTED_STAGE_LIMIT;_NO_PARTIAL_COMMIT;FAIL_CLOSED_ON_EXHAUSTION;NO_PHYSICAL_CLIPPING"
+          },
+          {
+            "accepted_steps": 22,
+            "cell_state_clipping_count": 0,
+            "cfl": 0.1,
+            "density_pressure_temperature_floor_application_count": 0,
+            "dx_m": 0.05,
+            "dy_m": 1.0,
+            "expected_regression_speed_m_per_s": 0.2,
+            "flow_pressure_linf_error_Pa": 0.0,
+            "flow_temperature_rms_error_K": 0.0033776526577127893,
+            "flow_total_energy_density_rms_error_J_per_m3": 0.0033776526577127754,
+            "material_level_set_rms_error_m": 0.009593120875002161,
+            "maximum_abs_regression_speed_error_m_per_s": 0.007969950222572852,
+            "maximum_normalized_conservation_residual": 1.1209171333442423e-15,
+            "normalized_total_energy_balance_residual": 1.0475572901157568e-15,
+            "nx": 20,
+            "ny": 8,
+            "positivity_face_fallback_count": 0,
+            "positivity_face_fallback_max_abs_state_correction": 0.0,
+            "reaction_rate_cap_application_count": 0,
+            "regression_speed_m_per_s_by_threshold": {
+              "0.3": 0.19508711417094038,
+              "0.5": 0.20097572078783488,
+              "0.7": 0.19203004977742716
+            },
+            "reinitialization_count": 0,
+            "stage_failure_policy": "TRANSACTIONAL_RETRY_TO_REPORTED_STAGE_LIMIT;_NO_PARTIAL_COMMIT;FAIL_CLOSED_ON_EXHAUSTION;NO_PHYSICAL_CLIPPING"
+          }
+        ],
+        "temperature_observed_orders": [
+          2.978386120238747,
+          2.931450244798843
+        ],
+        "temperature_rms_difference_from_reference_K": [
+          8.230255001398558e-06,
+          1.0443107064454197e-06,
+          1.3689111975948398e-07
+        ],
+        "total_energy_density_rms_difference_from_reference_J_per_m3": [
+          8.230255001457459e-06,
+          1.0443107065052977e-06,
+          1.36891119781044e-07
+        ],
+        "total_energy_field_observed_orders": [
+          2.9783861201663515,
+          2.931450244654342
+        ]
+      },
+      "criteria": {
+        "fallback_clipping_floor_cap_and_reinitialization_count_eq": 0,
+        "maximum_normalized_energy_balance_residual_lte": 1e-11,
+        "maximum_pressure_linf_error_Pa_lte": 2e-13,
+        "minimum_full_solver_energy_temporal_order_gte": 2.8,
+        "minimum_full_solver_front_temporal_order_gte": 2.5,
+        "minimum_full_solver_temperature_temporal_order_gte": 2.8,
+        "minimum_species_front_speed_grid_order_gte": 1.0,
+        "minimum_temperature_grid_order_gte": 2.5,
+        "minimum_total_energy_field_grid_order_gte": 2.5,
+        "tolerance_rationale": "orders test refinement rather than one-grid magnitude; invariant pressure and budgets use FP64 roundoff bounds; full-solver CFL order uses a separate small-CFL result with the identical spatial operator"
+      },
+      "description": "Full ReactiveSolver passive-contact manufactured grid and temporal convergence",
+      "grid_refinement": {
+        "energy_balance_order_status": "ROUNDOFF_BOUNDED_ORDER_NOT_MEANINGFUL",
+        "flow_temperature_observed_orders": [
+          3.1458888782992234,
+          4.3878292309851314
+        ],
+        "flow_total_energy_field_observed_orders": [
+          3.1458888782991528,
+          4.387829230985281
+        ],
+        "pressure_order_status": "EXACT_INVARIANT_ZERO_ERROR_ORDER_UNDEFINED",
+        "runs": [
+          {
+            "accepted_steps": 9,
+            "cell_state_clipping_count": 0,
+            "cfl": 0.25,
+            "density_pressure_temperature_floor_application_count": 0,
+            "dx_m": 0.05,
+            "dy_m": 1.0,
+            "expected_regression_speed_m_per_s": 0.2,
+            "flow_pressure_linf_error_Pa": 0.0,
+            "flow_temperature_rms_error_K": 0.0033790129918418615,
+            "flow_total_energy_density_rms_error_J_per_m3": 0.0033790129918418836,
+            "material_level_set_rms_error_m": 0.009593064739450362,
+            "maximum_abs_regression_speed_error_m_per_s": 0.00797397455790283,
+            "maximum_normalized_conservation_residual": 3.914313797884894e-16,
+            "normalized_total_energy_balance_residual": 3.3587603651602443e-16,
+            "nx": 20,
+            "ny": 8,
+            "positivity_face_fallback_count": 0,
+            "positivity_face_fallback_max_abs_state_correction": 0.0,
+            "reaction_rate_cap_application_count": 0,
+            "regression_speed_m_per_s_by_threshold": {
+              "0.3": 0.19509323422763458,
+              "0.5": 0.20097448879789176,
+              "0.7": 0.19202602544209718
+            },
+            "reinitialization_count": 0,
+            "stage_failure_policy": "TRANSACTIONAL_RETRY_TO_REPORTED_STAGE_LIMIT;_NO_PARTIAL_COMMIT;FAIL_CLOSED_ON_EXHAUSTION;NO_PHYSICAL_CLIPPING"
+          },
+          {
+            "accepted_steps": 17,
+            "cell_state_clipping_count": 0,
+            "cfl": 0.25,
+            "density_pressure_temperature_floor_application_count": 0,
+            "dx_m": 0.025,
+            "dy_m": 1.0,
+            "expected_regression_speed_m_per_s": 0.2,
+            "flow_pressure_linf_error_Pa": 0.0,
+            "flow_temperature_rms_error_K": 0.0003817534285647874,
+            "flow_total_energy_density_rms_error_J_per_m3": 0.0003817534285648086,
+            "material_level_set_rms_error_m": 0.007025697243145715,
+            "maximum_abs_regression_speed_error_m_per_s": 0.0031921272561204472,
+            "maximum_normalized_conservation_residual": 2.206227546284599e-15,
+            "normalized_total_energy_balance_residual": 2.4606964148474106e-17,
+            "nx": 40,
+            "ny": 8,
+            "positivity_face_fallback_count": 0,
+            "positivity_face_fallback_max_abs_state_correction": 0.0,
+            "reaction_rate_cap_application_count": 0,
+            "regression_speed_m_per_s_by_threshold": {
+              "0.3": 0.20319212725612046,
+              "0.5": 0.19998736799177186,
+              "0.7": 0.1974094199471138
+            },
+            "reinitialization_count": 0,
+            "stage_failure_policy": "TRANSACTIONAL_RETRY_TO_REPORTED_STAGE_LIMIT;_NO_PARTIAL_COMMIT;FAIL_CLOSED_ON_EXHAUSTION;NO_PHYSICAL_CLIPPING"
+          },
+          {
+            "accepted_steps": 34,
+            "cell_state_clipping_count": 0,
+            "cfl": 0.25,
+            "density_pressure_temperature_floor_application_count": 0,
+            "dx_m": 0.0125,
+            "dy_m": 1.0,
+            "expected_regression_speed_m_per_s": 0.2,
+            "flow_pressure_linf_error_Pa": 0.0,
+            "flow_temperature_rms_error_K": 1.8235376387780824e-05,
+            "flow_total_energy_density_rms_error_J_per_m3": 1.8235376387779956e-05,
+            "material_level_set_rms_error_m": 0.005758224890496661,
+            "maximum_abs_regression_speed_error_m_per_s": 0.0006047081185613368,
+            "maximum_normalized_conservation_residual": 5.527515050745606e-15,
+            "normalized_total_energy_balance_residual": 5.527515050745606e-15,
+            "nx": 80,
+            "ny": 8,
+            "positivity_face_fallback_count": 0,
+            "positivity_face_fallback_max_abs_state_correction": 0.0,
+            "reaction_rate_cap_application_count": 0,
+            "regression_speed_m_per_s_by_threshold": {
+              "0.3": 0.20031711990694923,
+              "0.5": 0.19994788076006326,
+              "0.7": 0.20060470811856135
+            },
+            "reinitialization_count": 0,
+            "stage_failure_policy": "TRANSACTIONAL_RETRY_TO_REPORTED_STAGE_LIMIT;_NO_PARTIAL_COMMIT;FAIL_CLOSED_ON_EXHAUSTION;NO_PHYSICAL_CLIPPING"
+          }
+        ],
+        "species_front_speed_observed_orders": [
+          1.3207808355856958,
+          2.4002073133740476
+        ]
+      },
+      "metrics": {
+        "cell_state_clipping_count_all_runs": 0,
+        "density_pressure_temperature_floor_application_count_all_runs": 0,
+        "maximum_normalized_conservation_residual_all_runs": 5.527515050745606e-15,
+        "maximum_normalized_total_energy_balance_residual_all_runs": 5.527515050745606e-15,
+        "maximum_pressure_linf_error_Pa_all_runs": 0.0,
+        "positivity_face_fallback_count_all_runs": 0,
+        "positivity_face_fallback_max_abs_state_correction_all_runs": 0.0,
+        "reaction_rate_cap_application_count_all_runs": 0,
+        "reinitialization_count_all_runs": 0
+      },
+      "scope": {
+        "flow_sources": "reaction_and_electrical_exactly_zero",
+        "limitations": {
+          "kinetically_generated_reaction_front": "NOT_VERIFIED_MISSING_PAPER_KINETICS",
+          "nontrivial_solid_Eq2_temperature_convergence": "NOT_VERIFIED_IN_THIS_MANUFACTURED_CHECK",
+          "nonuniform_Tait_pressure_wave_convergence": "NOT_VERIFIED_IN_THIS_MANUFACTURED_CHECK",
+          "source_active_energy_grid_convergence": "NOT_VERIFIED_MISSING_PAPER_SOURCE_CLOSURES; source ratios and Joule integrals are checked separately"
+        },
+        "paper_parameter_fitting": false,
+        "physical_state_clipping": "NONE",
+        "positivity_fallback_required": false,
+        "quantity_scope": {
+          "energy": "no_source_transport_field_and_conservative_budget",
+          "pressure": "constant_Tait_pressure_invariance",
+          "regression_rate": "passively_advected_Species_front",
+          "temperature": "flow_temperature_smooth_contact_advection"
+        },
+        "solid_state": "separate_constant_diagnostic",
+        "status": "SYNTHETIC_MANUFACTURED_NOT_PAPER_REPRODUCTION"
+      },
+      "status": "PASS"
+    },
+    "deterministic_repeats": {
+      "criteria": {
+        "unique_sha256_count_eq": 1
+      },
+      "description": "Bitwise repeatability of a periodic 2-D Euler RHS",
+      "metrics": {
+        "repeat_count": 50,
+        "sha256": "857f266f49032627a6f15a8353cf9c23fb45d63102e8302c85ca1c46236469ba",
+        "unique_sha256_count": 1
+      },
+      "status": "PASS"
+    },
+    "free_stream_and_conservation": {
+      "criteria": {
+        "free_stream_maximum_abs_rhs_lte": 1e-13,
+        "normalized_major_residual_lte": 2e-13
+      },
+      "description": "Free-stream preservation and periodic global conservation",
+      "metrics": {
+        "free_stream_maximum_abs_rhs": 0.0,
+        "integrated_residual_by_conserved_component": [
+          3.20731096002823e-17,
+          -1.894780628693601e-15,
+          8.526512829121202e-15,
+          1.2935035758548312e-11,
+          3.0839528461809905e-17
+        ],
+        "maximum_normalized_mass_momentum_energy_residual": 4.288596188690493e-17,
+        "normalized_residual_by_conserved_component": [
+          1.8769861296751886e-17,
+          4.653377225926332e-18,
+          2.1408323801206578e-17,
+          4.288596188690493e-17,
+          2.5910200769798645e-17
+        ]
+      },
+      "status": "PASS"
+    },
+    "level_set_translation": {
+      "criteria": {
+        "full_domain_rms_error_m_lte": 3e-08
+      },
+      "description": "WENO5/SSPRK3 smooth periodic material-level-set translation",
+      "metrics": {
+        "cfl_number": 0.4000000000000001,
+        "evaluated_cell_count": 9216,
+        "excluded_boundary_cell_count": 0,
+        "full_domain_rms_error_m": 1.644841222125235e-08,
+        "reinitialized": false
+      },
+      "status": "PASS"
+    },
+    "linear_potential_joule_energy": {
+      "criteria": {
+        "both_relative_errors_lte": 2e-14
+      },
+      "description": "Paper Joule source sigma*|grad(V)|^2 for a linear potential",
+      "metrics": {
+        "expected_heat_density_W_per_m3": 2460800000.0,
+        "integral_relative_error": 3.911038100797987e-16,
+        "maximum_relative_error": 1.356412592417862e-15
+      },
+      "status": "PASS"
+    },
+    "periodic_thermal_integral": {
+      "criteria": {
+        "normalized_integral_residual_lte": 2e-15
+      },
+      "description": "Discrete periodic thermal Laplacian conserves the field integral",
+      "metrics": {
+        "l1_laplacian_integral": 1303.4571215553476,
+        "normalized_integral_residual": 2.6165840634471987e-18,
+        "signed_laplacian_integral": -3.4106051316484808e-15
+      },
+      "status": "PASS"
+    },
+    "planar_front_regression_thresholds": {
+      "criteria": {
+        "maximum_abs_speed_error_m_per_s_lte": 2e-13
+      },
+      "description": "Subcell planar Species-front regression at assumed thresholds",
+      "metrics": {
+        "comparable_ray_count": {
+          "0.3": 12,
+          "0.5": 12,
+          "0.7": 12
+        },
+        "expected_speed_m_per_s": 0.36,
+        "maximum_abs_speed_error_m_per_s": 5.551115123125783e-16,
+        "measured_speed_m_per_s": {
+          "0.3": 0.35999999999999943,
+          "0.5": 0.35999999999999943,
+          "0.7": 0.35999999999999943
+        },
+        "threshold_provenance": "ASSUMED_NOT_FROM_PAPER",
+        "thresholds": [
+          0.3,
+          0.5,
+          0.7
+        ]
+      },
+      "status": "PASS"
+    },
+    "primitive_conservative_roundtrip": {
+      "criteria": {
+        "both_errors_lte": 2e-11
+      },
+      "description": "Primitive/conservative FP64 roundtrip for verification EOS closures",
+      "metrics": {
+        "ideal_gas_maximum_scaled_error": 0.0,
+        "tait_maximum_temperature_error_K": 0.0
+      },
+      "status": "PASS"
+    },
+    "reaction_heat_progress_ratio": {
+      "criteria": {
+        "maximum_relative_error_lte": 3e-15
+      },
+      "description": "Eq. (1) reaction heat and progress source bookkeeping",
+      "metrics": {
+        "configured_heat_release_J_per_kg": 3000000.0,
+        "maximum_relative_error": 0.0,
+        "source_ratio_J_per_kg": [
+          3000000.0,
+          3000000.0
+        ]
+      },
+      "status": "PASS"
+    },
+    "row_decomposition_emulated_halo_parity": {
+      "criteria": {
+        "maximum_gather_abs_error_eq": 0.0,
+        "maximum_stencil_abs_error_eq": 0.0
+      },
+      "description": "Balanced row decomposition and emulated three-row halo parity",
+      "metrics": {
+        "global_shape": [
+          24,
+          13,
+          5
+        ],
+        "halo_rows": 3,
+        "maximum_gather_abs_error": 0.0,
+        "maximum_stencil_abs_error": 0.0,
+        "partitions": [
+          [
+            0,
+            8
+          ],
+          [
+            8,
+            16
+          ],
+          [
+            16,
+            24
+          ]
+        ],
+        "rank_count": 3
+      },
+      "status": "PASS"
+    },
+    "ssprk3_temporal_convergence": {
+      "criteria": {
+        "minimum_observed_order_gte": 2.85
+      },
+      "description": "SSPRK(3,3) temporal convergence for y'=-y",
+      "metrics": {
+        "absolute_errors": [
+          1.660682420989712e-05,
+          1.9942949323059622e-06,
+          2.4434511847193363e-07
+        ],
+        "cfl_like_abs_lambda_dt": [
+          0.1,
+          0.05,
+          0.025
+        ],
+        "dt_s": [
+          0.1,
+          0.05,
+          0.025
+        ],
+        "minimum_observed_order": 3.0288865949946873,
+        "observed_orders": [
+          3.0578255193509354,
+          3.0288865949946873
+        ],
+        "step_counts": [
+          10,
+          20,
+          40
+        ]
+      },
+      "status": "PASS"
+    },
+    "tait_dpdrho_equals_c2": {
+      "criteria": {
+        "maximum_relative_error_lte": 2e-08
+      },
+      "description": "Paper Eq. (3) mechanical identity dp/drho = c^2",
+      "metrics": {
+        "densities_kg_per_m3": [
+          1000.0,
+          1002.0,
+          1010.0
+        ],
+        "maximum_relative_error": 5.049458174158259e-10
+      },
+      "status": "PASS"
+    },
+    "weno_smooth_spatial_convergence": {
+      "criteria": {
+        "minimum_observed_order_gte": 4.5
+      },
+      "description": "WENO5-JS smooth periodic face-reconstruction convergence",
+      "metrics": {
+        "grid_cell_counts": [
+          20,
+          40,
+          80
+        ],
+        "mean_absolute_errors": [
+          0.00019851975274606644,
+          6.628196218278647e-06,
+          2.1635326264811878e-07
+        ],
+        "minimum_observed_order": 4.904522440547515,
+        "observed_orders": [
+          4.904522440547515,
+          4.937155529966348
+        ]
+      },
+      "status": "PASS"
+    }
+  },
+  "convergence_scope": {
+    "paper_ecsp_case": {
+      "energy_balance": "NOT_VERIFIED",
+      "paper_cfl_values": "NOT_PUBLISHED",
+      "paper_reported_grid_family": [
+        50,
+        100,
+        150,
+        200
+      ],
+      "paper_selected_grid": 100,
+      "pressure": "NOT_VERIFIED",
+      "reason": "The paper grid family is known, but its executable input deck, error norm, time history, material closures, and CFL values are not.",
+      "regression_rate": "NOT_VERIFIED",
+      "status": "NOT_VERIFIED_MISSING_PAPER_INPUTS",
+      "temperature": "NOT_VERIFIED"
+    },
+    "synthetic_coupled_solver": {
+      "fixed_grid_cfl_values": [
+        0.4,
+        0.2,
+        0.1
+      ],
+      "quantities": [
+        "species_front_regression_speed",
+        "flow_temperature",
+        "flow_pressure",
+        "flow_total_energy_field",
+        "conservative_energy_balance"
+      ],
+      "scope": "manufactured_passive_contact_no_ECSP_parameter_fit",
+      "small_cfl_numerical_reference": 0.025,
+      "spatial_grid_cell_counts_x": [
+        20,
+        40,
+        80
+      ],
+      "status": "PASS"
+    }
+  },
+  "environment": {
+    "floating_point": "numpy_float64_cpu",
+    "numpy": "2.4.6",
+    "platform": "macOS-14.5-arm64-arm-64bit",
+    "python": "3.11.3 (v3.11.3:f3909b8bc8, Apr  4 2023, 20:12:10) [Clang 13.0.0 (clang-1300.0.29.30)]"
+  },
+  "generated_at_utc": "2026-09-06T18:42:45.790556+00:00",
+  "numerical_safety": {
+    "density_pressure_temperature_limits": "REJECTION_ONLY_NOT_FLOORS",
+    "physical_state_clipping": "NONE_IN_REACTIVE_SOLVER",
+    "positivity_fallback": "FACE_LOCAL_AND_COUNTED; coupled manufactured convergence requires zero activations",
+    "stage_retry_policy": "EXPLICIT_COUNTED_TRANSACTIONAL_STAGE_RETRY;NO_PARTIAL_STATE_OR_BUDGET_COMMIT;FAIL_CLOSED_ON_CONFIGURED_LIMIT",
+    "validation_failure_policy": "FAILED_CHECK_RECORDED_AND_OVERALL_CPU_STATUS_FAIL"
+  },
+  "paper_reproduction": {
+    "fitting_attempted": false,
+    "missing_inputs": [
+      "ECSP Tait A/B/N/rho0 values and a caloric EOS",
+      "gas/progress and condensed decomposition kinetic coefficients",
+      "dimensionally closed reaction/electrochemical heat conversions",
+      "complete initial, external-boundary, and material-interface conditions",
+      "measured conductivity and electric-potential fields",
+      "WENO variant, flux split/Riemann solver, CFL, and reinitialization details",
+      "MPI rank topology, halo width, and exchange order"
+    ],
+    "reason": "The article does not publish a uniquely executable input deck; synthetic checks were not tuned to its reported outputs.",
+    "requested_grid_and_cfl_convergence": {
+      "energy_balance": "NOT_VERIFIED",
+      "note": "The passing 20/40/80 and CFL 0.4/0.2/0.1 study is a manufactured solver check, not the paper ECSP case.",
+      "pressure": "NOT_VERIFIED",
+      "regression_rate": "NOT_VERIFIED",
+      "status": "NOT_VERIFIED_MISSING_INPUTS",
+      "temperature": "NOT_VERIFIED"
+    },
+    "status": "BLOCKED_MISSING_INPUTS",
+    "target_regression_speed_m_per_s": 0.0036094,
+    "target_temperature_K": 1804.8
+  },
+  "runnable_cpu_verification": {
+    "failed_check_count": 0,
+    "passed_check_count": 13,
+    "scope": "manufactured_and_discrete_reference_checks_only",
+    "status": "PASS",
+    "total_check_count": 13
+  },
+  "schema": "ecsp.reactive-validation/v1",
+  "verdict": "NOT_FULLY_VERIFIED",
+  "verdict_reason": "CPU manufactured checks do not replace missing paper inputs, actual multi-rank MPI validation, or a CUDA/A100 implementation and hardware run."
+}

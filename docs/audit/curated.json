@@ -1,0 +1,1076 @@
+{
+  "equations": [
+    {
+      "ID": "P01",
+      "물리항목": "전기장",
+      "계산식": "E = −∇φ",
+      "정립성": "정전기 정의",
+      "활성경로": "BC/기존; Reactive 전원 ON callback",
+      "논문_코드근거": "첨부 논문 A: JKSC 29(4), 2024, 21–33; DOI 10.15231/jksc.2024.29.4.021 식(2); python/ecsp_v6/physics/electrochem.py:349-477",
+      "적용한계": "시간변화 자기유도·전자기파 제외"
+    },
+    {
+      "ID": "P02",
+      "물리항목": "이온 수송",
+      "계산식": "Ni = −Di∇ci − zi F Di ci ∇φ/(RT); ∂t ci + ∇·Ni = Si",
+      "정립성": "Nernst–Planck 형태는 정립",
+      "활성경로": "BC; 후속 전원 ON에서 재계산",
+      "논문_코드근거": "첨부 논문 A: JKSC 29(4), 2024, 21–33; DOI 10.15231/jksc.2024.29.4.021 식(11)–(15),(24); python/ecsp_v6/physics/species.py",
+      "적용한계": "전기중성 2이온+물 모델; 응축상 BC 대류=0. 후속 보존 수송에는 ci u 추가; 농축계 보정 없음"
+    },
+    {
+      "ID": "P03",
+      "물리항목": "이온 전도도",
+      "계산식": "σion = F² Σ zi² Di ci/(RT)",
+      "정립성": "Nernst–Einstein 구성관계",
+      "활성경로": "BC",
+      "논문_코드근거": "첨부 논문 A: JKSC 29(4), 2024, 21–33; DOI 10.15231/jksc.2024.29.4.021 식(13),(16); python/ecsp_v6/physics/bc_global.py:401-474",
+      "적용한계": "이상 수송 가정; σmin/max clamp는 수치/구성 제한"
+    },
+    {
+      "ID": "P04",
+      "물리항목": "전류·전하보존",
+      "계산식": "J = −σ∇φ + Jdiff; ∇parallel·J = (χa ja − χc jc)/δs",
+      "정립성": "전류보존을 두께평균",
+      "활성경로": "surface-contact BC",
+      "논문_코드근거": "첨부 논문 A: JKSC 29(4), 2024, 21–33; DOI 10.15231/jksc.2024.29.4.021 식(16),(17); python/ecsp_v6/physics/electrochem.py:2811-3052",
+      "적용한계": "2D 체적 source는 표면 주입을 평균한 것. 전극 아래 추진제 제거 안 함"
+    },
+    {
+      "ID": "P05",
+      "물리항목": "수송계수 온도의존",
+      "계산식": "D(T)=Dref exp[−Ea/R(1/T−1/Tref)]",
+      "정립성": "Arrhenius 형태의 경험 구성식",
+      "활성경로": "BC",
+      "논문_코드근거": "python/ecsp_v6/physics/bc_global.py:334-398",
+      "적용한계": "형태 자체가 LP/PVA 정확성을 보장하지 않음; 각 Dref/Ea nominal"
+    },
+    {
+      "ID": "P06",
+      "물리항목": "전극 계면반응",
+      "계산식": "j=[j0(a exp(βnFη/RT)−b exp(−(1−β)nFη/RT))]+; η=[Δφ−Eeq]+",
+      "정립성": "Butler–Volmer 기반 제한된 변형",
+      "활성경로": "BC/기존",
+      "논문_코드근거": "첨부 논문 A: JKSC 29(4), 2024, 21–33; DOI 10.15231/jksc.2024.29.4.021 식(7); python/ecsp_v6/physics/electrochem.py:1210-1272",
+      "적용한계": "η·j 비음수, reverse availability 고정, exp clip; 완전 가역 다종 BV와 다름"
+    },
+    {
+      "ID": "P07",
+      "물리항목": "Faraday 반응률",
+      "계산식": "νe″=j/(nF); species sink=stoichiometry×j/F/δs",
+      "정립성": "Faraday 법칙",
+      "활성경로": "BC/기존/후속 ON",
+      "논문_코드근거": "첨부 논문 A: JKSC 29(4), 2024, 21–33; DOI 10.15231/jksc.2024.29.4.021 식(8),(15); python/ecsp_v6/physics/electrochem.py:3055-3327",
+      "적용한계": "각 채널 반응·전자수·소모계수의 실제 화학적 정당성은 별도 검증"
+    },
+    {
+      "ID": "P08",
+      "물리항목": "벌크·법선 Joule 발열",
+      "계산식": "qJ‴=σ|∇parallelφ|² + Σcontact jn² ℓn/(σ δs)",
+      "정립성": "Ohmic 손실 + 유효 접촉저항",
+      "활성경로": "BC/기존/후속 ON",
+      "논문_코드근거": "python/ecsp_v6/physics/electrochem.py:206-347; python/ecsp_v6/physics/electrochem.py:3329-3458",
+      "적용한계": "실제 구현은 harmonic face conductance의 보존 전력; 논문 A 식(9)의 |∇φ||Jtotal|와 일반적으로 같지 않음"
+    },
+    {
+      "ID": "P09",
+      "물리항목": "계면반응 발열",
+      "계산식": "qechem‴ = Σr χr jr ΔHr/(nr F δs)",
+      "정립성": "반응엔탈피×반응률 구조",
+      "활성경로": "BC/기존/후속 ON",
+      "논문_코드근거": "첨부 논문 A: JKSC 29(4), 2024, 21–33; DOI 10.15231/jksc.2024.29.4.021 식(10),(23); python/ecsp_v6/physics/electrochem.py:855-867",
+      "적용한계": "채널 ΔH nominal·양수. BC는 별도 jη 활성화 열 OFF; 전체 전기/화학 에너지 기준 검증 필요"
+    },
+    {
+      "ID": "P10",
+      "물리항목": "열전도",
+      "계산식": "qcond‴ = ∇·(k(T)∇T)",
+      "정립성": "Fourier 법칙",
+      "활성경로": "BC/기존/두 후속",
+      "논문_코드근거": "첨부 논문 A: JKSC 29(4), 2024, 21–33; DOI 10.15231/jksc.2024.29.4.021 식(23); 첨부 논문 B: KSPE 28(3), 2024, 31–40; DOI 10.6108/KSPE.2024.28.3.031 식(2); python/ecsp_nsga2/propagation.py:288-323",
+      "적용한계": "평면 내 Fourier; 깊이 온도장 직접 계산하지 않음"
+    },
+    {
+      "ID": "P11",
+      "물리항목": "열손실",
+      "계산식": "qloss‴ = h(T−T∞)/δs + εσSB(T⁴−T∞⁴)/δs",
+      "정립성": "Newton 냉각·Stefan–Boltzmann",
+      "활성경로": "BC/기존/두 후속",
+      "논문_코드근거": "python/ecsp_reactive/condensed/solver.py:105-113",
+      "적용한계": "h,ε는 유효 경계조건; 주변 기체 유동/복사 전달식 미해석"
+    },
+    {
+      "ID": "P12",
+      "물리항목": "BC 응축상 에너지",
+      "계산식": "ρ cp(T) ∂tT = ∇·(k∇T)+qJ+qechem+ρΣQi ri−qloss",
+      "정립성": "에너지보존 + 축약 구성식",
+      "활성경로": "BC/기존 propagation",
+      "논문_코드근거": "첨부 논문 A: JKSC 29(4), 2024, 21–33; DOI 10.15231/jksc.2024.29.4.021 식(23); python/ecsp_v6/physics/bc_global.py:2591-3985; python/ecsp_nsga2/propagation.py:663-2160",
+      "적용한계": "고정 밀도·무대류. 기존 continuation explicit T 갱신; 새 모델은 cp 적분 에너지"
+    },
+    {
+      "ID": "P13",
+      "물리항목": "두 채널 분해",
+      "계산식": "ri = exp[Li(αi)−Ei(αi)/(RT)]; αi≥1 → ri=0",
+      "정립성": "변환율 의존 Arrhenius 경험 속도론",
+      "활성경로": "BC/두 후속",
+      "논문_코드근거": "python/ecsp_v6/physics/bc_global.py:617-632; python/ecsp_reactive/condensed/chemistry.py:57-60",
+      "적용한계": "Li=ln(Af/s⁻¹); (1−α)^n 추가 금지. 두 첨부 논문이 전체 LUT를 제공한 것은 아님"
+    },
+    {
+      "ID": "P14",
+      "물리항목": "반응 진행과 재고",
+      "계산식": "X=w1α1+w2α2; ξ=ξmax X; ΔLP=−1.45Δξ, ΔPVA=−Δξ, ΔH2Oprod=2Δξ",
+      "정립성": "정해진 global stoichiometry의 수지",
+      "활성경로": "BC/두 후속",
+      "논문_코드근거": "python/ecsp_v6/physics/bc_global.py:643-757; python/ecsp_reactive/condensed/chemistry.py:62-99",
+      "적용한계": "1.45 LiClO4+PVA repeat→2 CO2+2 H2O+0.4 O2+1.45 LiCl. 상세 반응경로/가스수송 아님"
+    },
+    {
+      "ID": "P15",
+      "물리항목": "응축상 질량·운동량",
+      "계산식": "∂tρ+∇·(ρu)=0; ∂t(ρu)+∇·(ρu⊗u+pI)=0",
+      "정립성": "Euler 보존식",
+      "활성경로": "새 Reactive/reference",
+      "논문_코드근거": "첨부 논문 B: KSPE 28(3), 2024, 31–40; DOI 10.6108/KSPE.2024.28.3.031 식(1); python/ecsp_reactive/condensed/finite_volume.py:134-158",
+      "적용한계": "비점성 연속체; 고체 전단응력/탄성/점성/기화 source 없음"
+    },
+    {
+      "ID": "P16",
+      "물리항목": "단일 응축상 총에너지",
+      "계산식": "∂t(ρE)+∇·[(ρE+p)u]=∇·(k∇T)+qJ+qechem+ρΣQi ri−qloss",
+      "정립성": "Euler 에너지에 Fourier/열원 결합",
+      "활성경로": "새 Reactive",
+      "논문_코드근거": "python/ecsp_reactive/condensed/solver.py:136-164; python/ecsp_reactive/condensed/tensor_math.py:317-337",
+      "적용한계": "E=e+|u|²/2; 독립 solid.py 온도 중복 적분 없음; 단순 순수 Euler가 아니라 Euler–Fourier"
+    },
+    {
+      "ID": "P17",
+      "물리항목": "두 보존 진행변수",
+      "계산식": "∂t(ραi)+∇·(ρuαi)=ρri; i=1,2",
+      "정립성": "반응성 보존 스칼라",
+      "활성경로": "새 Reactive",
+      "논문_코드근거": "python/ecsp_reactive/condensed/chemistry.py:62-99; python/ecsp_reactive/condensed/tensor_math.py:159-177",
+      "적용한계": "α1·α2 별개 유지. 시약 부족 공통 제한율로 실제 반응량과 열 동시 제한"
+    },
+    {
+      "ID": "P18",
+      "물리항목": "6개 재고 보존수송",
+      "계산식": "∂tcj+∇·(u cj)=Sj (+ NP migration/diffusion and Faradaic source when powered)",
+      "정립성": "종/재고 수지",
+      "활성경로": "새 Reactive",
+      "논문_코드근거": "python/ecsp_reactive/condensed/chemistry.py; python/ecsp_reactive/condensed/tensor_electrical.py",
+      "적용한계": "추가 6성분은 mol/m³이며 추가 bulk density가 아님. LP/PVA/생성수 수지≠모든 생성물 종별 해석"
+    },
+    {
+      "ID": "P19",
+      "물리항목": "Tait EOS",
+      "계산식": "p=A+B[(ρ/ρ0)^N−1]; c²=(BN/ρ0)(ρ/ρ0)^(N−1)",
+      "정립성": "정립된 barotropic EOS 형태",
+      "활성경로": "새 Reactive/reference",
+      "논문_코드근거": "첨부 논문 B: KSPE 28(3), 2024, 31–40; DOI 10.6108/KSPE.2024.28.3.031 식(3); python/ecsp_reactive/condensed/thermo.py:88-90",
+      "적용한계": "A,B,N,ρ0는 미보정. p는 T/e에 독립; 열팽창·에너지 유도 압력파 없음"
+    },
+    {
+      "ID": "P20",
+      "물리항목": "caloric completion",
+      "계산식": "e(ρ,T)=∫ρ0^ρ p(r)/r² dr + ∫Tref^T cp(θ)dθ",
+      "정립성": "EOS를 닫는 명시적 추가 가정",
+      "활성경로": "새 Reactive",
+      "논문_코드근거": "python/ecsp_reactive/condensed/thermo.py:103-104",
+      "적용한계": "첨부 논문 직접 제공식 아님. 이 barotropic 완성에서는 cp=cv, 열팽창 0; k/cp 표 유지"
+    },
+    {
+      "ID": "P21",
+      "물리항목": "내부 반응경계",
+      "계산식": "φr=Xfront−X; Γr={X=Xfront}; signed distance 재구성",
+      "정립성": "결과의 기하학적 정의/진단",
+      "활성경로": "새 Reactive/기존 propagation",
+      "논문_코드근거": "python/ecsp_reactive/condensed/solver.py:297-379; python/ecsp_nsga2/propagation.py:605-660",
+      "적용한계": "Xfront=.5는 운영 기준. 실제 외곽 material interface/ablation EOS분할이 아님"
+    },
+    {
+      "ID": "P22",
+      "물리항목": "원 논문 material level set",
+      "계산식": "∂tψ+u∂xψ+v∂yψ=0",
+      "정립성": "수동 경계 이류식",
+      "활성경로": "독립 paper-reference만",
+      "논문_코드근거": "첨부 논문 B: KSPE 28(3), 2024, 31–40; DOI 10.6108/KSPE.2024.28.3.031 식(4); python/ecsp_reactive/level_set.py",
+      "적용한계": "신규 2-channel 반응경계는 이 식을 독립 적분하지 않음"
+    },
+    {
+      "ID": "P23",
+      "물리항목": "초기 혼합물 밀도·농도",
+      "계산식": "ρmix=(Σmi)/(Σmi/ρi); ci=(mi/Mi)/V",
+      "정립성": "부피 가산·완전 해리 근사",
+      "활성경로": "조성 초기화",
+      "논문_코드근거": "python/ecsp_v6/composition.py:60-134",
+      "적용한계": "기공/수축/비이상체적/염 해리도 미해석; 실제 경화 밀도 측정 권장"
+    },
+    {
+      "ID": "N01",
+      "물리항목": "유한체적/공간·시간 적분",
+      "계산식": "harmonic face k, WENO5-JS, HLLC(or HLL), SSPRK(3,3)",
+      "정립성": "수치해법; 물리법칙 아님",
+      "활성경로": "새 Reactive",
+      "논문_코드근거": "python/ecsp_reactive/condensed/finite_volume.py; python/ecsp_reactive/condensed/solver.py:166-181",
+      "적용한계": "음성면 1차 donor fallback, 거부 후 dt/2. 상수 목적·수치 제한과 물성을 구별"
+    },
+    {
+      "ID": "D01",
+      "물리항목": "전선 유효 속도",
+      "계산식": "veff = ΔA/(Lbar_front Δt)",
+      "정립성": "반응면적 기반 진단 정의",
+      "활성경로": "두 후속",
+      "논문_코드근거": "python/ecsp_nsga2/propagation.py:557-602",
+      "적용한계": "실험적 표면 후퇴율/국부 법선 연소속도와 동일 아님; lab-frame 지표"
+    },
+    {
+      "ID": "D02",
+      "물리항목": "전선 불균일도",
+      "계산식": "CV(tarrival | observed) + (1−arrival coverage)",
+      "정립성": "운영상 평가 proxy",
+      "활성경로": "두 후속",
+      "논문_코드근거": "python/ecsp_nsga2/propagation.py:521-541; python/ecsp_reactive/condensed/solver.py:297-379",
+      "적용한계": "관측되지 않은 셀에 coverage penalty. 물리 PDE 아님"
+    },
+    {
+      "ID": "D03",
+      "물리항목": "전류집중/추천 순위",
+      "계산식": "CJ=J99/mean(J); Pareto sorting; normalized utopia distance",
+      "정립성": "최적화·진단 정의",
+      "활성경로": "NSGA-II",
+      "논문_코드근거": "python/ecsp_nsga2/nsga2.py; python/ecsp_nsga2/workflow.py",
+      "적용한계": "CJ는 절연파괴 모델 아님. 단일 추천은 정규화/선호 의존"
+    },
+    {
+      "ID": "L01",
+      "물리항목": "구형 연화·전도 승수",
+      "계산식": "fliq,fast; Ddry/Dwet mixture × water/GLY/BA/fast-ion factors",
+      "정립성": "경험 proxy",
+      "활성경로": "기존 모델만",
+      "논문_코드근거": "python/ecsp_v6/physics/electrochem.py:72-165",
+      "적용한계": "BC 전자/액상/조성 승수 비활성; 일반적인 고체–액체 상변화 해석 아님"
+    },
+    {
+      "ID": "L02",
+      "물리항목": "구형 단일 분해",
+      "계산식": "r=Aexp(−Ea/RT)(1−α)^n oxidizer^m sigmoid((T−Tact)/20K)",
+      "정립성": "Arrhenius에 임의 gate 추가",
+      "활성경로": "기존 모델만",
+      "논문_코드근거": "python/ecsp_v6/physics/coupled.py",
+      "적용한계": "BC 2-channel에는 해당 sigmoid/A/E/n 미사용"
+    },
+    {
+      "ID": "L03",
+      "물리항목": "구형 blocking/activity",
+      "계산식": "passivation·gas coverage ODE, extended_debye_huckel_proxy",
+      "정립성": "경험적 폐쇄식",
+      "활성경로": "기존 모델만",
+      "논문_코드근거": "python/ecsp_v6/physics/electrochem.py:610-663; python/ecsp_v6/physics/electrochem.py:553-577",
+      "적용한계": "BC에서 OFF; 계수 보정자료 미제공"
+    }
+  ],
+  "assumptions": [
+    {
+      "ID": "A01",
+      "경로": "BC/두 후속",
+      "가정_선택": "고정 유효두께 1 mm의 평면 표면 해석",
+      "분류": "차원축약",
+      "의미_한계": "깊이별 온도·전위·전극 열용량 미해석",
+      "코드근거": "python/ecsp_v6/physics/electrochem.py:2811-3052",
+      "검증_보정": "실제 두께·접촉면·열조건 고정; 3D/두께 민감도"
+    },
+    {
+      "ID": "A02",
+      "경로": "BC/두 후속",
+      "가정_선택": "surface-contact overlay 전체 추진제 유지",
+      "분류": "기하 모델",
+      "의미_한계": "전극 픽셀은 재료를 삭제하는 구멍이 아님",
+      "코드근거": "python/ecsp_v6/physics/geometry.py",
+      "검증_보정": "제작 단면/실제 접촉 확인"
+    },
+    {
+      "ID": "A03",
+      "경로": "전체",
+      "가정_선택": "분리 전극 모두 hidden bus로 동일 전압",
+      "분류": "경계 가정",
+      "의미_한계": "배선 저항/발열/전압강하/floating island 미해석",
+      "코드근거": "config/nsga2_bc_reactive_a100_cpu8.yaml geometry",
+      "검증_보정": "배선 제작성/도통 확인"
+    },
+    {
+      "ID": "A04",
+      "경로": "BC",
+      "가정_선택": "두 단가 이온·전기중성 투영",
+      "분류": "전해질 축약",
+      "의미_한계": "Poisson/double-layer를 공간 해상하지 않음",
+      "코드근거": "python/ecsp_v6/physics/species.py",
+      "검증_보정": "전류수지·이온수지·EIS 점검"
+    },
+    {
+      "ID": "A05",
+      "경로": "BC",
+      "가정_선택": "Nernst–Einstein 이상 이온수송",
+      "분류": "구성 가정",
+      "의미_한계": "농축고분자 전해질의 activity/ion correlation 미보정",
+      "코드근거": "python/ecsp_v6/physics/bc_global.py:401-474",
+      "검증_보정": "온도별 전도도; 필요시 transference"
+    },
+    {
+      "ID": "A06",
+      "경로": "BC",
+      "가정_선택": "σ∈[1e−4,0.5] S/m",
+      "분류": "수치/구성 cap",
+      "의미_한계": "발동하면 실제 수송 관계 변경. 미작동이라고 가정 금지",
+      "코드근거": "python/ecsp_v6/physics/bc_global.py:401-474",
+      "검증_보정": "cap 민감도·발동분율·전류 순위"
+    },
+    {
+      "ID": "A07",
+      "경로": "BC",
+      "가정_선택": "BV η와 j 비음수, 역반응 availability=1",
+      "분류": "방향 제한",
+      "의미_한계": "가역 BV 전체를 푸는 것과 다름",
+      "코드근거": "python/ecsp_v6/physics/electrochem.py:1210-1272",
+      "검증_보정": "극성별 I–V 및 기준전위 검증"
+    },
+    {
+      "ID": "A08",
+      "경로": "BC",
+      "가정_선택": "4개 반응채널 Eeq,n,ΔH 선택",
+      "분류": "반응 모델",
+      "의미_한계": "보편 상수 대신 선택 반응의 가정; 물 1.23 V를 각 극에 적용한 기준 확인",
+      "코드근거": "python/ecsp_v6/physics/electrochem.py:3055-3327",
+      "검증_보정": "반응 정의/전위 기준/생성물 확인"
+    },
+    {
+      "ID": "A09",
+      "경로": "BC",
+      "가정_선택": "계면 ΔH 양수, 발열 음수 절삭; jη 추가열 OFF",
+      "분류": "열분배 가정",
+      "의미_한계": "전체 열역학적 전기일·엔탈피 분배 검증 필요",
+      "코드근거": "python/ecsp_v6/physics/electrochem.py:855-867",
+      "검증_보정": "I(t)+IR/열량계로 net interface heat 확인"
+    },
+    {
+      "ID": "A10",
+      "경로": "BC",
+      "가정_선택": "접촉 법선 전도길이 30 µm",
+      "분류": "유효 길이",
+      "의미_한계": "1 mm 체적화 두께와 다름",
+      "코드근거": "python/ecsp_v6/physics/electrochem.py:3329-3458",
+      "검증_보정": "계면 전압강하/접촉저항 보정"
+    },
+    {
+      "ID": "A11",
+      "경로": "BC/두 후속",
+      "가정_선택": "단일 global stoichiometry + 2단계 반응",
+      "분류": "화학 축약",
+      "의미_한계": "두 채널이 상세 elementary chemistry가 아님",
+      "코드근거": "python/ecsp_v6/physics/bc_global.py:643-757",
+      "검증_보정": "다중 가열 DSC/TGA 및 생성물 정보"
+    },
+    {
+      "ID": "A12",
+      "경로": "BC/두 후속",
+      "가정_선택": "그림에서 근사 추출한 E(α),L(α)와 문헌 열량",
+      "분류": "문헌 prior",
+      "의미_한계": "첨부 논문 두 편에 해당 LUT 원시값이 모두 있지 않음",
+      "코드근거": "config/nsga2_bc_reactive_a100_cpu8.yaml bc_global.kinetics",
+      "검증_보정": "원 데이터 입수/동일 조성 DSC/TGA 보정"
+    },
+    {
+      "ID": "A13",
+      "경로": "BC/두 후속",
+      "가정_선택": "Q1,Q2는 initial bulk의 채널 기여량",
+      "분류": "단위·기준 가정",
+      "의미_한계": "w를 다시 곱하지 않음; 조성 바뀌면 전이 검증 필요",
+      "코드근거": "python/ecsp_reactive/condensed/chemistry.py:62-99",
+      "검증_보정": "DSC 누적열과 단위 기준 확인"
+    },
+    {
+      "ID": "A14",
+      "경로": "BC/두 후속",
+      "가정_선택": "두 채널이 같은 LP/PVA 재고를 공유",
+      "분류": "resource closure",
+      "의미_한계": "시약 부족 시 공통 scale로 α와 q 동시 제한",
+      "코드근거": "python/ecsp_reactive/condensed/chemistry.py:62-99",
+      "검증_보정": "재고수지/열수지; 이 자체가 elementary 반응 추정은 아님"
+    },
+    {
+      "ID": "A15",
+      "경로": "BC/두 후속",
+      "가정_선택": "생성수는 mobile BV water와 분리",
+      "분류": "화학 bookkeeping",
+      "의미_한계": "분해 생성수가 즉시 재전기분해되는 모델 아님",
+      "코드근거": "python/ecsp_reactive/condensed/chemistry.py",
+      "검증_보정": "수분 수송/생성수 가용성 민감도"
+    },
+    {
+      "ID": "A16",
+      "경로": "조성",
+      "가정_선택": "경화 후 물 20 wt.%",
+      "분류": "nominal 초기조건",
+      "의미_한계": "투입수 20% 잔존과 다름; 코드상 잔존율 약17.7936%",
+      "코드근거": "config/nsga2_bc_reactive_a100_cpu8.yaml physics",
+      "검증_보정": "경화 질량수지/물특이적 분석"
+    },
+    {
+      "ID": "A17",
+      "경로": "조성",
+      "가정_선택": "부피가산 밀도·완전 해리",
+      "분류": "혼합물 근사",
+      "의미_한계": "기공·경화수축·농축계 해리 미고려",
+      "코드근거": "python/ecsp_v6/composition.py",
+      "검증_보정": "경화 밀도·치수 측정"
+    },
+    {
+      "ID": "A18",
+      "경로": "BC/두 후속",
+      "가정_선택": "cp,k 표 및 범위 밖 끝값 유지",
+      "분류": "물성 근사",
+      "의미_한계": "T별 데이터 실측 아님; 잠열/기공/상변화 미포함",
+      "코드근거": "python/ecsp_v6/physics/bc_global.py:334-398",
+      "검증_보정": "cp/열확산·냉각곡선"
+    },
+    {
+      "ID": "A19",
+      "경로": "BC/두 후속",
+      "가정_선택": "대류 h=12,ε=.85 유효 열손실",
+      "분류": "경계 가정",
+      "의미_한계": "기체 CFD/복사장/전극열전도 없음",
+      "코드근거": "python/ecsp_reactive/condensed/solver.py:105-113",
+      "검증_보정": "IR 방사율 보정과 냉각곡선"
+    },
+    {
+      "ID": "A20",
+      "경로": "후속 기본",
+      "가정_선택": "onset 직후 전원 OFF",
+      "분류": "운영 정책",
+      "의미_한계": "전압 유지 실험과 다른 문제",
+      "코드근거": "config/nsga2_bc_reactive_a100_cpu8.yaml propagation_refinement",
+      "검증_보정": "시험 전원파형 일치; 유지시 recomputed+graph OFF"
+    },
+    {
+      "ID": "A21",
+      "경로": "후속 ON",
+      "가정_선택": "매 SSPRK stage NP/BV 재계산",
+      "분류": "분할 결합",
+      "의미_한계": "전자기장을 연속 시간 implicit monolithic으로 푼 것은 아님",
+      "코드근거": "python/ecsp_reactive/condensed/electrical.py; python/ecsp_reactive/condensed/tensor_electrical.py",
+      "검증_보정": "dt/결합 주기/수지 수렴"
+    },
+    {
+      "ID": "A22",
+      "경로": "새 Reactive",
+      "가정_선택": "단일 응축상 Euler, 전단·점성 제외",
+      "분류": "역학 가정",
+      "의미_한계": "응축상 유체형 연속체이지 고체 탄성파/손상 해석 아님",
+      "코드근거": "python/ecsp_reactive/condensed/finite_volume.py",
+      "검증_보정": "실제 기계거동이 필요한지 판단"
+    },
+    {
+      "ID": "A23",
+      "경로": "새 Reactive",
+      "가정_선택": "barotropic Tait p=p(ρ)",
+      "분류": "EOS 한계",
+      "의미_한계": "동일ρ에서 가열은 p를 바꾸지 않음; 열팽창/열유도 압력파 없음",
+      "코드근거": "python/ecsp_reactive/condensed/thermo.py",
+      "검증_보정": "A/B/N 음향·압축자료 보정 또는 다른 EOS 별도연구"
+    },
+    {
+      "ID": "A24",
+      "경로": "새 Reactive",
+      "가정_선택": "BC cp 적분 + Tait cold energy",
+      "분류": "추가 caloric closure",
+      "의미_한계": "첨부 논문 직접식 아님; cp=cv와 열팽창0를 내포",
+      "코드근거": "python/ecsp_reactive/condensed/thermo.py",
+      "검증_보정": "열역학적 적용범위 명시"
+    },
+    {
+      "ID": "A25",
+      "경로": "새 Reactive",
+      "가정_선택": "초기 rho 균일,u=v=0",
+      "분류": "handoff 가정",
+      "의미_한계": "BC는 u,p를 계산하지 않아 초기 역학상태가 별도 가정",
+      "코드근거": "python/ecsp_reactive/condensed/handoff.py:45-176",
+      "검증_보정": "초기유동/압력 자료 없음을 명시"
+    },
+    {
+      "ID": "A26",
+      "경로": "새 Reactive",
+      "가정_선택": "HLLC exact stationary fast path",
+      "분류": "정확 불변부분공간 최적화",
+      "의미_한계": "이 EOS에서만 압력균일·정지 해는 역학이 안 변함; 인위적 감쇠 아님",
+      "코드근거": "python/ecsp_reactive/condensed/finite_volume.py:126-131",
+      "검증_보정": "off/ON 결과대조; HLL은 절대 이 shortcut 적용 안 함"
+    },
+    {
+      "ID": "A27",
+      "경로": "새 Reactive",
+      "가정_선택": "질량·에너지 단일 장; 생성물 continuum 잔류",
+      "분류": "보존 모델",
+      "의미_한계": "가스 분사/압력 배출/외곽 ablation 없음",
+      "코드근거": "python/ecsp_reactive/condensed/solver.py:136-164",
+      "검증_보정": "고체→기체로 해석해서는 안 됨"
+    },
+    {
+      "ID": "A28",
+      "경로": "새 Reactive",
+      "가정_선택": "반응/미반응 영역 같은 Tait와 물성",
+      "분류": "material closure",
+      "의미_한계": "서로 다른 EOS를 선택하는 active material-interface가 아님",
+      "코드근거": "python/ecsp_reactive/condensed/solver.py:297-379",
+      "검증_보정": "외곽 경계/상전이와 내부 반응경계 구별"
+    },
+    {
+      "ID": "A29",
+      "경로": "두 후속",
+      "가정_선택": "Xfront=.5, reacted area .5 established",
+      "분류": "운영상 문턱",
+      "의미_한계": "물리 반응식이 아닌 위치·완료 판정; 문턱 민감도 필요",
+      "코드근거": "python/ecsp_nsga2/propagation.py:605-660",
+      "검증_보정": "실험 영상과 동일한 전선 정의"
+    },
+    {
+      "ID": "A30",
+      "경로": "BC",
+      "가정_선택": "523.15K + X≥.01 + area≥.01 onset",
+      "분류": "분해 개시 proxy",
+      "의미_한계": "가시 화염 점화/소화 판정 아님",
+      "코드근거": "config/nsga2_bc_reactive_a100_cpu8.yaml bc_global.onsetCriterion",
+      "검증_보정": "I(t)/IR/영상 동시 검증"
+    },
+    {
+      "ID": "A31",
+      "경로": "두 후속",
+      "가정_선택": "면적/전선길이 속도와 arrival CV",
+      "분류": "평가 proxy",
+      "의미_한계": "진짜 표면 후퇴율/국부 연소속도가 아님",
+      "코드근거": "python/ecsp_nsga2/propagation.py:557-602",
+      "검증_보정": "질량감소·높이변화·전선속도를 별도구분"
+    },
+    {
+      "ID": "A32",
+      "경로": "수치",
+      "가정_선택": "WENO5-JS+HLLC/HLL+SSPRK33, face positivity fallback",
+      "분류": "수치 선택",
+      "의미_한계": "논문 B가 모든 구체적 flux/variant를 지정한 것은 아님",
+      "코드근거": "python/ecsp_reactive/condensed/finite_volume.py",
+      "검증_보정": "격자/시간/fallback/보존 convergence"
+    },
+    {
+      "ID": "A33",
+      "경로": "수치",
+      "가정_선택": "rate cap1000/s, exp clip[−100,60], temp bounds",
+      "분류": "수치 제한",
+      "의미_한계": "raw-rate cap은 기본 후보거부; 명시 허용시 모델 변함",
+      "코드근거": "python/ecsp_reactive/condensed/chemistry.py:62-99; python/ecsp_nsga2/propagation.py:412-426",
+      "검증_보정": "발동율·상한 민감도 기록"
+    },
+    {
+      "ID": "A34",
+      "경로": "NSGA-II",
+      "가정_선택": "정규화 utopia 추천·Vmin 벌점·전류혼잡",
+      "분류": "알고리즘 선호",
+      "의미_한계": "지배방정식 아님. 새로운 전극 전체 최적성 보장 아님",
+      "코드근거": "python/ecsp_nsga2/workflow.py",
+      "검증_보정": "독립형상 검증/seed/예산/정규화 민감도"
+    },
+    {
+      "ID": "A35",
+      "경로": "기존 경로",
+      "가정_선택": "연화 sigmoid·조성전도 승수·단일열분해 gate",
+      "분류": "경험 proxy",
+      "의미_한계": "BC에서 비활성; 코드에 남아 있다고 활성으로 해석 금지",
+      "코드근거": "python/ecsp_v6/physics/electrochem.py:72-165",
+      "검증_보정": "사용 경로 명시"
+    },
+    {
+      "ID": "A36",
+      "경로": "기존 경로",
+      "가정_선택": "passivation/gas coverage/activity proxy",
+      "분류": "경험 proxy",
+      "의미_한계": "BC는 OFF. 실제 기포/박막 CFD 아님",
+      "코드근거": "python/ecsp_v6/physics/electrochem.py:610-663",
+      "검증_보정": "사용시 별도 실험 보정"
+    },
+    {
+      "ID": "A37",
+      "경로": "독립 reference",
+      "가정_선택": "별도 solid T,단일 λ,passive ψ",
+      "분류": "미결합 reference",
+      "의미_한계": "이번 2-channel 통합에서는 실행하지 않음",
+      "코드근거": "python/ecsp_reactive/solver.py",
+      "검증_보정": "논문재현용 실험 경로로 분리"
+    },
+    {
+      "ID": "A38",
+      "경로": "GPU",
+      "가정_선택": "FP64, 독립 case dt, 같은 LUT·재고·경계",
+      "분류": "계산 구현",
+      "의미_한계": "물리를 간소화하거나 정밀도를 줄인 최적화 아님",
+      "코드근거": "python/ecsp_reactive/condensed/tensor_math.py",
+      "검증_보정": "CPU↔GPU parity는 target GPU preflight 필요"
+    },
+    {
+      "ID": "A39",
+      "경로": "GPU",
+      "가정_선택": "batch8·host2+worker6·graph 선택",
+      "분류": "운영 시작값",
+      "의미_한계": "A100 실측 최적 batch/속도 아님",
+      "코드근거": "config/nsga2_bc_reactive_a100_cpu8.yaml post_onset.execution",
+      "검증_보정": "동일 물리 benchmark 후 batch만 조정"
+    },
+    {
+      "ID": "A40",
+      "경로": "검증",
+      "가정_선택": "실험 없이 수치 시험으로 순위 인증하지 않음",
+      "분류": "검증 범위",
+      "의미_한계": "unit pass ≠ 절대 점화/최적 형상 정확성",
+      "코드근거": "docs/VALIDATION_V8_4_1_KR.md",
+      "검증_보정": "실측 보정+독립 형상 순위 검증"
+    }
+  ],
+  "bugs": [
+    {
+      "ID": "F01",
+      "상태": "수정·회귀시험",
+      "문제": "열안정성 bound가 4k/capacity 휴리스틱",
+      "영향": "k와 열용량이 강하게 비균일한 사용자 물성에서 harmonic face 합보다 작아져 unsafe dt 가능",
+      "수정": "실제 FV face conductance row sum + 열손실 Jacobian; 매 RK stage 검사",
+      "근거": "python/ecsp_reactive/condensed/solver.py:115-134",
+      "시험": "test_numpy_thermal_bound_uses_face_conductance_not_4k_heuristic"
+    },
+    {
+      "ID": "F02",
+      "상태": "수정·회귀시험",
+      "문제": "HLL 선택에도 stationary acoustic dt를 생략",
+      "영향": "HLL은 정지 열/조성접촉을 수치 확산하므로 acoustic 제한 생략 부당",
+      "수정": "exact stationary shortcut은 HLLC에만 허용; NumPy/torch 통일",
+      "근거": "python/ecsp_reactive/condensed/solver.py:115-134; python/ecsp_reactive/condensed/tensor_math.py:289-315",
+      "시험": "test_hll_stationary_contact_does_not_skip_acoustic_diffusion"
+    },
+    {
+      "ID": "F03",
+      "상태": "수정·회귀시험",
+      "문제": "상수 목적함수도 첫/끝 개체에 infinite crowding",
+      "영향": "동률 목적에서 임의 개체를 우대해 탐색 선택 편향",
+      "수정": "목적 범위 0이면 endpoint crowding 부여 안 함",
+      "근거": "python/ecsp_nsga2/nsga2.py:107-134",
+      "시험": "test_constant_objectives_cannot_create_artificial_crowding_endpoints"
+    },
+    {
+      "ID": "F04",
+      "상태": "수정·회귀시험",
+      "문제": "문자열 false가 bool(\"false\")로 True",
+      "영향": "잘못된 전원/fast-path 설정을 조용히 반전",
+      "수정": "후속 스위치 strict boolean 검증",
+      "근거": "python/ecsp_reactive/condensed/solver.py:31-103",
+      "시험": "test_string_false_is_not_treated_as_true"
+    },
+    {
+      "ID": "F05",
+      "상태": "수정·회귀시험",
+      "문제": "공유 반응물이 소진된 셀의 raw rate도 dt 제한",
+      "영향": "실제 허용 반응량 0인데 불필요한 극소 dt 요구",
+      "수정": "dt 제한만 가용 시약 셀 적용; raw-rate cap 검사는 유지",
+      "근거": "python/ecsp_reactive/condensed/solver.py:115-134",
+      "시험": "test_exhausted_stock_does_not_force_impossible_tiny_timestep"
+    },
+    {
+      "ID": "F06",
+      "상태": "수정",
+      "문제": "기존 launcher가 symlink/기존 log 보호 불완전",
+      "영향": "실행 출력/로그 덮어쓰기 위험",
+      "수정": "workdir·symlink·log 존재시 시작 거부",
+      "근거": "tools/run_bc_reactive.sh; tools/run_bc_reactive_a100_cpu8.sh",
+      "시험": "shell syntax + no-CUDA fail-closed"
+    },
+    {
+      "ID": "F07",
+      "상태": "최적화·시험",
+      "문제": "CPU reference 매 단계 초기 수지 재합산",
+      "영향": "변하지 않는 초기장을 반복 reduction",
+      "수정": "초기 mass/energy/reservoir 합 캐시",
+      "근거": "python/ecsp_reactive/condensed/solver.py:183-223",
+      "시험": "전체 기존 시험 및 NumPy/torch parity"
+    },
+    {
+      "ID": "F08",
+      "상태": "신규 보호·시험",
+      "문제": "GPU batch별 실패·메모리·시계 혼합 위험",
+      "영향": "한 후보 실패가 형상전체 실패 또는 timestep 왜곡 가능",
+      "수정": "독립 dt/거부/완료 mask; 동일 GPU batch 분할; 원본 handoff hash; CPU 대체 금지",
+      "근거": "python/ecsp_nsga2/post_onset_batch.py; python/ecsp_reactive/condensed/tensor_solver.py",
+      "시험": "independent lanes/failure isolation/resource/CUDA required tests"
+    }
+  ],
+  "lut": [
+    {
+      "채널": 1,
+      "alpha": 0.0,
+      "E_J_per_mol": 85000,
+      "ln_Af_per_s": 13.0,
+      "Q_J_per_kg": 881000.0,
+      "w": 0.6666666666666666,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 1,
+      "alpha": 0.1,
+      "E_J_per_mol": 85000,
+      "ln_Af_per_s": 13.0,
+      "Q_J_per_kg": 881000.0,
+      "w": 0.6666666666666666,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 1,
+      "alpha": 0.2,
+      "E_J_per_mol": 91000,
+      "ln_Af_per_s": 14.5,
+      "Q_J_per_kg": 881000.0,
+      "w": 0.6666666666666666,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 1,
+      "alpha": 0.3,
+      "E_J_per_mol": 98000,
+      "ln_Af_per_s": 15.5,
+      "Q_J_per_kg": 881000.0,
+      "w": 0.6666666666666666,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 1,
+      "alpha": 0.4,
+      "E_J_per_mol": 105000,
+      "ln_Af_per_s": 16.5,
+      "Q_J_per_kg": 881000.0,
+      "w": 0.6666666666666666,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 1,
+      "alpha": 0.5,
+      "E_J_per_mol": 112000,
+      "ln_Af_per_s": 18.0,
+      "Q_J_per_kg": 881000.0,
+      "w": 0.6666666666666666,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 1,
+      "alpha": 0.6,
+      "E_J_per_mol": 119000,
+      "ln_Af_per_s": 19.0,
+      "Q_J_per_kg": 881000.0,
+      "w": 0.6666666666666666,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 1,
+      "alpha": 0.7,
+      "E_J_per_mol": 127000,
+      "ln_Af_per_s": 20.0,
+      "Q_J_per_kg": 881000.0,
+      "w": 0.6666666666666666,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 1,
+      "alpha": 0.8,
+      "E_J_per_mol": 136000,
+      "ln_Af_per_s": 21.0,
+      "Q_J_per_kg": 881000.0,
+      "w": 0.6666666666666666,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 1,
+      "alpha": 0.9,
+      "E_J_per_mol": 150000,
+      "ln_Af_per_s": 23.8,
+      "Q_J_per_kg": 881000.0,
+      "w": 0.6666666666666666,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 1,
+      "alpha": 1.0,
+      "E_J_per_mol": 150000,
+      "ln_Af_per_s": 23.8,
+      "Q_J_per_kg": 881000.0,
+      "w": 0.6666666666666666,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8a_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 2,
+      "alpha": 0.0,
+      "E_J_per_mol": 150000,
+      "ln_Af_per_s": 19.0,
+      "Q_J_per_kg": 1162000.0,
+      "w": 0.3333333333333333,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 2,
+      "alpha": 0.1,
+      "E_J_per_mol": 150000,
+      "ln_Af_per_s": 19.0,
+      "Q_J_per_kg": 1162000.0,
+      "w": 0.3333333333333333,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 2,
+      "alpha": 0.2,
+      "E_J_per_mol": 145000,
+      "ln_Af_per_s": 18.5,
+      "Q_J_per_kg": 1162000.0,
+      "w": 0.3333333333333333,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 2,
+      "alpha": 0.3,
+      "E_J_per_mol": 140000,
+      "ln_Af_per_s": 18.0,
+      "Q_J_per_kg": 1162000.0,
+      "w": 0.3333333333333333,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 2,
+      "alpha": 0.4,
+      "E_J_per_mol": 140000,
+      "ln_Af_per_s": 18.0,
+      "Q_J_per_kg": 1162000.0,
+      "w": 0.3333333333333333,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 2,
+      "alpha": 0.5,
+      "E_J_per_mol": 150000,
+      "ln_Af_per_s": 20.0,
+      "Q_J_per_kg": 1162000.0,
+      "w": 0.3333333333333333,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 2,
+      "alpha": 0.6,
+      "E_J_per_mol": 190000,
+      "ln_Af_per_s": 26.0,
+      "Q_J_per_kg": 1162000.0,
+      "w": 0.3333333333333333,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 2,
+      "alpha": 0.7,
+      "E_J_per_mol": 220000,
+      "ln_Af_per_s": 29.9,
+      "Q_J_per_kg": 1162000.0,
+      "w": 0.3333333333333333,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 2,
+      "alpha": 0.8,
+      "E_J_per_mol": 190000,
+      "ln_Af_per_s": 26.0,
+      "Q_J_per_kg": 1162000.0,
+      "w": 0.3333333333333333,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 2,
+      "alpha": 0.9,
+      "E_J_per_mol": 150000,
+      "ln_Af_per_s": 18.0,
+      "Q_J_per_kg": 1162000.0,
+      "w": 0.3333333333333333,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    },
+    {
+      "채널": 2,
+      "alpha": 1.0,
+      "E_J_per_mol": 150000,
+      "ln_Af_per_s": 18.0,
+      "Q_J_per_kg": 1162000.0,
+      "w": 0.3333333333333333,
+      "출처표시": "approximate_digitisation_of_3rd_paper_Fig8b_pending_supplementary_numeric_data",
+      "검증상태": "원시 좌표 독립검증 미완료; 시료보정 없음"
+    }
+  ],
+  "interface": [
+    {
+      "채널": "water",
+      "극": "anode",
+      "Eeq_V": 1.23,
+      "j0_A_m2": 8.0,
+      "beta": 0.5,
+      "n": 2.0,
+      "reverse": 1.0,
+      "DeltaH_J_mol": 25000.0,
+      "km_m_s": 1e-05,
+      "시약소모_mol_per_mol_e": 0.5,
+      "gas_yield": 0.75,
+      "BC활성": "Eeq,j0,beta,n,reverse,ΔH,소모계수 활성; km/gasyield 미사용",
+      "근거": "config/default_lp_pva.yaml interface; 실제 시료 보정 없음"
+    },
+    {
+      "채널": "water",
+      "극": "cathode",
+      "Eeq_V": 1.23,
+      "j0_A_m2": 10.0,
+      "beta": 0.5,
+      "n": 2.0,
+      "reverse": 1.0,
+      "DeltaH_J_mol": 20000.0,
+      "km_m_s": 1.2e-05,
+      "시약소모_mol_per_mol_e": 0.5,
+      "gas_yield": 0.75,
+      "BC활성": "Eeq,j0,beta,n,reverse,ΔH,소모계수 활성; km/gasyield 미사용",
+      "근거": "config/default_lp_pva.yaml interface; 실제 시료 보정 없음"
+    },
+    {
+      "채널": "lp",
+      "극": "anode",
+      "Eeq_V": 3.0,
+      "j0_A_m2": 1.0,
+      "beta": 0.5,
+      "n": 1.0,
+      "reverse": 1.0,
+      "DeltaH_J_mol": 80000.0,
+      "km_m_s": 4e-06,
+      "시약소모_mol_per_mol_e": 1.0,
+      "gas_yield": 0.4,
+      "BC활성": "Eeq,j0,beta,n,reverse,ΔH,소모계수 활성; km/gasyield 미사용",
+      "근거": "config/default_lp_pva.yaml interface; 실제 시료 보정 없음"
+    },
+    {
+      "채널": "lp",
+      "극": "cathode",
+      "Eeq_V": 3.0,
+      "j0_A_m2": 0.8,
+      "beta": 0.5,
+      "n": 1.0,
+      "reverse": 1.0,
+      "DeltaH_J_mol": 50000.0,
+      "km_m_s": 3e-06,
+      "시약소모_mol_per_mol_e": 1.0,
+      "gas_yield": 0.5,
+      "BC활성": "Eeq,j0,beta,n,reverse,ΔH,소모계수 활성; km/gasyield 미사용",
+      "근거": "config/default_lp_pva.yaml interface; 실제 시료 보정 없음"
+    }
+  ],
+  "papers": [
+    [
+      "A",
+      "전기장·NP·BV·Faraday",
+      "식(2),(7),(8),(11)–(17)",
+      "BC 구조 기반",
+      "입력값·2D overlay·비음수 BV 등은 추가/변형",
+      "첨부 논문 A: JKSC 29(4), 2024, 21–33; DOI 10.15231/jksc.2024.29.4.021"
+    ],
+    [
+      "A",
+      "고온 무대류 전기화학 열식",
+      "식(22)–(24)",
+      "BC pre-onset 대응",
+      "2채널 LUT/특정 조성 물성은 두 첨부파일이 완결하지 않음",
+      "첨부 논문 A: JKSC 29(4), 2024, 21–33; DOI 10.15231/jksc.2024.29.4.021"
+    ],
+    [
+      "A",
+      "유동/기체 화학·추력",
+      "식(25)–(28), 후반 CEA",
+      "새 프로필에서 미구현",
+      "OpenFOAM/다종 가스/노즐추력 모델이라고 하지 않음",
+      "첨부 논문 A: JKSC 29(4), 2024, 21–33; DOI 10.15231/jksc.2024.29.4.021"
+    ],
+    [
+      "A",
+      "Joule term",
+      "식(9) |∇φ||J|",
+      "코드는 conductive σE²/face power",
+      "diffusion current가 있을 때 일반적으로 동일식 아님",
+      "첨부 논문 A: JKSC 29(4), 2024, 21–33; DOI 10.15231/jksc.2024.29.4.021"
+    ],
+    [
+      "B",
+      "반응 Euler·고체열·Tait",
+      "식(1)–(3)",
+      "Euler/Tait 구조 차용",
+      "새 모델:2채널+Fourier+BC cp caloric completion; 원문 그대로 복제 아님",
+      "첨부 논문 B: KSPE 28(3), 2024, 31–40; DOI 10.6108/KSPE.2024.28.3.031"
+    ],
+    [
+      "B",
+      "material level-set",
+      "식(4)",
+      "독립 reference에만 그대로 수동 이류",
+      "새 모델은 X 등고선 진단; 외곽 material boundary 미완성",
+      "첨부 논문 B: KSPE 28(3), 2024, 31–40; DOI 10.6108/KSPE.2024.28.3.031"
+    ],
+    [
+      "B",
+      "조성/격자/도메인",
+      "10×10mm 단면,100×100선정,W5% 조성",
+      "현재20×20mm surface overlay와 다름",
+      "논문 실험 수치가 현재 조성 검증값은 아님",
+      "첨부 논문 B: KSPE 28(3), 2024, 31–40; DOI 10.6108/KSPE.2024.28.3.031"
+    ],
+    [
+      "외부 prior",
+      "2nd_paper/3rd_paper/Fig8",
+      "설정파일의 출처 label",
+      "LUT/열량/수분의 nominal 근거표시",
+      "첨부 A/B의 순서를 뜻하지 않음; 원시 데이터 좌표 독립 확인 못함",
+      "config/nsga2_bc_reactive_a100_cpu8.yaml"
+    ],
+    [
+      "공식 SW 문서",
+      "CUDA graphs/synchronization",
+      "PyTorch CUDA semantics",
+      "새 실행 구조 참조",
+      "물성근거 아님; 실제A100별도 시험 필요",
+      "https://docs.pytorch.org/docs/stable/notes/cuda.html"
+    ],
+    [
+      "공식 SW 문서",
+      "spawn/CPU oversubscription",
+      "PyTorch multiprocessing",
+      "CPU6+host2 budget / spawn 참조",
+      "8 core 기준 시작값; 실제quota따라 제한",
+      "https://docs.pytorch.org/docs/stable/notes/multiprocessing.html"
+    ]
+  ]
+}

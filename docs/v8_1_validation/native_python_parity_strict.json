@@ -1,0 +1,1807 @@
+{
+  "status": "passed",
+  "device": "cpu",
+  "dtype": "float64",
+  "torch": "2.10.0+cpu",
+  "scope": "short evolving-state numerical port comparison",
+  "not_experimental_validation": true,
+  "strict_common_tolerances": true,
+  "cases": [
+    {
+      "grid": 17,
+      "steps": 10,
+      "voltage_V": 20.0,
+      "candidates": 2,
+      "python_wall_s": 23.076895053000044,
+      "native_wall_s_including_first_load": 0.3465579619999062,
+      "all_passed": true,
+      "comparisons": [
+        {
+          "group": "finalFields",
+          "field": "temperature_K",
+          "passed": true,
+          "max_abs_error": 5.684341886080802e-14,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "potential_V",
+          "passed": true,
+          "max_abs_error": 1.092370638389184e-11,
+          "rtol": 2e-06,
+          "atol": 0.001
+        },
+        {
+          "group": "finalFields",
+          "field": "cation_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "anion_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "water_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 3.637978807091713e-12,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "alphaChannel1",
+          "passed": true,
+          "max_abs_error": 8.131516293641283e-20,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "alphaChannel2",
+          "passed": true,
+          "max_abs_error": 8.131516293641283e-20,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "globalProgress",
+          "passed": true,
+          "max_abs_error": 5.421010862427522e-20,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "xi_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 3.3306690738754696e-16,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "xi_max_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "lpReactive_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "pvaReactiveRepeat_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "reactiveMass_kg_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "initialReactiveMass_kg_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "co2Product_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 6.661338147750939e-16,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "waterProduct_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 6.661338147750939e-16,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "oxygenProduct_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 1.6653345369377348e-16,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "liClProduct_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 4.440892098500626e-16,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maxTemperature_K",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanTemperature_K",
+          "passed": true,
+          "max_abs_error": 5.684341886080802e-14,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "current_A",
+          "passed": true,
+          "max_abs_error": 4.799660018386942e-14,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "power_W",
+          "passed": true,
+          "max_abs_error": 9.59931786836954e-13,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "energy_J",
+          "passed": true,
+          "max_abs_error": 1.7324927300069182e-14,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanGlobalProgress",
+          "passed": true,
+          "max_abs_error": 1.3552527156068805e-20,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maximumGlobalProgress",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "remainingReactiveMassFraction",
+          "passed": true,
+          "max_abs_error": 4.440892098500626e-16,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "onsetAreaFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "temperatureQualifiedAreaFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maximumChannel1Rate_per_s",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maximumChannel2Rate_per_s",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "currentCongestion",
+          "passed": true,
+          "max_abs_error": 3.6295411121045618e-12,
+          "rtol": 0.0005,
+          "atol": 0.0002
+        },
+        {
+          "group": "histories",
+          "field": "speciesLimiterFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "temperatureCapFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "chemicalRateCapFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "equation32ElectricalHeatRate_W",
+          "passed": true,
+          "max_abs_error": 6.970118926474811e-15,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "equation32ElectricalHeatEnergy_J",
+          "passed": true,
+          "max_abs_error": 8.470329472543003e-17,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanJouleHeat_W_per_m3",
+          "passed": true,
+          "max_abs_error": 9.948053047992289e-09,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanElectrochemicalHeat_W_per_m3",
+          "passed": true,
+          "max_abs_error": 2.576487645455927e-08,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanChemicalHeat_W_per_m3",
+          "passed": true,
+          "max_abs_error": 3.725290298461914e-09,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "times_s",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qJ_W_per_m3",
+          "passed": true,
+          "max_abs_error": 1.978114596568048e-07,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qEchem_W_per_m3",
+          "passed": true,
+          "max_abs_error": 1.9651097886708158e-06,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "temperatureHistory_K",
+          "passed": true,
+          "max_abs_error": 5.684341886080802e-14,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "globalProgressHistory",
+          "passed": true,
+          "max_abs_error": 8.131516293641283e-20,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "temperatureAtOnset_K",
+          "passed": true,
+          "max_abs_error": 5.684341886080802e-14,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "globalProgressAtOnset",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "alphaChannel1AtOnset",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "alphaChannel2AtOnset",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qJAtOnset_W_per_m3",
+          "passed": true,
+          "max_abs_error": 1.978114596568048e-07,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qEchemAtOnset_W_per_m3",
+          "passed": true,
+          "max_abs_error": 1.5469813661184162e-06,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "propellantMask",
+          "passed": true
+        },
+        {
+          "group": "handoffFields",
+          "field": "ignitionDelay_s",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "onsetSucceeded",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "ignitionDelay_s",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "remainingReactiveMassFractionAt2s",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "peakCurrentCongestion",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "inputElectricalEnergyAt2s_J",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "grid": 17,
+      "steps": 10,
+      "voltage_V": 260.0,
+      "candidates": 2,
+      "python_wall_s": 9.608651404000057,
+      "native_wall_s_including_first_load": 0.16443670700004986,
+      "all_passed": true,
+      "comparisons": [
+        {
+          "group": "finalFields",
+          "field": "temperature_K",
+          "passed": true,
+          "max_abs_error": 3.410605131648481e-13,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "potential_V",
+          "passed": true,
+          "max_abs_error": 2.4874680093489587e-10,
+          "rtol": 2e-06,
+          "atol": 0.001
+        },
+        {
+          "group": "finalFields",
+          "field": "cation_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 3.637978807091713e-12,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "anion_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 3.637978807091713e-12,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "water_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 3.2741809263825417e-11,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "alphaChannel1",
+          "passed": true,
+          "max_abs_error": 3.5236570605778894e-19,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "alphaChannel2",
+          "passed": true,
+          "max_abs_error": 3.5236570605778894e-19,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "globalProgress",
+          "passed": true,
+          "max_abs_error": 3.2526065174565133e-19,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "xi_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 2.1094237467877974e-15,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "xi_max_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "lpReactive_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "pvaReactiveRepeat_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "reactiveMass_kg_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "initialReactiveMass_kg_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "co2Product_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 4.218847493575595e-15,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "waterProduct_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 4.218847493575595e-15,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "oxygenProduct_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 8.881784197001252e-16,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "liClProduct_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 3.1086244689504383e-15,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maxTemperature_K",
+          "passed": true,
+          "max_abs_error": 1.1368683772161603e-13,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanTemperature_K",
+          "passed": true,
+          "max_abs_error": 5.684341886080802e-14,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "current_A",
+          "passed": true,
+          "max_abs_error": 1.8069356774730316e-12,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "power_W",
+          "passed": true,
+          "max_abs_error": 4.698033073680108e-10,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "energy_J",
+          "passed": true,
+          "max_abs_error": 3.878650872701783e-12,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanGlobalProgress",
+          "passed": true,
+          "max_abs_error": 1.3552527156068805e-20,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maximumGlobalProgress",
+          "passed": true,
+          "max_abs_error": 1.3552527156068805e-19,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "remainingReactiveMassFraction",
+          "passed": true,
+          "max_abs_error": 3.3306690738754696e-16,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "onsetAreaFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "temperatureQualifiedAreaFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maximumChannel1Rate_per_s",
+          "passed": true,
+          "max_abs_error": 1.1275702593849246e-17,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maximumChannel2Rate_per_s",
+          "passed": true,
+          "max_abs_error": 1.1275702593849246e-17,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "currentCongestion",
+          "passed": true,
+          "max_abs_error": 5.10658182406587e-12,
+          "rtol": 0.0005,
+          "atol": 0.0002
+        },
+        {
+          "group": "histories",
+          "field": "speciesLimiterFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "temperatureCapFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "chemicalRateCapFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "equation32ElectricalHeatRate_W",
+          "passed": true,
+          "max_abs_error": 3.956834859764058e-13,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "equation32ElectricalHeatEnergy_J",
+          "passed": true,
+          "max_abs_error": 5.603156827405087e-15,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanJouleHeat_W_per_m3",
+          "passed": true,
+          "max_abs_error": 5.792826414108276e-07,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanElectrochemicalHeat_W_per_m3",
+          "passed": true,
+          "max_abs_error": 1.072932263923576e-06,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanChemicalHeat_W_per_m3",
+          "passed": true,
+          "max_abs_error": 1.1175870895385742e-08,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "times_s",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qJ_W_per_m3",
+          "passed": true,
+          "max_abs_error": 9.076762944459915e-05,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qEchem_W_per_m3",
+          "passed": true,
+          "max_abs_error": 0.00014165337415761314,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "temperatureHistory_K",
+          "passed": true,
+          "max_abs_error": 3.410605131648481e-13,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "globalProgressHistory",
+          "passed": true,
+          "max_abs_error": 3.2526065174565133e-19,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "temperatureAtOnset_K",
+          "passed": true,
+          "max_abs_error": 5.684341886080802e-14,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "globalProgressAtOnset",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "alphaChannel1AtOnset",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "alphaChannel2AtOnset",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qJAtOnset_W_per_m3",
+          "passed": true,
+          "max_abs_error": 9.076762944459915e-05,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qEchemAtOnset_W_per_m3",
+          "passed": true,
+          "max_abs_error": 1.4352343669088441e-05,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "propellantMask",
+          "passed": true
+        },
+        {
+          "group": "handoffFields",
+          "field": "ignitionDelay_s",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "onsetSucceeded",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "ignitionDelay_s",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "remainingReactiveMassFractionAt2s",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "peakCurrentCongestion",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "inputElectricalEnergyAt2s_J",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "grid": 33,
+      "steps": 10,
+      "voltage_V": 20.0,
+      "candidates": 2,
+      "python_wall_s": 56.61479211999995,
+      "native_wall_s_including_first_load": 1.7789474409999002,
+      "all_passed": true,
+      "comparisons": [
+        {
+          "group": "finalFields",
+          "field": "temperature_K",
+          "passed": true,
+          "max_abs_error": 2.2737367544323206e-13,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "potential_V",
+          "passed": true,
+          "max_abs_error": 9.413092527665867e-11,
+          "rtol": 2e-06,
+          "atol": 0.001
+        },
+        {
+          "group": "finalFields",
+          "field": "cation_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 1.8189894035458565e-12,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "anion_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 1.8189894035458565e-12,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "water_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 1.4551915228366852e-11,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "alphaChannel1",
+          "passed": true,
+          "max_abs_error": 1.3552527156068805e-19,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "alphaChannel2",
+          "passed": true,
+          "max_abs_error": 1.3552527156068805e-19,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "globalProgress",
+          "passed": true,
+          "max_abs_error": 1.6263032587282567e-19,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "xi_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 9.992007221626409e-16,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "xi_max_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "lpReactive_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "pvaReactiveRepeat_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "reactiveMass_kg_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "initialReactiveMass_kg_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "co2Product_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 1.9984014443252818e-15,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "waterProduct_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 1.9984014443252818e-15,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "oxygenProduct_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 4.440892098500626e-16,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "liClProduct_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 1.5543122344752192e-15,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maxTemperature_K",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanTemperature_K",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "current_A",
+          "passed": true,
+          "max_abs_error": 1.7876271209832373e-13,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "power_W",
+          "passed": true,
+          "max_abs_error": 3.5752546756473436e-12,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "energy_J",
+          "passed": true,
+          "max_abs_error": 4.6729276264451114e-14,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanGlobalProgress",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maximumGlobalProgress",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "remainingReactiveMassFraction",
+          "passed": true,
+          "max_abs_error": 2.220446049250313e-16,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "onsetAreaFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "temperatureQualifiedAreaFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maximumChannel1Rate_per_s",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maximumChannel2Rate_per_s",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "currentCongestion",
+          "passed": true,
+          "max_abs_error": 3.7341241210242515e-12,
+          "rtol": 0.0005,
+          "atol": 0.0002
+        },
+        {
+          "group": "histories",
+          "field": "speciesLimiterFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "temperatureCapFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "chemicalRateCapFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "equation32ElectricalHeatRate_W",
+          "passed": true,
+          "max_abs_error": 4.140437992461443e-14,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "equation32ElectricalHeatEnergy_J",
+          "passed": true,
+          "max_abs_error": 5.2038993773873e-16,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanJouleHeat_W_per_m3",
+          "passed": true,
+          "max_abs_error": 1.3045792002230883e-08,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanElectrochemicalHeat_W_per_m3",
+          "passed": true,
+          "max_abs_error": 1.073220232683525e-07,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanChemicalHeat_W_per_m3",
+          "passed": true,
+          "max_abs_error": 7.450580596923828e-09,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "times_s",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qJ_W_per_m3",
+          "passed": true,
+          "max_abs_error": 2.0668303477577865e-06,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qEchem_W_per_m3",
+          "passed": true,
+          "max_abs_error": 5.606988452200312e-05,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "temperatureHistory_K",
+          "passed": true,
+          "max_abs_error": 2.2737367544323206e-13,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "globalProgressHistory",
+          "passed": true,
+          "max_abs_error": 1.6263032587282567e-19,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "temperatureAtOnset_K",
+          "passed": true,
+          "max_abs_error": 5.684341886080802e-14,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "globalProgressAtOnset",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "alphaChannel1AtOnset",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "alphaChannel2AtOnset",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qJAtOnset_W_per_m3",
+          "passed": true,
+          "max_abs_error": 1.6409103409387171e-06,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qEchemAtOnset_W_per_m3",
+          "passed": true,
+          "max_abs_error": 4.285980685381219e-05,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "propellantMask",
+          "passed": true
+        },
+        {
+          "group": "handoffFields",
+          "field": "ignitionDelay_s",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "onsetSucceeded",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "ignitionDelay_s",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "remainingReactiveMassFractionAt2s",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "peakCurrentCongestion",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "inputElectricalEnergyAt2s_J",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "grid": 33,
+      "steps": 10,
+      "voltage_V": 260.0,
+      "candidates": 2,
+      "python_wall_s": 19.741737462999936,
+      "native_wall_s_including_first_load": 0.5939906090000022,
+      "all_passed": true,
+      "comparisons": [
+        {
+          "group": "finalFields",
+          "field": "temperature_K",
+          "passed": true,
+          "max_abs_error": 1.4210854715202004e-12,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "potential_V",
+          "passed": true,
+          "max_abs_error": 7.314895356103079e-10,
+          "rtol": 2e-06,
+          "atol": 0.001
+        },
+        {
+          "group": "finalFields",
+          "field": "cation_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 3.637978807091713e-12,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "anion_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 3.637978807091713e-12,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "water_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 8.003553375601768e-11,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "alphaChannel1",
+          "passed": true,
+          "max_abs_error": 1.4907779871675686e-18,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "alphaChannel2",
+          "passed": true,
+          "max_abs_error": 1.4907779871675686e-18,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "globalProgress",
+          "passed": true,
+          "max_abs_error": 1.4907779871675686e-18,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "xi_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 9.769962616701378e-15,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "xi_max_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "lpReactive_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 1.8189894035458565e-12,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "pvaReactiveRepeat_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 9.094947017729282e-13,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "reactiveMass_kg_per_m3",
+          "passed": true,
+          "max_abs_error": 2.2737367544323206e-13,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "initialReactiveMass_kg_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "co2Product_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 1.9539925233402755e-14,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "waterProduct_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 1.9539925233402755e-14,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "oxygenProduct_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 3.885780586188048e-15,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "finalFields",
+          "field": "liClProduct_mol_per_m3",
+          "passed": true,
+          "max_abs_error": 1.4210854715202004e-14,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maxTemperature_K",
+          "passed": true,
+          "max_abs_error": 1.4210854715202004e-12,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanTemperature_K",
+          "passed": true,
+          "max_abs_error": 1.1368683772161603e-13,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "current_A",
+          "passed": true,
+          "max_abs_error": 7.189379300220899e-13,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "power_W",
+          "passed": true,
+          "max_abs_error": 1.869238097640391e-10,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "energy_J",
+          "passed": true,
+          "max_abs_error": 1.9774112902659624e-12,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanGlobalProgress",
+          "passed": true,
+          "max_abs_error": 2.710505431213761e-20,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maximumGlobalProgress",
+          "passed": true,
+          "max_abs_error": 1.4907779871675686e-18,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "remainingReactiveMassFraction",
+          "passed": true,
+          "max_abs_error": 2.220446049250313e-16,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "onsetAreaFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "temperatureQualifiedAreaFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maximumChannel1Rate_per_s",
+          "passed": true,
+          "max_abs_error": 1.214306433183765e-16,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "maximumChannel2Rate_per_s",
+          "passed": true,
+          "max_abs_error": 1.214306433183765e-16,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "currentCongestion",
+          "passed": true,
+          "max_abs_error": 3.221201083647429e-12,
+          "rtol": 0.0005,
+          "atol": 0.0002
+        },
+        {
+          "group": "histories",
+          "field": "speciesLimiterFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "temperatureCapFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "chemicalRateCapFraction",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "equation32ElectricalHeatRate_W",
+          "passed": true,
+          "max_abs_error": 6.077360836798107e-13,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "equation32ElectricalHeatEnergy_J",
+          "passed": true,
+          "max_abs_error": 9.360567876370851e-15,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanJouleHeat_W_per_m3",
+          "passed": true,
+          "max_abs_error": 1.55717134475708e-06,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanElectrochemicalHeat_W_per_m3",
+          "passed": true,
+          "max_abs_error": 4.670969246944878e-07,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "histories",
+          "field": "meanChemicalHeat_W_per_m3",
+          "passed": true,
+          "max_abs_error": 3.725290298461914e-09,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "times_s",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qJ_W_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0003204401582479477,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qEchem_W_per_m3",
+          "passed": true,
+          "max_abs_error": 0.000326302062603645,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "temperatureHistory_K",
+          "passed": true,
+          "max_abs_error": 1.4210854715202004e-12,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "globalProgressHistory",
+          "passed": true,
+          "max_abs_error": 1.4907779871675686e-18,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "temperatureAtOnset_K",
+          "passed": true,
+          "max_abs_error": 2.2737367544323206e-13,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "globalProgressAtOnset",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "alphaChannel1AtOnset",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "alphaChannel2AtOnset",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qJAtOnset_W_per_m3",
+          "passed": true,
+          "max_abs_error": 0.0003204401582479477,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "qEchemAtOnset_W_per_m3",
+          "passed": true,
+          "max_abs_error": 0.00030878347024554387,
+          "rtol": 0.0005,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "propellantMask",
+          "passed": true
+        },
+        {
+          "group": "handoffFields",
+          "field": "ignitionDelay_s",
+          "passed": true,
+          "max_abs_error": 0.0,
+          "rtol": 2e-06,
+          "atol": 1e-05
+        },
+        {
+          "group": "handoffFields",
+          "field": "onsetSucceeded",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "ignitionDelay_s",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "remainingReactiveMassFractionAt2s",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "peakCurrentCongestion",
+          "passed": true
+        },
+        {
+          "group": "metrics",
+          "field": "inputElectricalEnergyAt2s_J",
+          "passed": true
+        }
+      ]
+    }
+  ]
+}

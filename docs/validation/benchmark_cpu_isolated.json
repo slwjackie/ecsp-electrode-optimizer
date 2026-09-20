@@ -1,0 +1,105 @@
+{
+  "schema": "ecsp.reactive-arithmetic-benchmark/v1",
+  "scope": "synthetic kernel-only excluding I/O scheduler and NP/BV",
+  "device": "cpu",
+  "cuda_graph": false,
+  "cpu_count": 5,
+  "python": "3.13.5",
+  "numpy": "2.3.5",
+  "torch": "2.10.0+cpu",
+  "torch_cuda": null,
+  "gpu_name": null,
+  "A100_hardware_tested": false,
+  "material_coefficients_calibrated": false,
+  "full_pipeline_speedup_measured": false,
+  "rows": [
+    {
+      "grid": 32,
+      "batch_size": 1,
+      "steps": 5,
+      "dynamic_mechanics": false,
+      "numpy_serial_cases_median_s": 0.019139347999953316,
+      "tensor_batch_median_s": 0.028933342000073026,
+      "kernel_only_numpy_serial_over_tensor_speed_ratio": 0.6614980046171303,
+      "max_absolute_state_difference": 0.0,
+      "max_scaled_state_difference": 0.0,
+      "peak_allocated_GPU_bytes": null,
+      "numpy_repeat_s": [
+        0.018466386000000057,
+        0.019139347999953316,
+        0.020944459000020288
+      ],
+      "tensor_repeat_s": [
+        0.032303230000024996,
+        0.028933342000073026,
+        0.027239151000003403
+      ]
+    },
+    {
+      "grid": 32,
+      "batch_size": 8,
+      "steps": 5,
+      "dynamic_mechanics": false,
+      "numpy_serial_cases_median_s": 0.1498874789999718,
+      "tensor_batch_median_s": 0.21070613200004118,
+      "kernel_only_numpy_serial_over_tensor_speed_ratio": 0.7113579352305822,
+      "max_absolute_state_difference": 0.0,
+      "max_scaled_state_difference": 0.0,
+      "peak_allocated_GPU_bytes": null,
+      "numpy_repeat_s": [
+        0.1498874789999718,
+        0.15482879799992588,
+        0.14888575200006926
+      ],
+      "tensor_repeat_s": [
+        0.16832285400005276,
+        0.42131393999989086,
+        0.21070613200004118
+      ]
+    },
+    {
+      "grid": 193,
+      "batch_size": 1,
+      "steps": 5,
+      "dynamic_mechanics": false,
+      "numpy_serial_cases_median_s": 0.6677662899999177,
+      "tensor_batch_median_s": 0.6702707580000151,
+      "kernel_only_numpy_serial_over_tensor_speed_ratio": 0.9962634980413433,
+      "max_absolute_state_difference": 0.0,
+      "max_scaled_state_difference": 0.0,
+      "peak_allocated_GPU_bytes": null,
+      "numpy_repeat_s": [
+        1.3343771629999992,
+        0.49404783899990434,
+        0.6677662899999177
+      ],
+      "tensor_repeat_s": [
+        1.3270762170000125,
+        0.602934557000026,
+        0.6702707580000151
+      ]
+    },
+    {
+      "grid": 193,
+      "batch_size": 8,
+      "steps": 5,
+      "dynamic_mechanics": false,
+      "numpy_serial_cases_median_s": 4.1372163989999535,
+      "tensor_batch_median_s": 6.835986826999942,
+      "kernel_only_numpy_serial_over_tensor_speed_ratio": 0.6052112889772232,
+      "max_absolute_state_difference": 0.0,
+      "max_scaled_state_difference": 0.0,
+      "peak_allocated_GPU_bytes": null,
+      "numpy_repeat_s": [
+        3.7556088259998432,
+        5.606376875999786,
+        4.1372163989999535
+      ],
+      "tensor_repeat_s": [
+        6.155383467000092,
+        6.835986826999942,
+        8.108036056999936
+      ]
+    }
+  ]
+}

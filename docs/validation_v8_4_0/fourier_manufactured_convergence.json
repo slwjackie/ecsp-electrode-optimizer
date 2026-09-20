@@ -1,0 +1,23 @@
+{
+  "purpose": "manufactured Fourier solution; no real ECSP calibration",
+  "time_s": 0.001,
+  "rows": [
+    {
+      "N": 8,
+      "L2_temperature_error_K": 0.0019831666168318943,
+      "energy_relative_residual": 3.4096050172707806e-15
+    },
+    {
+      "N": 16,
+      "L2_temperature_error_K": 0.0004976528788094931,
+      "energy_relative_residual": 2.0458899326199757e-15,
+      "observed_order": 1.9945941971493333
+    },
+    {
+      "N": 32,
+      "L2_temperature_error_K": 0.00012452982315494483,
+      "energy_relative_residual": 4.2281129309058816e-15,
+      "observed_order": 1.9986485002099514
+    }
+  ]
+}

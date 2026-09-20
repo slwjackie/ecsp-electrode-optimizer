@@ -1,0 +1,39 @@
+{
+  "release": "8.4.2-A100CPU8-GeometrySafe-PowerOff",
+  "direct_parent_archive": "ECSP_v8_4_1_A100CPU8.zip",
+  "direct_parent_archive_sha256": "9d6faba40f66252e5930f9030096e2ecde51d942cb919c7a8dc3940345a09e59",
+  "test_counts": {
+    "full_suite": {
+      "tests": 575,
+      "passed": 570,
+      "skipped": 5,
+      "failures": 0,
+      "errors": 0
+    },
+    "new_geometry_regressions": {
+      "tests": 16,
+      "passed": 16
+    }
+  },
+  "build_environment": {
+    "cpu_affinity_count": 5,
+    "cuda_hardware_available": false
+  },
+  "geometry_bootstrap": {
+    "seed": 20260904,
+    "topologies": 20,
+    "unique_feasible_per_topology": 50,
+    "design_grid_size": 96,
+    "physics_grid_size": 193,
+    "maximum_width_mm": 5.0,
+    "relative_area_tolerance": 0.01,
+    "actual_BC_adapter_validated_cases": 1000,
+    "report": "docs/validation_v8_4_2/geometry_bootstrap_report.json"
+  },
+  "physical_coefficients_changed": false,
+  "physics_numerical_engines_changed": false,
+  "experimental_material_calibration": false,
+  "full_A100_production_executed": false,
+  "authoritative_manifest": "PACKAGE_SHA256_MANIFEST_V8_4_2.txt",
+  "original_legacy_audit_files_retained_as_history": true
+}

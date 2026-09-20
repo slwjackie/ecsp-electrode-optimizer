@@ -1,0 +1,1239 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Iterable
+import copy
+import hashlib
+import json
+import math
+import random
+
+import numpy as np
+
+from .geometry_families import (
+    CENTERED_FAMILIES, FAMILY_COMPONENT_PAIRS, TOPOLOGY_FAMILIES,
+    build_family_component,
+)
+
+try:
+    from scipy import ndimage
+except Exception as exc:  # pragma: no cover
+    raise RuntimeError("scipy is required for ECSP geometry generation") from exc
+
+try:
+    from PIL import Image, ImageDraw
+except Exception as exc:  # pragma: no cover
+    raise RuntimeError("Pillow is required for ECSP geometry rasterisation") from exc
+
+
+HIDDEN_BUS_ASSUMPTION = (
+    "Every disconnected same-polarity surface-contact component is connected "
+    "to its terminal by an out-of-plane/backside conductor that is outside the "
+    "2-D propellant-surface model."
+)
+
+
+def minimum_clear_gap_pixels(anode: np.ndarray, cathode: np.ndarray) -> float:
+    """Euclidean edge-to-edge gap between equal square raster cells.
+
+    A one-cell 3x3 dilation represents the square support of every cathode
+    pixel.  EDT from that support gives zero for edge/corner contact and, for
+    separated cells, the exact gap between their axis-aligned square bounds in
+    pixel-width units.
+    """
+    anode = np.asarray(anode, dtype=bool)
+    cathode = np.asarray(cathode, dtype=bool)
+    if not np.any(anode) or not np.any(cathode):
+        return 0.0
+    cathode_support = ndimage.binary_dilation(
+        cathode, structure=np.ones((3, 3), dtype=bool)
+    )
+    distance = ndimage.distance_transform_edt(~cathode_support)
+    return float(np.min(distance[anode]))
+
+
+@dataclass(frozen=True)
+class GeometryLimits:
+    """Geometry/manufacturing limits for surface-contact electrode patterns.
+
+    The full ``domain_mm × domain_mm`` square remains propellant.  The anode and
+    cathode masks label only where electrodes touch the top surface; they do not
+    remove propellant cells or mass from the condensed-phase model.
+    """
+
+    domain_mm: float = 20.0
+    grid_size: int = 96
+    margin_mm: float = 0.75
+    minimum_gap_mm: float = 0.50
+    minimum_width_mm: float = 0.30
+    maximum_width_mm: float = 1.20
+    target_area_fraction_per_polarity: float = 0.175
+    area_tolerance_fraction: float = 0.035
+    maximum_components_per_polarity: int = 3
+    maximum_total_components: int = 4
+    disconnected_component_powering: str = "implicit_3d_hidden_bus"
+    surface_contact_model: str = "overlay_on_full_propellant_domain"
+    maximum_branch_depth: int = 2
+    maximum_branches_per_component: int = 2
+    minimum_segment_mm: float = 0.65
+    maximum_segment_mm: float = 5.0
+
+
+@dataclass
+class RasterizedGeometry:
+    anode_mask: np.ndarray
+    cathode_mask: np.ndarray
+    descriptors: dict[str, float]
+    constraint_violation: float
+    violation_details: dict[str, float]
+    fitted_genome: dict[str, Any] | None = None
+
+
+def _canonical_node(node: dict[str, Any]) -> tuple:
+    children = tuple(_canonical_node(child) for child in node.get("children", []))
+    return (
+        str(node.get("type", "LINE")).upper(),
+        str(node.get("role", "")),
+        children,
+    )
+
+def topology_signature(genome: dict[str, Any]) -> str:
+    data = (
+        str(genome.get("family", "legacy")),
+        tuple(_canonical_node(root) for root in genome["anode"]["components"]),
+        tuple(_canonical_node(root) for root in genome["cathode"]["components"]),
+    )
+    return hashlib.sha1(repr(data).encode("utf-8")).hexdigest()[:12]
+
+def _valid_component_pairs(limits: GeometryLimits) -> list[tuple[int, int]]:
+    preferred = [(1, 1), (1, 2), (2, 1), (2, 2), (3, 1), (1, 3)]
+    pairs = [
+        pair
+        for pair in preferred
+        if pair[0] <= limits.maximum_components_per_polarity
+        and pair[1] <= limits.maximum_components_per_polarity
+        and sum(pair) <= limits.maximum_total_components
+    ]
+    for na in range(1, limits.maximum_components_per_polarity + 1):
+        for nc in range(1, limits.maximum_components_per_polarity + 1):
+            pair = (na, nc)
+            if na + nc <= limits.maximum_total_components and pair not in pairs:
+                pairs.append(pair)
+    if not pairs:
+        raise ValueError("component limits must permit at least one anode and one cathode")
+    return pairs
+
+
+def _make_path_template(
+    rng: random.Random,
+    index: int,
+    limits: GeometryLimits,
+    *,
+    component_count_for_polarity: int,
+    family_name: str = "serpentine",
+    polarity: str = "anode",
+    component_index: int = 0,
+) -> dict[str, Any]:
+    """Create one topology skeleton from a genuinely distinct family grammar."""
+    del rng, index, limits
+    return build_family_component(
+        family_name,
+        polarity=polarity,
+        component_index=component_index,
+        component_count_for_polarity=component_count_for_polarity,
+    )
+
+def _attach_parameters(
+    node: dict[str, Any],
+    rng: random.Random,
+    inward_sign: float,
+    limits: GeometryLimits,
+    *,
+    context: dict[str, float] | None = None,
+    is_branch: bool = False,
+) -> None:
+    context = context or {}
+    role = str(node.get("role", "branch" if is_branch else "generic"))
+    typ = str(node.get("type", "LINE")).upper()
+
+    if role == "horizontal":
+        base_length = float(context.get("horizontal_half_length_mm", 3.8))
+    elif role == "connector":
+        base_length = float(context.get("lane_pitch_mm", 1.8))
+    elif role in {"trunk", "branch", "branch_tail", "spiral_tail", "loop_tail", "island_tail"}:
+        base_length = rng.uniform(1.05, min(2.05, limits.maximum_segment_mm))
+    else:
+        base_length = rng.uniform(2.8, min(4.8, limits.maximum_segment_mm))
+
+    # Deliberately broad geometry variation. Hard manufacturability is still
+    # enforced afterwards, so aggressive proposals are allowed to fail closed.
+    length_factor = rng.uniform(0.82, 1.18)
+    node["length_mm"] = float(np.clip(
+        base_length * length_factor,
+        limits.minimum_segment_mm,
+        limits.maximum_segment_mm,
+    ))
+
+    base_turn = float(node.get("base_turn_deg", 0.0))
+    if is_branch:
+        node["turn_deg"] = rng.uniform(-14.0, 14.0)
+    else:
+        node["turn_deg"] = base_turn + rng.uniform(-18.0, 18.0)
+
+    planned_width = float(context.get("planned_width_mm", 0.85))
+    node["width_mm"] = float(np.clip(
+        planned_width * rng.uniform(0.70, 1.30),
+        limits.minimum_width_mm,
+        limits.maximum_width_mm,
+    ))
+
+    if typ == "ARC":
+        node["radius_mm"] = rng.uniform(0.55, 3.4)
+        if bool(node.get("fixed_large_sweep", False)):
+            node["sweep_deg"] = rng.choice([-1.0, 1.0]) * rng.uniform(255.0, 335.0)
+        else:
+            node["sweep_deg"] = rng.choice([-1.0, 1.0]) * rng.uniform(28.0, 155.0)
+    elif typ == "BEZIER":
+        node["control1_offset_mm"] = rng.uniform(-2.4, 2.4)
+        node["control2_offset_mm"] = rng.uniform(-2.4, 2.4)
+    elif typ == "WAVE":
+        # Keep the same end-to-end footprint but increase centreline length.
+        node["amplitude_mm"] = rng.uniform(0.30, 1.20)
+        node["cycles"] = rng.uniform(0.60, 2.00)
+        node["wave_phase_deg"] = rng.uniform(0.0, 360.0)
+    elif typ == "SPIRAL":
+        hint = float(node.get("spiral_direction_hint", rng.choice([-1.0, 1.0])))
+        node["spiral_direction"] = 1.0 if hint >= 0 else -1.0
+        node["start_radius_mm"] = rng.uniform(0.25, 0.85)
+        node["end_radius_mm"] = rng.uniform(1.7, 3.6)
+        node["turns"] = rng.uniform(0.70, 1.85)
+
+    for child_index, child in enumerate(node.get("children", [])):
+        child_is_branch = child_index > 0
+        child["branch_turn_deg"] = (
+            float(child.get("base_turn_deg", 0.0)) if child_is_branch else 0.0
+        )
+        _attach_parameters(
+            child,
+            rng,
+            inward_sign,
+            limits,
+            context=context,
+            is_branch=child_is_branch,
+        )
+
+def _assign_component_poses(
+    genome: dict[str, Any], rng: random.Random, limits: GeometryLimits
+) -> None:
+    # Keep manufacturable polarity reservations, but no longer force all
+    # components to begin as horizontal serpentine strokes.
+    raster_cell = limits.domain_mm / limits.grid_size
+    safety = 1.5 * raster_cell
+    separation = max(limits.minimum_gap_mm, raster_cell) + 2.0 * safety
+    middle = 0.5 * limits.domain_mm
+    xslots = {
+        "anode": (limits.margin_mm, middle - 0.5 * separation),
+        "cathode": (middle + 0.5 * separation, limits.domain_mm - limits.margin_mm),
+    }
+    family = str(genome.get("family", "serpentine"))
+    for polarity in ("anode", "cathode"):
+        components = genome[polarity]["components"]
+        count = len(components)
+        usable_height = (
+            limits.domain_mm - 2.0 * limits.margin_mm - (count - 1) * separation
+        )
+        if usable_height <= 0.0:
+            raise ValueError("No space for separated electrode component slots")
+        band_height = usable_height / count
+        xmin, xmax = xslots[polarity]
+        for index, root in enumerate(components):
+            ymin = limits.margin_mm + index * (band_height + separation)
+            ymax = ymin + band_height
+            target = limits.target_area_fraction_per_polarity * limits.domain_mm**2 / count
+            planned = limits.minimum_width_mm
+            span = max(limits.minimum_segment_mm * 2.0, xmax - xmin - 2.0 * safety)
+            height = max(limits.minimum_segment_mm, band_height - 2.0 * safety)
+            for _ in range(6):
+                estimated_length = max(12.0, 3.8 * span + 2.2 * height)
+                planned = float(np.clip(
+                    target / estimated_length,
+                    limits.minimum_width_mm,
+                    limits.maximum_width_mm,
+                ))
+            span = max(limits.minimum_segment_mm * 2.0, span - planned)
+            height = max(limits.minimum_segment_mm, height - planned)
+            span *= rng.uniform(0.72, 0.98)
+            height *= rng.uniform(0.72, 0.98)
+            cx, cy = 0.5 * (xmin + xmax), 0.5 * (ymin + ymax)
+            root["horizontal_half_length_mm"] = 0.5 * span
+            root["lane_pitch_mm"] = max(limits.minimum_segment_mm, height / 5.0)
+            root["planned_width_mm"] = planned
+            root["central_clearance_mm"] = separation
+            root["placement_box_mm"] = [xmin, ymin, xmax, ymax]
+            root["component_index"] = index
+
+            if family == "serpentine":
+                direction = 1.0 if polarity == "anode" else -1.0
+                root["start"] = [
+                    cx - direction * 0.40 * span + rng.uniform(-0.02, 0.02) * span,
+                    cy - 0.42 * height + rng.uniform(-0.02, 0.02) * height,
+                ]
+                base = 0.0 if polarity == "anode" else 180.0
+                root["initial_heading_deg"] = base + rng.uniform(-3.0, 3.0)
+            elif family in CENTERED_FAMILIES:
+                root["start"] = [
+                    cx + rng.uniform(-0.10, 0.10) * span,
+                    cy + rng.uniform(-0.10, 0.10) * height,
+                ]
+                base = 0.0 if polarity == "anode" else 180.0
+                heading_span = 28.0 if family in {"tree", "h_tree", "radial_fan", "asymmetric_hybrid"} else 75.0
+                root["initial_heading_deg"] = base + rng.uniform(-heading_span, heading_span)
+            else:
+                direction = 1.0 if polarity == "anode" else -1.0
+                root["start"] = [
+                    cx - direction * 0.34 * span + rng.uniform(-0.12, 0.12) * span,
+                    cy + rng.uniform(-0.28, 0.28) * height,
+                ]
+                base = 0.0 if polarity == "anode" else 180.0
+                root["initial_heading_deg"] = base + rng.uniform(-35.0, 35.0)
+        genome[polarity]["start"] = list(components[0]["start"])
+        genome[polarity]["initial_heading_deg"] = float(components[0]["initial_heading_deg"])
+
+def _place_realized_envelopes(genome: dict[str, Any], limits: GeometryLimits) -> None:
+    """Place the realised branches too, not just the nominal serpentine spine.
+
+    Uniform length/radius dilation preserves LINE/ARC primitives. Width is not
+    enlarged. If a tree cannot fit without violating its minimum segment length,
+    it remains an invalid candidate and the bounded bootstrap resamples it.
+    """
+    components = genome_to_component_polylines(genome)
+    guard = 1.05 * limits.domain_mm / limits.grid_size
+    for polarity in ("anode", "cathode"):
+        for root, comp in zip(genome[polarity]["components"], components[polarity]):
+            box = root.get("placement_box_mm")
+            if box is None:
+                continue
+            xy = np.asarray([p for ps,_ in comp for p in ps])
+            centre = (xy.min(0)+xy.max(0))/2.0
+            extent = xy.max(0)-xy.min(0)
+            width = max(w for _,w in comp)
+            target_centre = np.array([(box[0]+box[2])/2, (box[1]+box[3])/2])
+            allowed = np.array([box[2]-box[0],box[3]-box[1]])-width-2.0*guard
+            factor = min(1.0, float(np.min(allowed / np.maximum(extent,1e-12))))
+            if factor <= 0.0:
+                continue  # hard fit rejection will supply the diagnostic
+            nodes = _nodes_in_component(root)
+            if any(str(n.get("type","LINE")).upper()=="LINE"
+                   and float(n.get("length_mm",0.0))*factor < limits.minimum_segment_mm-1e-12
+                   for n in nodes):
+                continue
+            start = np.asarray(root["start"])
+            root["start"] = (target_centre + factor*(start-centre)).tolist()
+            for node in nodes:
+                for key in ("length_mm", "radius_mm", "amplitude_mm", "start_radius_mm",
+                            "end_radius_mm", "control1_offset_mm", "control2_offset_mm"):
+                    if key in node:
+                        node[key] = float(node[key])*factor
+            root["envelope_length_scale"] = factor
+        genome[polarity]["start"] = list(genome[polarity]["components"][0]["start"])
+
+
+def make_topology_templates(
+    count: int, seed: int, limits: GeometryLimits
+) -> list[dict[str, Any]]:
+    if count <= 0:
+        raise ValueError("topology template count must be positive")
+    if count > len(TOPOLOGY_FAMILIES):
+        raise ValueError(
+            f"Requested {count} topology families, but only {len(TOPOLOGY_FAMILIES)} "
+            "structurally distinct grammar families are defined"
+        )
+    valid_pairs = set(_valid_component_pairs(limits))
+    start = 0 if count == len(TOPOLOGY_FAMILIES) else int(seed) % len(TOPOLOGY_FAMILIES)
+    families = [TOPOLOGY_FAMILIES[(start + i) % len(TOPOLOGY_FAMILIES)] for i in range(count)]
+    templates: list[dict[str, Any]] = []
+    signatures: set[str] = set()
+    for topology_index, family in enumerate(families):
+        pair = FAMILY_COMPONENT_PAIRS.get(family, (1, 1))
+        if pair not in valid_pairs:
+            pair = _valid_component_pairs(limits)[topology_index % len(_valid_component_pairs(limits))]
+        na, nc = pair
+        genome = {
+            "anode": {
+                "components": [
+                    _make_path_template(
+                        random.Random(seed + 1009 * topology_index + 17 * component_index),
+                        topology_index,
+                        limits,
+                        component_count_for_polarity=na,
+                        family_name=family,
+                        polarity="anode",
+                        component_index=component_index,
+                    )
+                    for component_index in range(na)
+                ]
+            },
+            "cathode": {
+                "components": [
+                    _make_path_template(
+                        random.Random(seed + 2003 * topology_index + 31 * component_index),
+                        topology_index,
+                        limits,
+                        component_count_for_polarity=nc,
+                        family_name=family,
+                        polarity="cathode",
+                        component_index=component_index,
+                    )
+                    for component_index in range(nc)
+                ]
+            },
+            "family": family,
+            "topology_index": topology_index,
+            "component_count_pair": [na, nc],
+            "hidden_bus_assumption": HIDDEN_BUS_ASSUMPTION,
+            "electrode_mask_semantics": "surface_contact_overlay",
+        }
+        signature = topology_signature(genome)
+        if signature in signatures:
+            raise RuntimeError(f"duplicate structural topology signature for family {family}")
+        genome["topology_id"] = f"T{topology_index:02d}_{family}_{na}A{nc}C_{signature[:6]}"
+        templates.append(genome)
+        signatures.add(signature)
+    return templates
+
+def instantiate_variant(
+    template: dict[str, Any], variant_index: int, seed: int, limits: GeometryLimits
+) -> dict[str, Any]:
+    rng = random.Random(seed + 100003 * int(template["topology_index"]) + variant_index)
+    genome = copy.deepcopy(template)
+    genome["variant_index"] = variant_index
+    _assign_component_poses(genome, rng, limits)
+    for root in genome["anode"]["components"]:
+        _attach_parameters(root, rng, +1.0, limits, context=root)
+    for root in genome["cathode"]["components"]:
+        _attach_parameters(root, rng, -1.0, limits, context=root)
+    _place_realized_envelopes(genome, limits)
+    genome["geometry_id"] = f"g0_{genome['topology_id']}_v{variant_index:03d}"
+    return genome
+
+def _walk_tree(
+    node: dict[str, Any],
+    start: tuple[float, float],
+    heading_deg: float,
+    polylines: list[tuple[list[tuple[float, float]], float]],
+) -> None:
+    heading = (
+        heading_deg
+        + float(node.get("branch_turn_deg", 0.0))
+        + float(node.get("turn_deg", 0.0))
+    )
+    width = float(node.get("width_mm", 0.6))
+    x0, y0 = start
+    typ = str(node.get("type", "LINE")).upper()
+
+    if typ == "ARC":
+        radius = max(0.1, float(node.get("radius_mm", 1.5)))
+        sweep = float(node.get("sweep_deg", 45.0))
+        sign = 1.0 if sweep >= 0.0 else -1.0
+        theta0 = math.radians(heading - sign * 90.0)
+        cx = x0 - radius * math.cos(theta0)
+        cy = y0 - radius * math.sin(theta0)
+        count = max(8, int(abs(sweep) / 4.0) + 1)
+        points = [
+            (cx + radius * math.cos(theta0 + step),
+             cy + radius * math.sin(theta0 + step))
+            for step in np.linspace(0.0, math.radians(sweep), count)
+        ]
+        end = points[-1]
+        end_heading = heading + sweep
+
+    elif typ == "BEZIER":
+        length = float(node.get("length_mm", 2.0))
+        theta = math.radians(heading)
+        tangent = np.array([math.cos(theta), math.sin(theta)], dtype=float)
+        normal = np.array([-math.sin(theta), math.cos(theta)], dtype=float)
+        p0 = np.array([x0, y0], dtype=float)
+        p3 = p0 + length * tangent
+        p1 = p0 + 0.33 * length * tangent + float(node.get("control1_offset_mm", 0.0)) * normal
+        p2 = p0 + 0.67 * length * tangent + float(node.get("control2_offset_mm", 0.0)) * normal
+        points = []
+        for t in np.linspace(0.0, 1.0, 20):
+            p = ((1-t)**3*p0 + 3*(1-t)**2*t*p1 + 3*(1-t)*t*t*p2 + t**3*p3)
+            points.append((float(p[0]), float(p[1])))
+        end = points[-1]
+        derivative = 3.0 * (p3 - p2)
+        end_heading = math.degrees(math.atan2(derivative[1], derivative[0]))
+
+    elif typ == "WAVE":
+        length = float(node.get("length_mm", 3.0))
+        amp = float(node.get("amplitude_mm", 0.8))
+        cycles = float(node.get("cycles", 1.5))
+        phase = math.radians(float(node.get("wave_phase_deg", 0.0)))
+        theta = math.radians(heading)
+        tangent = np.array([math.cos(theta), math.sin(theta)], dtype=float)
+        normal = np.array([-math.sin(theta), math.cos(theta)], dtype=float)
+        p0 = np.array([x0, y0], dtype=float)
+
+        # Endpoint-anchored sinusoid:
+        # offset is exactly zero at t=0 and t=1, so chained WAVE
+        # primitives cannot disconnect merely because of random phase.
+        s0 = math.sin(phase)
+        s1 = math.sin(2.0*math.pi*cycles + phase)
+
+        points = []
+        for t in np.linspace(0.0, 1.0, 28):
+            raw = math.sin(2.0*math.pi*cycles*t + phase)
+            baseline = (1.0-t)*s0 + t*s1
+            offset = amp*(raw-baseline)
+            q = p0 + length*t*tangent + offset*normal
+            points.append((float(q[0]), float(q[1])))
+
+        end = tuple((p0 + length*tangent).tolist())
+        points[-1] = end
+        end_heading = heading
+
+    elif typ == "SPIRAL":
+        r0 = max(0.05, float(node.get("start_radius_mm", 0.35)))
+        r1 = max(r0 + 0.05, float(node.get("end_radius_mm", 2.5)))
+        turns = max(0.25, float(node.get("turns", 1.0)))
+        direction = 1.0 if float(node.get("spiral_direction", 1.0)) >= 0 else -1.0
+        theta0 = math.radians(heading)
+        centre = np.array([x0, y0], dtype=float) - r0*np.array([math.cos(theta0), math.sin(theta0)])
+        theta1 = theta0 + direction*2.0*math.pi*turns
+        points = []
+        for t in np.linspace(0.0, 1.0, max(28, int(42*turns))):
+            theta = theta0 + (theta1-theta0)*t
+            radius = r0 + (r1-r0)*t
+            p = centre + radius*np.array([math.cos(theta), math.sin(theta)])
+            points.append((float(p[0]), float(p[1])))
+        end = points[-1]
+        end_heading = math.degrees(theta1 + direction*math.pi/2.0)
+
+    else:
+        length = float(node.get("length_mm", 1.5))
+        angle = math.radians(heading)
+        end = (x0 + length * math.cos(angle), y0 + length * math.sin(angle))
+        points = [(x0, y0), end]
+        end_heading = heading
+
+    polylines.append((points, width))
+    for child in node.get("children", []):
+        _walk_tree(child, end, end_heading, polylines)
+
+def genome_to_component_polylines(
+    genome: dict[str, Any],
+) -> dict[str, list[list[tuple[list[tuple[float, float]], float]]]]:
+    result: dict[str, list[list[tuple[list[tuple[float, float]], float]]]] = {
+        "anode": [],
+        "cathode": [],
+    }
+    for polarity in ("anode", "cathode"):
+        legacy_start = tuple(float(value) for value in genome[polarity].get("start", (0.0, 0.0)))
+        legacy_heading = float(genome[polarity].get("initial_heading_deg", 0.0))
+        for root in genome[polarity]["components"]:
+            start = tuple(float(value) for value in root.get("start", legacy_start))
+            heading = float(root.get("initial_heading_deg", legacy_heading))
+            paths: list[tuple[list[tuple[float, float]], float]] = []
+            _walk_tree(root, start, heading, paths)
+            result[polarity].append(paths)
+    return result
+
+
+def genome_to_polylines(
+    genome: dict[str, Any],
+) -> dict[str, list[tuple[list[tuple[float, float]], float]]]:
+    components = genome_to_component_polylines(genome)
+    return {
+        polarity: [path for component in components[polarity] for path in component]
+        for polarity in ("anode", "cathode")
+    }
+
+
+def _draw_polylines(
+    polylines: Iterable[tuple[list[tuple[float, float]], float]],
+    limits: GeometryLimits,
+    width_scale: float = 1.0,
+) -> np.ndarray:
+    n = limits.grid_size
+    image = Image.new("1", (n, n), 0)
+    draw = ImageDraw.Draw(image)
+    pixels_per_mm = n / limits.domain_mm
+    for points_mm, width_mm in polylines:
+        points = [
+            (int(round(min(n - 1.0, max(0.0, min(limits.domain_mm, max(0.0, x)) * pixels_per_mm - 0.5)))),
+             int(round(min(n - 1.0, max(0.0, (limits.domain_mm - min(limits.domain_mm, max(0.0, y))) * pixels_per_mm - 0.5)))))
+            for x, y in points_mm
+        ]
+        effective_width_mm = float(width_mm) * float(width_scale)
+        width_pixels = max(1, int(round(effective_width_mm * pixels_per_mm)))
+        if len(points) >= 2:
+            draw.line(points, fill=1, width=width_pixels, joint="curve")
+            radius = max(0, width_pixels // 2)
+            for x, y in (points[0], points[-1]):
+                draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=1)
+    # Pillow mode ``1`` exposes set pixels as raw byte 0xff even when NumPy
+    # labels the array ``bool``.  That is truthy in Python, but it is not a
+    # valid C++ ``bool`` object representation for zero-copy Torch tensors.
+    # Convert through uint8 so the owned result contains canonical 0/1 bytes.
+    return np.asarray(image, dtype=np.uint8).astype(bool)
+
+
+def _component_count(mask: np.ndarray) -> int:
+    _, count = ndimage.label(mask, structure=np.ones((3, 3), dtype=int))
+    return int(count)
+
+
+def _fit_area_components(
+    component_polylines: list[list[tuple[list[tuple[float, float]], float]]],
+    limits: GeometryLimits,
+    *,
+    placement_boxes: list[list[float] | None] | None = None,
+    obstacles: list[list[tuple[list[tuple[float, float]], float]]] | None = None,
+    return_plan: bool = False,
+):
+    """Length-first, clearance-limited fitting, never a component-count penalty.
+
+    A failed fit returns an empty mask (and therefore a hard geometry rejection),
+    not the least-bad merged electrode. See geometry_fit.py for actual radii /
+    pairwise centreline clearance, bounds and exact post-raster checks.
+    """
+    from .geometry_fit import fit_area_components
+    result = fit_area_components(component_polylines, limits,
+                                 placement_boxes=placement_boxes, obstacles=obstacles)
+    mask, plan = result
+    widths = [w * plan["width_scale"] for c in component_polylines for _, w in c]
+    basic = (mask, float(plan["width_scale"]),
+             float(min(widths, default=0.0)), float(max(widths, default=0.0)))
+    return (*basic, plan) if return_plan else basic
+
+
+def _minimum_gap_mm(anode: np.ndarray, cathode: np.ndarray, limits: GeometryLimits) -> float:
+    return (
+        minimum_clear_gap_pixels(anode, cathode)
+        * limits.domain_mm
+        / limits.grid_size
+    )
+
+
+def _perimeter(mask: np.ndarray) -> float:
+    return float(np.count_nonzero(mask & ~ndimage.binary_erosion(mask)))
+
+
+def _orientation_entropy(
+    polylines: list[tuple[list[tuple[float, float]], float]],
+) -> float:
+    angles: list[float] = []
+    weights: list[float] = []
+    for points, _ in polylines:
+        for first, second in zip(points[:-1], points[1:]):
+            dx, dy = second[0] - first[0], second[1] - first[1]
+            length = math.hypot(dx, dy)
+            if length > 1e-12:
+                angles.append((math.atan2(dy, dx) % math.pi) / math.pi)
+                weights.append(length)
+    if not angles:
+        return 0.0
+    histogram, _ = np.histogram(angles, bins=8, range=(0.0, 1.0), weights=weights)
+    probability = histogram / max(float(histogram.sum()), 1e-30)
+    probability = probability[probability > 0]
+    return float(-np.sum(probability * np.log(probability)) / math.log(8.0))
+
+
+def _count_nodes(
+    node: dict[str, Any], depth: int = 0
+) -> tuple[int, int, int, int, list[float], list[float]]:
+    line = int(str(node.get("type", "LINE")).upper() == "LINE")
+    arc = int(str(node.get("type", "LINE")).upper() == "ARC")
+    children = node.get("children", [])
+    branches = max(0, len(children) - 1)
+    maximum_depth = depth
+    lengths = [float(node.get("length_mm", 0.0))]
+    radii = [float(node.get("radius_mm", 0.0))] if arc else []
+    for child in children:
+        child_line, child_arc, child_branch, child_depth, child_lengths, child_radii = _count_nodes(
+            child, depth + 1
+        )
+        line += child_line
+        arc += child_arc
+        branches += child_branch
+        maximum_depth = max(maximum_depth, child_depth)
+        lengths.extend(child_lengths)
+        radii.extend(child_radii)
+    return line, arc, branches, maximum_depth, lengths, radii
+
+
+def _branch_stats(node: dict[str, Any], branch_depth: int = 0) -> tuple[int, int]:
+    events = 0
+    maximum_depth = branch_depth
+    for index, child in enumerate(node.get("children", [])):
+        branch = index > 0
+        next_depth = branch_depth + int(branch)
+        events += int(branch)
+        child_events, child_maximum = _branch_stats(child, next_depth)
+        events += child_events
+        maximum_depth = max(maximum_depth, child_maximum)
+    return events, maximum_depth
+
+
+def rasterize_and_validate(
+    genome: dict[str, Any], limits: GeometryLimits
+) -> RasterizedGeometry:
+    from .geometry_fit import (FIT_SCHEMA, apply_fit_plan, geometry_digest,
+                               limits_digest)
+    fitted = copy.deepcopy(genome)
+    cached = fitted.get("_area_fit", {})
+    reuse = (cached.get("schema") == FIT_SCHEMA
+             and cached.get("geometry_digest") == geometry_digest(fitted)
+             and cached.get("limits_digest") == limits_digest(limits))
+    plans = copy.deepcopy(cached.get("plans", {})) if reuse else {}
+    masks = {}
+    if not reuse:
+        components = genome_to_component_polylines(fitted)
+        for polarity in ("anode", "cathode"):
+            other = "cathode" if polarity == "anode" else "anode"
+            # Reserve the other polarity at minimum width initially; after the
+            # first fit, use its actual final strokes as immutable obstacles.
+            # Symmetric provisional opposite-polarity obstacle.
+            # Neither anode nor cathode gets first-fit priority.
+            other_paths = [
+                [(ps, limits.minimum_width_mm) for ps, _ in c]
+                for c in components[other]
+            ]
+            _, _, _, _, plan = _fit_area_components(
+                components[polarity], limits,
+                placement_boxes=[r.get("placement_box_mm")
+                                 for r in fitted[polarity]["components"]],
+                obstacles=other_paths, return_plan=True,
+            )
+            plans[polarity] = plan
+            apply_fit_plan(fitted, polarity, plan)
+    components = genome_to_component_polylines(fitted)
+    paths = {p: [path for comp in components[p] for path in comp]
+             for p in ("anode", "cathode")}
+    for polarity in ("anode", "cathode"):
+        if plans[polarity].get("status") in ("no_paths", "no_topology_preserving_fit"):
+            masks[polarity] = np.zeros((limits.grid_size, limits.grid_size), dtype=bool)
+        else:
+            masks[polarity] = _draw_polylines(paths[polarity], limits)
+    anode, cathode = masks["anode"], masks["cathode"]
+    aw = [w for _,w in paths["anode"]]
+    cw = [w for _,w in paths["cathode"]]
+    anode_min_width, anode_max_width = min(aw, default=0.0), max(aw, default=0.0)
+    cathode_min_width, cathode_max_width = min(cw, default=0.0), max(cw, default=0.0)
+    anode_scale, cathode_scale = plans["anode"]["width_scale"], plans["cathode"]["width_scale"]
+
+    overlap = int(np.count_nonzero(anode & cathode))
+    direct_contact = int(
+        np.count_nonzero(
+            ndimage.binary_dilation(anode, structure=np.ones((3, 3), dtype=bool))
+            & cathode
+        )
+    )
+    gap = _minimum_gap_mm(anode, cathode, limits)
+    anode_components = _component_count(anode)
+    cathode_components = _component_count(cathode)
+    intended_anode = len(genome["anode"]["components"])
+    intended_cathode = len(genome["cathode"]["components"])
+    anode_area = float(anode.mean())
+    cathode_area = float(cathode.mean())
+    target = limits.target_area_fraction_per_polarity
+    area_error = (
+        abs(anode_area - target) + abs(cathode_area - target)
+    ) / max(2.0 * target, 1e-12)
+    imbalance = abs(anode_area - cathode_area) / max(anode_area + cathode_area, 1e-12)
+
+    roots = fitted["anode"]["components"] + fitted["cathode"]["components"]
+    branch_stats = [_branch_stats(root) for root in roots]
+    maximum_branches = max((events for events, _ in branch_stats), default=0)
+    maximum_branch_depth = max((depth for _, depth in branch_stats), default=0)
+
+    per_polarity_error = max(abs(anode_area-target), abs(cathode_area-target)) / max(target,1e-12)
+    cell = limits.domain_mm / limits.grid_size
+    yy_used, xx_used = np.nonzero(anode | cathode)
+    raster_margin = (min(int(xx_used.min()), int(yy_used.min()),
+                         limits.grid_size-1-int(xx_used.max()),
+                         limits.grid_size-1-int(yy_used.max())) * cell
+                     if len(xx_used) else 0.0)
+    fit_failed = sum(plans[p].get("status") in ("no_paths", "no_topology_preserving_fit")
+                     for p in ("anode", "cathode"))
+    violation_details = {
+        "topology_preserving_fit_failures": float(fit_failed),
+        "boundary_margin_shortfall_mm": max(0.0, limits.margin_mm-raster_margin),
+        "per_polarity_area_relative_error_excess": max(0.0,per_polarity_error-limits.area_tolerance_fraction),
+        "overlap_pixels": float(overlap),
+        "direct_contact_pixels": float(direct_contact),
+        "minimum_gap_shortfall_mm": max(0.0, limits.minimum_gap_mm - gap),
+        "anode_component_excess": max(0.0, anode_components - limits.maximum_components_per_polarity),
+        "cathode_component_excess": max(0.0, cathode_components - limits.maximum_components_per_polarity),
+        "total_component_excess": max(0.0, anode_components + cathode_components - limits.maximum_total_components),
+        "anode_component_count_mismatch": float(abs(anode_components - intended_anode)),
+        "cathode_component_count_mismatch": float(abs(cathode_components - intended_cathode)),
+        "branch_count_excess": max(0.0, maximum_branches - limits.maximum_branches_per_component),
+        "branch_depth_excess": max(0.0, maximum_branch_depth - limits.maximum_branch_depth),
+        "minimum_width_shortfall_mm": max(0.0, limits.minimum_width_mm - min(anode_min_width, cathode_min_width)),
+        "maximum_width_excess_mm": max(0.0, max(anode_max_width, cathode_max_width) - limits.maximum_width_mm),
+        "area_relative_error_excess": max(0.0, area_error - limits.area_tolerance_fraction),
+        "polarity_area_imbalance_excess": max(0.0, imbalance - limits.area_tolerance_fraction),
+    }
+    violation = (
+        violation_details["topology_preserving_fit_failures"]
+        + violation_details["boundary_margin_shortfall_mm"]
+        + 10.0 * violation_details["per_polarity_area_relative_error_excess"]
+        + 10.0 * overlap
+        + 5.0 * direct_contact
+        + violation_details["minimum_gap_shortfall_mm"] / max(limits.minimum_gap_mm, 1e-12)
+        + violation_details["anode_component_excess"]
+        + violation_details["cathode_component_excess"]
+        + violation_details["total_component_excess"]
+        + violation_details["anode_component_count_mismatch"]
+        + violation_details["cathode_component_count_mismatch"]
+        + violation_details["branch_count_excess"]
+        + violation_details["branch_depth_excess"]
+        + 10.0 * violation_details["minimum_width_shortfall_mm"] / max(limits.minimum_width_mm, 1e-12)
+        + 10.0 * violation_details["maximum_width_excess_mm"] / max(limits.maximum_width_mm, 1e-12)
+        + 10.0 * violation_details["area_relative_error_excess"]
+        + 10.0 * violation_details["polarity_area_imbalance_excess"]
+    )
+
+    counts = [_count_nodes(root) for root in roots]
+    lengths = [value for item in counts for value in item[4] if value > 0]
+    radii = [value for item in counts for value in item[5] if value > 0]
+    union = anode | cathode
+    yy, xx = np.nonzero(union)
+    spatial_dispersion = (
+        float((np.std(xx) + np.std(yy)) / (2.0 * limits.grid_size))
+        if len(xx)
+        else 0.0
+    )
+    descriptors = {
+        "n_line": float(sum(item[0] for item in counts)),
+        "n_arc": float(sum(item[1] for item in counts)),
+        "n_branch": float(sum(item[2] for item in counts)),
+        "branch_depth": float(maximum_branch_depth),
+        "segment_tree_depth": float(max((item[3] for item in counts), default=0)),
+        "n_components": float(anode_components + cathode_components),
+        "anode_components": float(anode_components),
+        "cathode_components": float(cathode_components),
+        "intended_anode_components": float(intended_anode),
+        "intended_cathode_components": float(intended_cathode),
+        "length_mean": float(np.mean(lengths)) if lengths else 0.0,
+        "length_std": float(np.std(lengths)) if lengths else 0.0,
+        "arc_radius_mean": float(np.mean(radii)) if radii else 0.0,
+        "orientation_entropy": 0.5 * (
+            _orientation_entropy(paths["anode"]) + _orientation_entropy(paths["cathode"])
+        ),
+        "minimum_gap_mm": float(gap),
+        "perimeter_px": float(_perimeter(anode) + _perimeter(cathode)),
+        "spatial_dispersion": spatial_dispersion,
+        "anode_area_fraction": anode_area,
+        "cathode_area_fraction": cathode_area,
+        "total_contact_area_fraction": anode_area + cathode_area,
+        "area_imbalance_fraction": imbalance,
+        "maximum_per_polarity_area_relative_error": per_polarity_error,
+        "boundary_margin_mm": raster_margin,
+        "anode_length_calibration_scale": plans["anode"]["length_scale"],
+        "cathode_length_calibration_scale": plans["cathode"]["length_scale"],
+        "anode_width_calibration_scale": anode_scale,
+        "cathode_width_calibration_scale": cathode_scale,
+        "minimum_effective_width_mm": min(anode_min_width, cathode_min_width),
+        "maximum_effective_width_mm": max(anode_max_width, cathode_max_width),
+        "propellant_domain_area_fraction": 1.0,
+    }
+    fitted["_area_fit"] = {
+        "schema": FIT_SCHEMA, "geometry_digest": geometry_digest(fitted),
+        "limits_digest": limits_digest(limits), "plans": plans,
+        "fitted_geometry_is_authoritative": True,
+    }
+    return RasterizedGeometry(
+        anode,
+        cathode,
+        descriptors,
+        float(violation),
+        violation_details,
+        fitted,
+    )
+
+
+def _nodes_in_component(root: dict[str, Any]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+
+    def visit(node: dict[str, Any]) -> None:
+        result.append(node)
+        for child in node.get("children", []):
+            visit(child)
+
+    visit(root)
+    return result
+
+
+def _all_nodes(genome: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        node
+        for polarity in ("anode", "cathode")
+        for root in genome[polarity]["components"]
+        for node in _nodes_in_component(root)
+    ]
+
+
+def _component_counts(genome: dict[str, Any]) -> tuple[int, int]:
+    return len(genome["anode"]["components"]), len(genome["cathode"]["components"])
+
+
+def _strip_pose(root: dict[str, Any]) -> dict[str, Any]:
+    result = copy.deepcopy(root)
+    for key in ("start", "initial_heading_deg", "component_index"):
+        result.pop(key, None)
+    return result
+
+
+def _main_chain_tail(root: dict[str, Any]) -> dict[str, Any]:
+    node = root
+    while node.get("children"):
+        node = node["children"][0]
+    return node
+
+
+def _normalise_component_metadata(
+    genome: dict[str, Any], limits: GeometryLimits, rng: random.Random | None = None
+) -> None:
+    rng = rng or random.Random(0)
+    for polarity in ("anode", "cathode"):
+        components = genome[polarity]["components"]
+        if not components:
+            components.append(
+                _make_path_template(
+                    rng,
+                    rng.randrange(1_000_000),
+                    limits,
+                    component_count_for_polarity=1,
+                    family_name=str(genome.get("family", "serpentine")),
+                    polarity=polarity,
+                    component_index=0,
+                )
+            )
+            _attach_parameters(
+                components[0], rng, +1.0 if polarity == "anode" else -1.0, limits
+            )
+        base_x = limits.margin_mm if polarity == "anode" else limits.domain_mm - limits.margin_mm
+        base_heading = 0.0 if polarity == "anode" else 180.0
+        for index, root in enumerate(components):
+            start = root.get("start", [base_x, 0.5 * limits.domain_mm])
+            root["start"] = [
+                float(np.clip(float(start[0]), limits.margin_mm, limits.domain_mm - limits.margin_mm)),
+                float(np.clip(float(start[1]), limits.margin_mm, limits.domain_mm - limits.margin_mm)),
+            ]
+            root["initial_heading_deg"] = float(root.get("initial_heading_deg", base_heading))
+            root["component_index"] = index
+        genome[polarity]["start"] = list(components[0]["start"])
+        genome[polarity]["initial_heading_deg"] = float(components[0]["initial_heading_deg"])
+    na, nc = _component_counts(genome)
+    genome["component_count_pair"] = [na, nc]
+    genome["hidden_bus_assumption"] = HIDDEN_BUS_ASSUMPTION
+    genome["electrode_mask_semantics"] = "surface_contact_overlay"
+
+
+def _reposition_components(
+    genome: dict[str, Any], limits: GeometryLimits, rng: random.Random
+) -> None:
+    _assign_component_poses(genome, rng, limits)
+    _place_realized_envelopes(genome, limits)
+    _normalise_component_metadata(genome, limits, rng)
+
+
+def _can_add_component(genome: dict[str, Any], polarity: str, limits: GeometryLimits) -> bool:
+    na, nc = _component_counts(genome)
+    current = na if polarity == "anode" else nc
+    return (
+        current < limits.maximum_components_per_polarity
+        and na + nc < limits.maximum_total_components
+    )
+
+
+def _enforce_component_limits(
+    genome: dict[str, Any], limits: GeometryLimits, rng: random.Random
+) -> None:
+    for polarity in ("anode", "cathode"):
+        components = genome[polarity]["components"]
+        while len(components) > limits.maximum_components_per_polarity:
+            components.pop(rng.randrange(len(components)))
+    while sum(_component_counts(genome)) > limits.maximum_total_components:
+        removable = [
+            polarity
+            for polarity in ("anode", "cathode")
+            if len(genome[polarity]["components"]) > 1
+        ]
+        if not removable:
+            break
+        polarity = rng.choice(removable)
+        components = genome[polarity]["components"]
+        components.pop(rng.randrange(len(components)))
+    _normalise_component_metadata(genome, limits, rng)
+
+
+def _new_component(
+    polarity: str,
+    rng: random.Random,
+    limits: GeometryLimits,
+    count_after_addition: int,
+    family_name: str = "serpentine",
+) -> dict[str, Any]:
+    root = _make_path_template(
+        rng,
+        rng.randrange(1_000_000),
+        limits,
+        component_count_for_polarity=count_after_addition,
+        family_name=family_name,
+        polarity=polarity,
+        component_index=count_after_addition - 1,
+    )
+    _attach_parameters(root, rng, +1.0 if polarity == "anode" else -1.0, limits, context=root)
+    return root
+
+def mutate_genome(
+    parent: dict[str, Any],
+    rng: random.Random,
+    limits: GeometryLimits,
+    mutation_strength: float = 1.0,
+    operation: str | None = None,
+) -> dict[str, Any]:
+    child = copy.deepcopy(parent)
+    operations = [
+        "parameter",
+        "type",
+        "add_segment",
+        "remove_leaf",
+        "add_branch",
+        "remove_branch",
+        "add_component",
+        "remove_component",
+        "split_component",
+        "merge_component",
+    ]
+    weights = [0.24, 0.12, 0.08, 0.05, 0.10, 0.05, 0.12, 0.07, 0.10, 0.07]
+    selected = operation or rng.choices(operations, weights=weights, k=1)[0]
+    if selected not in operations:
+        raise ValueError(f"unknown mutation operation: {selected}")
+    nodes = _all_nodes(child)
+
+    if selected == "parameter" and nodes:
+        for node in rng.sample(nodes, k=min(len(nodes), rng.randint(1, 4))):
+            node["length_mm"] = float(
+                np.clip(
+                    float(node.get("length_mm", 1.5))
+                    * math.exp(rng.gauss(0.0, 0.28 * mutation_strength)),
+                    limits.minimum_segment_mm,
+                    limits.maximum_segment_mm,
+                )
+            )
+            node["width_mm"] = float(
+                np.clip(
+                    float(node.get("width_mm", 0.7))
+                    * math.exp(rng.gauss(0.0, 0.18 * mutation_strength)),
+                    limits.minimum_width_mm,
+                    limits.maximum_width_mm,
+                )
+            )
+            node["turn_deg"] = float(
+                np.clip(
+                    float(node.get("turn_deg", 0.0)) + rng.gauss(0.0, 24.0 * mutation_strength),
+                    -100.0,
+                    100.0,
+                )
+            )
+            if str(node.get("type", "LINE")).upper() == "ARC":
+                node["radius_mm"] = float(
+                    np.clip(
+                        float(node.get("radius_mm", 1.5)) * math.exp(rng.gauss(0.0, 0.10)),
+                        0.5,
+                        4.0,
+                    )
+                )
+                node["sweep_deg"] = float(
+                    np.clip(float(node.get("sweep_deg", 45.0)) + rng.gauss(0.0, 7.0), -110.0, 110.0)
+                )
+    elif selected == "type" and nodes:
+        node = rng.choice(nodes)
+        new_type = rng.choice(["LINE", "ARC", "BEZIER", "WAVE", "SPIRAL"])
+        node["type"] = new_type
+        if new_type == "ARC":
+            node["radius_mm"] = rng.uniform(0.55, 3.4)
+            node["sweep_deg"] = rng.choice([-1.0, 1.0]) * rng.uniform(28.0, 155.0)
+        elif new_type == "BEZIER":
+            node["control1_offset_mm"] = rng.uniform(-2.4, 2.4)
+            node["control2_offset_mm"] = rng.uniform(-2.4, 2.4)
+        elif new_type == "WAVE":
+            node["amplitude_mm"] = rng.uniform(0.35, 1.75)
+            node["cycles"] = rng.uniform(0.75, 3.25)
+            node["wave_phase_deg"] = rng.uniform(0.0, 360.0)
+        elif new_type == "SPIRAL":
+            node["start_radius_mm"] = rng.uniform(0.25, 0.85)
+            node["end_radius_mm"] = rng.uniform(1.7, 3.6)
+            node["turns"] = rng.uniform(0.70, 1.85)
+            node["spiral_direction"] = rng.choice([-1.0, 1.0])
+    elif selected == "add_segment" and nodes:
+        node = rng.choice(nodes)
+        node.setdefault("children", []).insert(
+            0,
+            {
+                "type": rng.choice(["LINE", "ARC", "BEZIER", "WAVE"]),
+                "children": [],
+                "length_mm": rng.uniform(0.9, min(3.0, limits.maximum_segment_mm)),
+                "width_mm": float(node.get("width_mm", 0.7)),
+                "turn_deg": rng.uniform(-35.0, 35.0),
+                "branch_turn_deg": 0.0,
+                "radius_mm": rng.uniform(0.8, 2.5),
+                "sweep_deg": rng.choice([-1.0, 1.0]) * rng.uniform(25.0, 65.0),
+            },
+        )
+    elif selected == "remove_leaf" and nodes:
+        for host in rng.sample(nodes, k=len(nodes)):
+            leaves = [index for index, candidate in enumerate(host.get("children", [])) if not candidate.get("children")]
+            if leaves:
+                host["children"].pop(rng.choice(leaves))
+                break
+    elif selected == "add_branch" and nodes:
+        eligible = []
+        for polarity in ("anode", "cathode"):
+            for root in child[polarity]["components"]:
+                events, _ = _branch_stats(root)
+                if events < limits.maximum_branches_per_component:
+                    eligible.extend(_nodes_in_component(root))
+        if eligible:
+            host = rng.choice(eligible)
+            host.setdefault("children", []).append(
+                {
+                    "type": rng.choice(["LINE", "ARC", "BEZIER", "WAVE"]),
+                    "children": [],
+                    "length_mm": rng.uniform(0.8, min(2.6, limits.maximum_segment_mm)),
+                    "width_mm": float(host.get("width_mm", 0.7)),
+                    "turn_deg": rng.uniform(-20.0, 20.0),
+                    "branch_turn_deg": rng.choice([-1.0, 1.0]) * rng.uniform(30.0, 65.0),
+                    "radius_mm": rng.uniform(0.8, 2.5),
+                    "sweep_deg": rng.choice([-1.0, 1.0]) * rng.uniform(25.0, 65.0),
+                }
+            )
+    elif selected == "remove_branch" and nodes:
+        hosts = [node for node in nodes if len(node.get("children", [])) > 1]
+        if hosts:
+            host = rng.choice(hosts)
+            host["children"].pop(rng.randrange(1, len(host["children"])))
+    elif selected == "add_component":
+        eligible = [
+            polarity for polarity in ("anode", "cathode") if _can_add_component(child, polarity, limits)
+        ]
+        if eligible:
+            polarity = rng.choice(eligible)
+            count = len(child[polarity]["components"]) + 1
+            child[polarity]["components"].append(_new_component(polarity, rng, limits, count, str(child.get("family", "serpentine"))))
+            _reposition_components(child, limits, rng)
+    elif selected == "remove_component":
+        eligible = [
+            polarity for polarity in ("anode", "cathode") if len(child[polarity]["components"]) > 1
+        ]
+        if eligible:
+            polarity = rng.choice(eligible)
+            child[polarity]["components"].pop(rng.randrange(len(child[polarity]["components"])))
+            _reposition_components(child, limits, rng)
+    elif selected == "split_component":
+        eligible = [
+            polarity for polarity in ("anode", "cathode") if _can_add_component(child, polarity, limits)
+        ]
+        if eligible:
+            polarity = rng.choice(eligible)
+            original = rng.choice(child[polarity]["components"])
+            duplicate = copy.deepcopy(original)
+            for node in _nodes_in_component(duplicate):
+                node["length_mm"] = float(
+                    np.clip(0.82 * float(node.get("length_mm", 1.5)), limits.minimum_segment_mm, limits.maximum_segment_mm)
+                )
+                node["turn_deg"] = float(node.get("turn_deg", 0.0)) + rng.gauss(0.0, 5.0)
+            child[polarity]["components"].append(duplicate)
+            _reposition_components(child, limits, rng)
+    elif selected == "merge_component":
+        eligible = [
+            polarity for polarity in ("anode", "cathode") if len(child[polarity]["components"]) >= 2
+        ]
+        if eligible:
+            polarity = rng.choice(eligible)
+            components = child[polarity]["components"]
+            first, second = sorted(rng.sample(range(len(components)), 2))
+            receiver = components[first]
+            donor = _strip_pose(components[second])
+            donor["branch_turn_deg"] = 0.0
+            _main_chain_tail(receiver).setdefault("children", []).insert(0, donor)
+            components.pop(second)
+            _reposition_components(child, limits, rng)
+
+    # Pose perturbation is component-local.  This is what permits separate
+    # islands of one polarity to move independently through the design space.
+    for polarity in ("anode", "cathode"):
+        base_heading = 0.0 if polarity == "anode" else 180.0
+        for root in child[polarity]["components"]:
+            start = root.get("start", [limits.margin_mm, 0.5 * limits.domain_mm])
+            root["start"] = [
+                float(np.clip(float(start[0]) + rng.gauss(0.0, 0.10 * mutation_strength), limits.margin_mm, limits.domain_mm - limits.margin_mm)),
+                float(np.clip(float(start[1]) + rng.gauss(0.0, 0.28 * mutation_strength), limits.margin_mm, limits.domain_mm - limits.margin_mm)),
+            ]
+            root["initial_heading_deg"] = float(root.get("initial_heading_deg", base_heading) + rng.gauss(0.0, 12.0 * mutation_strength))
+
+    _enforce_component_limits(child, limits, rng)
+    child["topology_id"] = f"M_{topology_signature(child)[:8]}"
+    return child
+
+
+def crossover_genomes(
+    first: dict[str, Any],
+    second: dict[str, Any],
+    rng: random.Random,
+    limits: GeometryLimits | None = None,
+) -> dict[str, Any]:
+    """Exchange individual connected components, never an entire polarity."""
+
+    limits = limits or GeometryLimits()
+    child = copy.deepcopy(first)
+    for polarity in rng.sample(["anode", "cathode"], k=rng.choice([1, 2])):
+        donor_components = second[polarity]["components"]
+        if not donor_components:
+            continue
+        donor = copy.deepcopy(rng.choice(donor_components))
+        receiver = child[polarity]["components"]
+        na, nc = _component_counts(child)
+        can_append = (
+            len(receiver) < limits.maximum_components_per_polarity
+            and na + nc < limits.maximum_total_components
+        )
+        if can_append and rng.random() < 0.35:
+            receiver.append(donor)
+        elif receiver:
+            receiver[rng.randrange(len(receiver))] = donor
+    _enforce_component_limits(child, limits, rng)
+    _reposition_components(child, limits, rng)
+    child["topology_id"] = f"X_{topology_signature(child)[:8]}"
+    return child
+
+
+def save_geometry(
+    genome: dict[str, Any], raster: RasterizedGeometry, directory: Path
+) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    geometry_id = str(genome["geometry_id"])
+    effective_genome = copy.deepcopy(raster.fitted_genome or genome)
+    effective_genome["geometry_id"] = geometry_id
+    (directory / f"{geometry_id}.json").write_text(
+        json.dumps(effective_genome, indent=2, allow_nan=False), encoding="utf-8"
+    )
+    np.savez_compressed(
+        directory / f"{geometry_id}.npz",
+        # Legacy aliases retained for existing readers.
+        anode_mask=raster.anode_mask.astype(np.uint8),
+        cathode_mask=raster.cathode_mask.astype(np.uint8),
+        # Explicit v7.9 surface-contact semantics.
+        anode_contact_mask=raster.anode_mask.astype(np.uint8),
+        cathode_contact_mask=raster.cathode_mask.astype(np.uint8),
+        propellant_domain_mask=np.ones_like(raster.anode_mask, dtype=np.uint8),
+    )
+    rgb = np.full((*raster.anode_mask.shape, 3), 255, dtype=np.uint8)
+    rgb[raster.anode_mask] = np.array([210, 45, 45], dtype=np.uint8)
+    rgb[raster.cathode_mask] = np.array([35, 90, 210], dtype=np.uint8)
+    Image.fromarray(rgb).save(directory / f"{geometry_id}.png")
