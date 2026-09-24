@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Generate/audit/evaluate only E058, E114, R038, R050, R091.
+"""Generate/audit the original five geometries; evaluate by paired screening.
 
-This is additive orchestration. It does not modify ECSP preflame/postflame physics,
-solvers, voltage-search code, or the existing generic geometry generator.
+The geometry functions, native solver and postflame implementation are unchanged.
+For the full fixed catalogue or reclassification use run_paired_preflame_screening.py.
 """
 from __future__ import annotations
-import argparse, copy, dataclasses, hashlib, json, sys
+import argparse, json
 from pathlib import Path
 import numpy as np
 import shapely
 from scipy.io import savemat
 
 from ecsp_image_design.five_topologies import fit_reference, gap_guard, render, signature, first_erosion_width, rolling_open
-from ecsp_image_design.objectives import runtime_config, context, normalized_objectives, digest, strict_json
+from ecsp_image_design.objectives import strict_json
 
 IDS=('E058','E114','R038','R050','R091')
 
@@ -55,57 +55,14 @@ def audit(out):
     write_json(out/'audit.json',{'verified_geometry_ids':passed,'count':len(passed),'pde_executed':False})
     return passed
 
-def _meta(m,baseline=False):
-    return {'geometry_id':m['source_id']+('_staggered' if baseline else ''),
-            'topology_id':'independent_area_matched_staggered' if baseline else m['source_id'],
-            'intended_anode_components':2 if baseline else int(m['anode_components']),
-            'intended_cathode_components':2 if baseline else int(m['cathode_components']),
-            'surface_contact_model':True,'hidden_bus_assumed':True,
-            'electrode_area_fraction':float(m['electrode_area_fraction']),
-            'domain_mm':float(m['domain_mm']),
-            'source_role':'external_reference_only' if baseline else 'five_topology_candidate',
-            'baseline_type':'area_matched_staggered' if baseline else None}
-
-def _valid(evaluator,row):
-    primary=getattr(evaluator,'gpu_or_main',evaluator)
-    if not hasattr(primary,'_trial_valid'):return False,'missing_production_validity_api'
-    return primary._trial_valid(row)
-
-def evaluate(project_root,config_path,out):
-    root=Path(project_root).resolve();out=Path(out).resolve();lib=out/'library'
-    sys.path.insert(0,str(root/'python'))
+def evaluate(project_root, config_path, out):
+    """Compatibility entry point; results are labels/ratios, not a Pareto vector."""
     import yaml
-    from ecsp_nsga2.evaluator import create_evaluator
-    from ecsp_nsga2.geometry import GeometryLimits
-    from ecsp_nsga2.baselines import generate_area_matched_staggered
+    from ecsp_image_design.paired_workflow import evaluate_library
     base=yaml.safe_load(Path(config_path).read_text())
-    results=[]
-    for sid in IDS:
-        d=lib/sid;m=json.loads((d/'metadata.json').read_text())
-        if m['status']!='geometry_accepted':raise RuntimeError(sid+' geometry not accepted')
-        with np.load(d/'mask.npz',allow_pickle=False) as f:a=f['anode'].astype(bool);c=f['cathode'].astype(bool)
-        cfg=runtime_config(base,m);ctx=context(m,digest(cfg))
-        fields={x.name for x in dataclasses.fields(GeometryLimits)}
-        limits=GeometryLimits(**{k:v for k,v in cfg['geometry'].items() if k in fields})
-        bc=cfg.get('baselines',{}).get('area_matched_staggered',{})
-        opts={k:bc[k] for k in ('fingers_per_polarity','target_interdigitation_overlap_fraction','minimum_interdigitation_overlap_fraction','maximum_gap_safety_pixels') if k in bc}
-        _,raster,params=generate_area_matched_staggered(limits,physics_grid_size=m['grid_size'],target_area_fraction_per_polarity=m['electrode_area_fraction']/2,**opts)
-        ba=np.asarray(raster.anode_mask,bool);bca=np.asarray(raster.cathode_mask,bool);L=float(m['domain_mm'])
-        bctx={**ctx,'anode_area_mm2':float(ba.mean()*L*L),'cathode_area_mm2':float(bca.mean()*L*L)}
-        adapter=copy.deepcopy(cfg['evaluator']);adapter['physics_config']=copy.deepcopy(cfg)
-        evaluator=create_evaluator(root,adapter,out/'preflame'/sid/'adapter',False)
-        try:
-            raw=evaluator.evaluate_batch([(a,c,_meta(m),out/'preflame'/sid/'candidate'),(ba,bca,_meta(m,True),out/'preflame'/sid/'staggered')])
-            cand,bl=[dict(x) for x in raw]
-            for row in (cand,bl):
-                ok,reason=_valid(evaluator,row);row['external_numerical_valid']=bool(ok);row['external_numerical_reason']=str(reason)
-        finally:
-            if hasattr(evaluator,'close'):evaluator.close()
-        norm=normalized_objectives(cand,bl,ctx,bctx)
-        result={'source_id':sid,'context':ctx,'baseline_context':bctx,'candidate_raw':cand,'baseline_raw':bl,**norm}
-        results.append(result);write_json(out/'preflame'/sid/'result.json',result);write_json(out/'preflame'/sid/'baseline_parameters.json',dataclasses.asdict(params))
-    write_json(out/'preflame'/'comparison.json',results)
-    return results
+    return evaluate_library(project_root, config_path, Path(out)/'library', out,
+                            only_ids=IDS, expected_count=len(IDS),
+                            device=base.get('evaluator',{}).get('device','cuda'))
 
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('mode',choices=['generate','audit','evaluate'])
@@ -116,5 +73,7 @@ def main():
     elif args.mode=='audit':audit(out)
     else:
         cfg=args.config if args.config.is_absolute() else args.project_root/args.config
-        evaluate(args.project_root,cfg,out)
+        rows=evaluate(args.project_root,cfg,out)
+        if any(r['comparison_state']=='execution_failed' for r in rows):
+            raise SystemExit(1)
 if __name__=='__main__':main()
