@@ -1,0 +1,16 @@
+{
+  "archive_sha256": "c0aad302a4e1a7a6faa233f59f2575b7592be13956624d3d6bcd3c921941356f",
+  "archive_bytes": 13217873,
+  "git_blob_sha": "62379ad971344ce19974450383fa5afceec68a05",
+  "geometry_count": 143,
+  "byte_identical_member_count": 429,
+  "all_original_files_unchanged": true,
+  "pde_executed": false,
+  "python": "3.11.16 (main, Aug 13 2026, 02:46:14) [GCC 13.3.0]",
+  "zlib": "1.3",
+  "numpy": "2.3.5",
+  "scipy": "1.17.0",
+  "shapely": "2.1.2",
+  "skimage": "0.26.0",
+  "opencv": "4.13.0"
+}
