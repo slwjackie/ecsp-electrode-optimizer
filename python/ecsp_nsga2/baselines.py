@@ -282,6 +282,71 @@ def generate_area_matched_staggered(
                 if min(left_margin, right_margin) < minimum_side_margin_px:
                     continue
 
+                # Exact equal-grid fast path used by paired screening.  When
+                # design and physics grids are identical, nearest-neighbour
+                # resize is the identity and every geometry/QC quantity for
+                # this rectangular 2A2C baseline is known analytically from
+                # integer dimensions.  Avoid allocating and scanning N x N
+                # masks for every trial; only the final winner is rasterised.
+                if p == n:
+                    design_gap = float(gap_px) * design_dx
+                    design_area = float(count * width_px * length_px) / float(n * n)
+                    design_area_error = abs(design_area - target) / target
+                    design_overlap = float(max(0, 2 * length_px - n)) / float(n)
+                    if design_gap + 1.0e-12 < limits.minimum_gap_mm:
+                        continue
+                    if design_area_error > limits.area_tolerance_fraction + 1.0e-12:
+                        continue
+                    if design_overlap + 1.0e-12 < minimum_overlap:
+                        continue
+
+                    physics_gap = design_gap
+                    physics_area = design_area
+                    physics_area_error = design_area_error
+                    physics_overlap = design_overlap
+                    parameters = AreaMatchedStaggeredParameters(
+                        fingers_per_polarity=count,
+                        common_finger_width_px=width_px,
+                        common_finger_length_px=length_px,
+                        horizontal_gap_px=gap_px,
+                        left_margin_px=left_margin,
+                        right_margin_px=right_margin,
+                        design_grid_size=n,
+                        physics_grid_size=p,
+                        target_area_fraction_per_polarity=target,
+                        design_spacing_mm=design_dx,
+                        physics_spacing_mm=physics_dx,
+                        common_finger_width_mm=width_px * design_dx,
+                        common_finger_length_mm=length_px * design_dx,
+                        design_minimum_gap_mm=design_gap,
+                        physics_minimum_gap_mm=physics_gap,
+                        design_area_fraction_per_polarity=design_area,
+                        physics_area_fraction_per_polarity=physics_area,
+                        design_vertical_overlap_fraction=design_overlap,
+                        physics_vertical_overlap_fraction=physics_overlap,
+                        hidden_bus_contact_area_fraction=0.0,
+                    )
+                    overlap_error = float(abs(design_overlap - target_overlap))
+                    score = (
+                        design_area_error + 0.05 * overlap_error,
+                        design_area_error,
+                        overlap_error,
+                        float(physics_gap - limits.minimum_gap_mm),
+                        float(abs(left_margin - right_margin)),
+                        float(-length_px),
+                        float(width_px),
+                    )
+                    candidate = (
+                        score,
+                        width_px,
+                        length_px,
+                        gap_px,
+                        parameters,
+                    )
+                    if best_candidate is None or score < best_candidate[0]:
+                        best_candidate = candidate
+                    continue
+
                 anode, cathode, left_margin, right_margin = (
                     _build_hidden_bus_vertical_staggered_masks(
                         grid_size=n,
@@ -446,6 +511,50 @@ def generate_area_matched_staggered(
     )
     physics_anode = _nearest_resize(anode, p)
     physics_cathode = _nearest_resize(cathode, p)
+
+    if p == n:
+        # Fail closed if a future change to raster semantics invalidates the
+        # analytical equal-grid assumptions.  This exact raster audit runs
+        # once for the selected winner, never once per search candidate.
+        direct = ndimage.binary_dilation(
+            anode, structure=np.ones((3, 3), dtype=bool)
+        ) & cathode
+        exact_gap = _minimum_gap_mm(anode, cathode, design_dx)
+        exact_area = float(anode.mean())
+        exact_overlap = _vertical_overlap_fraction(anode, cathode)
+        exact_physics_area = float(physics_anode.mean())
+        exact_physics_gap = _minimum_gap_mm(
+            physics_anode, physics_cathode, physics_dx
+        )
+        exact_physics_overlap = _vertical_overlap_fraction(
+            physics_anode, physics_cathode
+        )
+        exact_dims = [
+            (y1 - y0, x1 - x0)
+            for y0, y1, x0, x1 in (
+                _component_boxes(physics_anode) + _component_boxes(physics_cathode)
+            )
+        ]
+        fast_path_valid = (
+            not np.any(anode & cathode)
+            and not np.any(direct)
+            and _equal_rectangular_fingers(anode, expected_count=count, boundary="top")
+            and _equal_rectangular_fingers(cathode, expected_count=count, boundary="bottom")
+            and _equal_rectangular_fingers(physics_anode, expected_count=count, boundary="top")
+            and _equal_rectangular_fingers(physics_cathode, expected_count=count, boundary="bottom")
+            and len(set(exact_dims)) == 1
+            and math.isclose(exact_gap, params.design_minimum_gap_mm, rel_tol=0.0, abs_tol=1.0e-12)
+            and math.isclose(exact_area, params.design_area_fraction_per_polarity, rel_tol=0.0, abs_tol=1.0e-15)
+            and math.isclose(exact_overlap, params.design_vertical_overlap_fraction, rel_tol=0.0, abs_tol=1.0e-15)
+            and math.isclose(exact_physics_gap, params.physics_minimum_gap_mm, rel_tol=0.0, abs_tol=1.0e-12)
+            and math.isclose(exact_physics_area, params.physics_area_fraction_per_polarity, rel_tol=0.0, abs_tol=1.0e-15)
+            and math.isclose(exact_physics_overlap, params.physics_vertical_overlap_fraction, rel_tol=0.0, abs_tol=1.0e-15)
+        )
+        if not fast_path_valid:
+            raise BaselineGeometryError(
+                "Equal-grid analytical staggered fast path failed final exact raster parity audit"
+            )
+
     area_error = abs(float(anode.mean()) - target) / target
     imbalance = abs(float(anode.mean()) - float(cathode.mean())) / max(
         float(anode.mean() + cathode.mean()), 1.0e-12

@@ -318,3 +318,71 @@ def test_area_matched_staggered_streaming_best_memory_regression():
     assert params_a == params_b
     np.testing.assert_array_equal(raster_a.anode_mask, raster_b.anode_mask)
     np.testing.assert_array_equal(raster_a.cathode_mask, raster_b.cathode_mask)
+
+
+def test_equal_grid_analytical_fast_path_matches_legacy_selection(monkeypatch):
+    import ecsp_nsga2.baselines as baseline_module
+
+    calls = 0
+    original_builder = baseline_module._build_hidden_bus_vertical_staggered_masks
+
+    def counted_builder(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_builder(*args, **kwargs)
+
+    monkeypatch.setattr(
+        baseline_module,
+        "_build_hidden_bus_vertical_staggered_masks",
+        counted_builder,
+    )
+
+    # E001-like paired context.  The expected integer dimensions below were
+    # recorded from the legacy exhaustive equal-grid search before this
+    # analytical fast path was introduced.
+    target = 0.16344062927863834
+    limits = GeometryLimits(
+        domain_mm=33.0,
+        grid_size=193,
+        margin_mm=0.75,
+        minimum_gap_mm=3.0,
+        minimum_width_mm=2.0,
+        maximum_width_mm=33.0,
+        target_area_fraction_per_polarity=target,
+        area_tolerance_fraction=0.01,
+        maximum_components_per_polarity=2,
+        maximum_total_components=4,
+    )
+
+    _, raster, params = generate_area_matched_staggered(
+        limits,
+        physics_grid_size=193,
+        target_area_fraction_per_polarity=target,
+    )
+
+    assert calls == 1
+    assert (
+        params.common_finger_width_px,
+        params.common_finger_length_px,
+        params.horizontal_gap_px,
+        params.left_margin_px,
+        params.right_margin_px,
+    ) == (21, 145, 18, 27, 28)
+    assert params.design_grid_size == params.physics_grid_size == 193
+    assert params.design_area_fraction_per_polarity == pytest.approx(
+        0.16349432199522135
+    )
+    assert params.design_minimum_gap_mm == pytest.approx(
+        3.077720207253886
+    )
+    assert params.design_vertical_overlap_fraction == pytest.approx(
+        0.5025906735751295
+    )
+    np.testing.assert_array_equal(
+        raster.anode_mask,
+        resize_nearest_numpy(raster.anode_mask, 193),
+    )
+    np.testing.assert_array_equal(
+        raster.cathode_mask,
+        resize_nearest_numpy(raster.cathode_mask, 193),
+    )

@@ -265,9 +265,15 @@ def evaluate_library(root, config_path, library, out, *, only_ids=None, expected
                 opts = {k: options[k] for k in ("fingers_per_polarity", "target_interdigitation_overlap_fraction",
                         "minimum_interdigitation_overlap_fraction", "maximum_gap_safety_pixels") if k in options}
                 print(f"[paired] {sid} constructing same-context staggered", flush=True)
+                baseline_started = time.perf_counter()
                 _, raster, params = baseline_generator(limits, physics_grid_size=m["grid_size"],
                     target_area_fraction_per_polarity=cfg["geometry"]["target_area_fraction_per_polarity"], **opts)
                 ba, bca = np.asarray(raster.anode_mask, bool), np.asarray(raster.cathode_mask, bool)
+                print(
+                    f"[paired] {sid} staggered ready; elapsed="
+                    f"{time.perf_counter() - baseline_started:.3f}s",
+                    flush=True,
+                )
                 if ba.shape != a.shape or bca.shape != c.shape:
                     raise ValueError("Baseline grid differs")
                 from .five_topologies import gap_guard
