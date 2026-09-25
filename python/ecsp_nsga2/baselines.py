@@ -237,16 +237,22 @@ def generate_area_matched_staggered(
     minimum_side_margin_px = max(0, int(math.ceil(float(limits.margin_mm) / design_dx)))
     target_pixels_per_polarity = target * n * n
 
-    candidates: list[
-        tuple[
-            tuple[float, ...],
-            np.ndarray,
-            np.ndarray,
-            np.ndarray,
-            np.ndarray,
-            AreaMatchedStaggeredParameters,
-        ]
-    ] = []
+    # Keep only the current winner.  The old implementation retained every
+    # feasible candidate's four full-grid masks until the search finished,
+    # making host memory O(number_of_candidates * N^2).  Large fixed-library
+    # cases (for example N~1600) can have thousands of feasible staggered
+    # dimensions and exceed a 32 GiB Kubernetes limit before PDE execution.
+    #
+    # The score tuple is the complete deterministic ordering key.  Updating
+    # only on strict improvement preserves Python stable-sort tie behaviour:
+    # the first candidate encountered for an exactly equal score still wins.
+    best_candidate: tuple[
+        tuple[float, ...],
+        int,
+        int,
+        int,
+        AreaMatchedStaggeredParameters,
+    ] | None = None
 
     for width_px in range(minimum_width_px, maximum_width_px + 1):
         required_length = target_pixels_per_polarity / max(count * width_px, 1)
@@ -401,18 +407,17 @@ def generate_area_matched_staggered(
                     float(-length_px),
                     float(width_px),
                 )
-                candidates.append(
-                    (
-                        score,
-                        anode,
-                        cathode,
-                        physics_anode,
-                        physics_cathode,
-                        parameters,
-                    )
+                candidate = (
+                    score,
+                    width_px,
+                    length_px,
+                    gap_px,
+                    parameters,
                 )
+                if best_candidate is None or score < best_candidate[0]:
+                    best_candidate = candidate
 
-    if not candidates:
+    if best_candidate is None:
         minimum_width_needed = target * float(limits.domain_mm) / 2.0
         raise BaselineGeometryError(
             "No two-anode/two-cathode hidden-bus staggered geometry satisfies "
@@ -426,8 +431,21 @@ def generate_area_matched_staggered(
             f"would need width about {minimum_width_needed:g} mm."
         )
 
-    candidates.sort(key=lambda item: item[0])
-    _, anode, cathode, physics_anode, physics_cathode, params = candidates[0]
+    _, best_width_px, best_length_px, best_gap_px, params = best_candidate
+
+    # Rebuild the single selected geometry after the scalar search.  This is
+    # byte-for-byte deterministic with the masks evaluated for that dimension
+    # tuple, while allowing all non-winning trial masks to be released during
+    # the search instead of accumulating in host RAM.
+    anode, cathode, _, _ = _build_hidden_bus_vertical_staggered_masks(
+        grid_size=n,
+        finger_width_px=best_width_px,
+        finger_length_px=best_length_px,
+        horizontal_gap_px=best_gap_px,
+        fingers_per_polarity=count,
+    )
+    physics_anode = _nearest_resize(anode, p)
+    physics_cathode = _nearest_resize(cathode, p)
     area_error = abs(float(anode.mean()) - target) / target
     imbalance = abs(float(anode.mean()) - float(cathode.mean())) / max(
         float(anode.mean() + cathode.mean()), 1.0e-12

@@ -278,3 +278,43 @@ def test_area_matched_staggered_explicit_recommended_area_override():
         / requested_actual_area
         <= limits.area_tolerance_fraction
     )
+
+
+def test_area_matched_staggered_streaming_best_memory_regression():
+    import inspect
+
+    import ecsp_nsga2.baselines as baseline_module
+
+    source = inspect.getsource(baseline_module.generate_area_matched_staggered)
+    assert "candidates.append" not in source
+    assert "best_candidate" in source
+
+    # Keep the behavioural parity check deliberately small/fast; the source
+    # invariant above is what prevents the large-N mask-accumulation regression.
+    limits = GeometryLimits(
+        domain_mm=20.0,
+        grid_size=96,
+        margin_mm=0.75,
+        minimum_gap_mm=2.0,
+        minimum_width_mm=1.0,
+        maximum_width_mm=5.0,
+        target_area_fraction_per_polarity=0.20,
+        area_tolerance_fraction=0.02,
+        maximum_components_per_polarity=2,
+        maximum_total_components=4,
+    )
+
+    _, raster_a, params_a = generate_area_matched_staggered(
+        limits,
+        physics_grid_size=193,
+        target_area_fraction_per_polarity=0.20,
+    )
+    _, raster_b, params_b = generate_area_matched_staggered(
+        limits,
+        physics_grid_size=193,
+        target_area_fraction_per_polarity=0.20,
+    )
+
+    assert params_a == params_b
+    np.testing.assert_array_equal(raster_a.anode_mask, raster_b.anode_mask)
+    np.testing.assert_array_equal(raster_a.cathode_mask, raster_b.cathode_mask)
