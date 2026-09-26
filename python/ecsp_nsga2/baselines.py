@@ -716,8 +716,15 @@ def generate_area_matched_staggered(
         "area_imbalance_fraction": imbalance,
         "anode_width_calibration_scale": 1.0,
         "cathode_width_calibration_scale": 1.0,
-        "minimum_effective_width_mm": float(params.common_finger_width_mm),
-        "maximum_effective_width_mm": float(params.common_finger_width_mm),
+        "minimum_effective_width_mm": float(
+            min(final_design_effective_width_mm, final_physics_effective_width_mm)
+        ),
+        "maximum_effective_width_mm": float(
+            max(final_design_effective_width_mm, final_physics_effective_width_mm)
+        ),
+        "design_effective_finger_width_mm": float(final_design_effective_width_mm),
+        "physics_effective_finger_width_mm": float(final_physics_effective_width_mm),
+        "bc_manufacturing_width_definition": "distance_transform_2r_minus_1",
         "propellant_domain_area_fraction": 1.0,
         "baseline_fingers_per_polarity": 2.0,
         "baseline_common_finger_width_mm": float(params.common_finger_width_mm),
