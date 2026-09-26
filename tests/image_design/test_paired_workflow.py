@@ -89,6 +89,7 @@ def test_same_pair_gpu_no_genetic_loop_and_config_preserved(setup):
     assert s.calls==[['E114','E114_staggered']]
     assert rows[0]['screening_valid'] and rows[0]['R_T'] < 1 and rows[0]['R_J'] < 1
     assert s.adapters[0]['backend']=='bc_global_native' and s.adapters[0]['native']['cpu_workers']==0
+    assert s.adapters[0]['save_representative_fields'] is True
     ps=s.adapters[0]['base_overrides']['numerics']['potentialSolver']
     assert ps==dict(relativeToleranceCoupled=1e-9,absoluteTolerance=1e-12,maximumIterationsCoupled=6000)
     assert s.adapters[0]['physics_config']['post_onset']==s.base['post_onset']

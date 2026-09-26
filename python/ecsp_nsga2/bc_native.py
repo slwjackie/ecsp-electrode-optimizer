@@ -67,6 +67,7 @@ class NativeBCGlobalEvaluator(BCGlobalPreflameEvaluator):
         import torch
         from ecsp_native import load_native,build_info
         self.native_options=dict(config.get('native',{}))
+        self.representative_fields=bool(config.get('save_representative_fields',False))
         super().__init__(package_root,config,workdir)
         if self.dtype!=torch.float64 or self.device.type not in ('cuda','cpu'):
             raise EvaluatorError('Native B/C requires CPU/CUDA FP64. M2 Pro uses CPU, not MPS.')
@@ -122,8 +123,9 @@ class NativeBCGlobalEvaluator(BCGlobalPreflameEvaluator):
 
     def _run_physics(self,geometry,voltage,*,save_handoff=False,stop_on_onset=False):
         from ecsp_native import run_native_batch
+        capture=bool(getattr(self,'_capture_representative_fields',False))
         return run_native_batch(geometry,self.config,self.composition,voltage,self.dtype,
-            save_fields=save_handoff,save_handoff=save_handoff,stop_on_onset=stop_on_onset,
+            save_fields=bool(save_handoff or capture),save_handoff=save_handoff,stop_on_onset=stop_on_onset,
             native_options=self.native_options)
 
     def _safe_run(self,items,volts,*,role='reference',save_handoff=False,early=False):
@@ -142,7 +144,22 @@ class NativeBCGlobalEvaluator(BCGlobalPreflameEvaluator):
             return allrows,allhands
         started=time.perf_counter()
         try:
-            rows,out=self._run_model(items,volts,save_handoff=save_handoff,write_metrics=False,stop_on_onset=early)
+            capture_fields=bool(self.representative_fields and role=='reference' and not early and not save_handoff)
+            previous_capture=bool(getattr(self,'_capture_representative_fields',False))
+            self._capture_representative_fields=capture_fields
+            try:
+                rows,out=self._run_model(items,volts,save_handoff=save_handoff,write_metrics=False,stop_on_onset=early)
+            finally:
+                self._capture_representative_fields=previous_capture
+            if capture_fields:
+                from .field_diagnostics import save_representative_field_artifacts
+                field_rows=save_representative_field_artifacts(
+                    items,rows,out,config=self.config,composition=self.composition,
+                    grid_size=self.grid_size,domain_size_m=self.domain_size_m)
+                if len(field_rows)!=len(rows):
+                    raise RuntimeError('Representative field capture lost candidate alignment')
+                for row,field_row in zip(rows,field_rows):
+                    row.update(field_row)
             hands=self._extract_handoff_batch(rows,out,items) if save_handoff else []
         except Exception as exc:
             oom=isinstance(exc,torch.OutOfMemoryError) or 'cuda out of memory' in str(exc).lower()

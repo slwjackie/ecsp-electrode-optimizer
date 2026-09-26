@@ -134,3 +134,52 @@ python -m pytest -q tests/image_design/test_paired_screening.py \
 ```
 
 순수 classification과 mock evaluator 계약, resume/중복방지, 148 count guard, frozen copy, legacy 재분류를 검사한다. 실제 A100 full PDE/148 pair 성능은 이 코드 작성 환경에서 실행하지 않았다. 기존 geometry나 physics 테스트의 통과를 새 paired E2E의 통과로 대신 주장하지 않는다.
+
+
+## Representative field output (reference 260 V run only)
+
+Paired screening now stores representative full fields for the candidate and its
+same-context staggered reference. This is diagnostics/output only: no PDE,
+material property, onset criterion, voltage-search semantics, C++/CUDA time
+integration, or baseline geometry rule is changed.
+
+- Non-igniting reference: evaluation-time snapshot (normally 2 s).
+- Igniting reference: first-onset snapshot plus evaluation-time preflame state.
+  The strict B/C lane freezes at first onset, so the evaluation snapshot is
+  explicitly labelled as a frozen onset state rather than a new post-onset
+  electrical solution.
+- Vmin lower/bisection/final-verification trials remain scalar-only; field
+  archives are not duplicated for those trials.
+
+Each `preflame/<ID>/candidate/` and `staggered/` directory contains:
+
+```text
+fields_eval.npz
+geometry_eval.png
+temperature_eval.png
+current_eval.png
+potential_eval.png
+progress_eval.png
+overview_panel.png
+field_manifest.json
+```
+
+If that lane ignites, it also contains `fields_onset.npz`,
+`temperature_onset.png`, `current_onset.png`, `potential_onset.png`,
+`progress_onset.png`, `geometry_onset.png`, and
+`overview_onset_panel.png`.
+
+The NPZ stores full-grid `temperature_K`, `potential_V`,
+`global_progress`, `current_density_x_A_per_m2`,
+`current_density_y_A_per_m2`, `current_density_magnitude_A_per_m2`,
+`joule_heat_W_per_m3`, electrode masks, coordinates and snapshot time.
+The PDE remains FP64; archives are compressed float32 copies for diagnostics
+and visualization. Current density is not a proxy: it is evaluated by the
+production `compute_current()` closure from the native solver's saved
+state/potential and therefore retains the configured conductive and diffusion
+current terms.
+
+`representativeFieldMetrics` in the candidate/baseline raw result also stores
+temperature standard deviation, P95-P05, temperature-rise CV, current-density
+CV and current-density P99. These are diagnostic quantities and do not alter
+the paired screening labels or objectives.

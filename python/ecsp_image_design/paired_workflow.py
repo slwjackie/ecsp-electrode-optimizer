@@ -284,6 +284,9 @@ def evaluate_library(root, config_path, library, out, *, only_ids=None, expected
                         raise ValueError("Candidate and baseline actual contact areas differ by more than 1%")
                 adapter = copy.deepcopy(cfg["evaluator"])
                 adapter["physics_config"] = copy.deepcopy(cfg)
+                # Capture only representative reference-run fields. Vmin trials
+                # remain scalar-only and no time-history field stack is retained.
+                adapter["save_representative_fields"] = True
                 write_json(case / "runtime_config.json", cfg)
                 write_json(case / "baseline_parameters.json", dataclasses.asdict(params))
                 np.savez_compressed(case / "staggered_mask.npz", anode=ba, cathode=bca, domain_mm=m["domain_mm"])
