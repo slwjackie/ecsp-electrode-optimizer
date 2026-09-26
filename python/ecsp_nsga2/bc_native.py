@@ -148,7 +148,9 @@ class NativeBCGlobalEvaluator(BCGlobalPreflameEvaluator):
             previous_capture=bool(getattr(self,'_capture_representative_fields',False))
             self._capture_representative_fields=capture_fields
             try:
-                rows,out=self._run_model(items,volts,save_handoff=save_handoff,write_metrics=False,stop_on_onset=early)
+                rows,out=self._run_model(
+                    items,volts,save_handoff=save_handoff,write_metrics=False,
+                    stop_on_onset=early,return_output=capture_fields)
             finally:
                 self._capture_representative_fields=previous_capture
             if capture_fields:

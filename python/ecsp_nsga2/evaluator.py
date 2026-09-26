@@ -1474,6 +1474,7 @@ class BCGlobalPreflameEvaluator(DirectCondensedV772NoFEvaluator):
         save_handoff: bool = False,
         write_metrics: bool = True,
         stop_on_onset: bool = False,
+        return_output: bool = False,
     ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
         import torch
         from ecsp_v6.physics.bc_global import run_bc_global_batch
@@ -1633,7 +1634,7 @@ class BCGlobalPreflameEvaluator(DirectCondensedV772NoFEvaluator):
                     encoding="utf-8",
                 )
             rows.append(row)
-        return rows, output if save_handoff else None
+        return rows, output if (save_handoff or return_output) else None
 
     def _trial_valid(self, row: Mapping[str, Any]) -> tuple[bool, str]:
         if not bool(row.get("converged", False)):
