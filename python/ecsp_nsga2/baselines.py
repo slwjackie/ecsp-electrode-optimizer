@@ -90,6 +90,41 @@ def _perimeter(mask: np.ndarray) -> float:
     return float(np.count_nonzero(mask & ~ndimage.binary_erosion(mask)))
 
 
+def _bc_effective_rectangular_width_mm(width_px: int, spacing_mm: float) -> float:
+    """Match the B/C evaluator manufacturing-width convention exactly.
+
+    The evaluator measures each connected component with the maximum Euclidean
+    distance-transform radius and reports (2 * radius_px - 1) * spacing.
+    For a long axis-aligned rectangular finger this is w*dx for odd raster
+    widths and (w-1)*dx for even raster widths.
+    """
+    width = int(width_px)
+    if width <= 0:
+        return 0.0
+    effective_pixels = width if width % 2 else width - 1
+    return float(max(effective_pixels, 0)) * float(spacing_mm)
+
+
+def _minimum_component_effective_width_mm(
+    mask: np.ndarray, spacing_mm: float
+) -> float:
+    """Exact copy of the B/C evaluator component-width measurement."""
+    labels, count = ndimage.label(
+        np.asarray(mask, dtype=bool),
+        structure=np.ones((3, 3), dtype=np.uint8),
+    )
+    if count <= 0:
+        return 0.0
+    widths: list[float] = []
+    for component_index in range(1, int(count) + 1):
+        component = labels == component_index
+        radius_pixels = float(np.max(ndimage.distance_transform_edt(component)))
+        widths.append(
+            max(0.0, 2.0 * radius_pixels - 1.0) * float(spacing_mm)
+        )
+    return min(widths)
+
+
 def _build_hidden_bus_vertical_staggered_masks(
     *,
     grid_size: int,
@@ -227,7 +262,18 @@ def generate_area_matched_staggered(
         raise BaselineGeometryError("design and physics grids must be at least 9x9")
     design_dx = float(limits.domain_mm) / n
     physics_dx = float(limits.domain_mm) / p
-    minimum_width_px = max(1, int(math.ceil(float(limits.minimum_width_mm) / design_dx)))
+    minimum_width_px = max(
+        1, int(math.ceil(float(limits.minimum_width_mm) / design_dx))
+    )
+    # Raw ceil(minimum/dx) is not always sufficient under the B/C evaluator
+    # distance-transform width convention. Even-width rectangular fingers
+    # measure one pixel narrower (E064: 10 px -> 9*dx = 1.865285 mm).
+    while (
+        _bc_effective_rectangular_width_mm(minimum_width_px, design_dx)
+        + 64.0 * np.finfo(float).eps
+        < float(limits.minimum_width_mm)
+    ):
+        minimum_width_px += 1
     maximum_width_px = int(math.floor(float(limits.maximum_width_mm) / design_dx))
     if maximum_width_px < minimum_width_px:
         raise BaselineGeometryError(
@@ -289,6 +335,15 @@ def generate_area_matched_staggered(
                 # integer dimensions.  Avoid allocating and scanning N x N
                 # masks for every trial; only the final winner is rasterised.
                 if p == n:
+                    design_effective_width = _bc_effective_rectangular_width_mm(
+                        width_px, design_dx
+                    )
+                    if (
+                        design_effective_width
+                        + 64.0 * np.finfo(float).eps
+                        < float(limits.minimum_width_mm)
+                    ):
+                        continue
                     design_gap = float(gap_px) * design_dx
                     design_area = float(count * width_px * length_px) / float(n * n)
                     design_area_error = abs(design_area - target) / target
@@ -373,6 +428,15 @@ def generate_area_matched_staggered(
                     cathode, expected_count=count, boundary="bottom"
                 ):
                     continue
+                design_effective_width = _minimum_component_effective_width_mm(
+                    anode | cathode, design_dx
+                )
+                if (
+                    design_effective_width
+                    + 64.0 * np.finfo(float).eps
+                    < float(limits.minimum_width_mm)
+                ):
+                    continue
 
                 design_gap = _minimum_gap_mm(anode, cathode, design_dx)
                 design_area = float(anode.mean())
@@ -412,6 +476,15 @@ def generate_area_matched_staggered(
                     )
                 ]
                 if len(set(physics_dims)) != 1:
+                    continue
+                physics_effective_width = _minimum_component_effective_width_mm(
+                    physics_anode | physics_cathode, physics_dx
+                )
+                if (
+                    physics_effective_width
+                    + 64.0 * np.finfo(float).eps
+                    < float(limits.minimum_width_mm)
+                ):
                     continue
 
                 physics_gap = _minimum_gap_mm(
@@ -511,6 +584,24 @@ def generate_area_matched_staggered(
     )
     physics_anode = _nearest_resize(anode, p)
     physics_cathode = _nearest_resize(cathode, p)
+    final_design_effective_width_mm = _minimum_component_effective_width_mm(
+        anode | cathode, design_dx
+    )
+    final_physics_effective_width_mm = _minimum_component_effective_width_mm(
+        physics_anode | physics_cathode, physics_dx
+    )
+    if (
+        min(final_design_effective_width_mm, final_physics_effective_width_mm)
+        + 64.0 * np.finfo(float).eps
+        < float(limits.minimum_width_mm)
+    ):
+        raise BaselineGeometryError(
+            "Selected area-matched staggered violates the B/C evaluator "
+            "manufacturing-width convention after rasterization: "
+            f"design_effective_width_mm={final_design_effective_width_mm:.8g}, "
+            f"physics_effective_width_mm={final_physics_effective_width_mm:.8g}, "
+            f"required_mm={limits.minimum_width_mm:.8g}"
+        )
 
     if p == n:
         # Fail closed if a future change to raster semantics invalidates the
@@ -543,6 +634,12 @@ def generate_area_matched_staggered(
             and _equal_rectangular_fingers(physics_anode, expected_count=count, boundary="top")
             and _equal_rectangular_fingers(physics_cathode, expected_count=count, boundary="bottom")
             and len(set(exact_dims)) == 1
+            and final_design_effective_width_mm
+                + 64.0 * np.finfo(float).eps
+                >= float(limits.minimum_width_mm)
+            and final_physics_effective_width_mm
+                + 64.0 * np.finfo(float).eps
+                >= float(limits.minimum_width_mm)
             and math.isclose(exact_gap, params.design_minimum_gap_mm, rel_tol=0.0, abs_tol=1.0e-12)
             and math.isclose(exact_area, params.design_area_fraction_per_polarity, rel_tol=0.0, abs_tol=1.0e-15)
             and math.isclose(exact_overlap, params.design_vertical_overlap_fraction, rel_tol=0.0, abs_tol=1.0e-15)
@@ -708,6 +805,9 @@ def generate_area_matched_staggered(
         "horizontal_contact_order": ["anode", "cathode", "anode", "cathode"],
         "equal_length_within_each_polarity": True,
         "equal_width_for_all_four_fingers": True,
+        "design_effective_finger_width_mm": float(final_design_effective_width_mm),
+        "physics_effective_finger_width_mm": float(final_physics_effective_width_mm),
+        "bc_manufacturing_width_definition": "distance_transform_2r_minus_1",
         "deep_interdigitation": True,
     }
     raster = RasterizedGeometry(

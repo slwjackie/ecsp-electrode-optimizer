@@ -67,6 +67,21 @@ def _assert_reference(limits: GeometryLimits, physics_grid: int) -> tuple[dict, 
     assert [polarity for _, polarity in ordered] == ["anode", "cathode", "anode", "cathode"]
 
     assert limits.minimum_width_mm <= params.common_finger_width_mm <= limits.maximum_width_mm
+    design_spacing = limits.domain_mm / limits.grid_size
+    physics_spacing = limits.domain_mm / physics_grid
+    for mask, spacing_mm in (
+        (raster.anode_mask, design_spacing),
+        (raster.cathode_mask, design_spacing),
+        (resize_nearest_numpy(raster.anode_mask, physics_grid), physics_spacing),
+        (resize_nearest_numpy(raster.cathode_mask, physics_grid), physics_spacing),
+    ):
+        labels, count = ndimage.label(mask, np.ones((3, 3), int))
+        widths = []
+        for component_index in range(1, count + 1):
+            component = labels == component_index
+            radius_px = float(np.max(ndimage.distance_transform_edt(component)))
+            widths.append(max(0.0, 2.0 * radius_px - 1.0) * spacing_mm)
+        assert min(widths) + 1e-12 >= limits.minimum_width_mm
     assert params.design_minimum_gap_mm >= limits.minimum_gap_mm
     assert params.physics_minimum_gap_mm >= limits.minimum_gap_mm
     assert params.design_vertical_overlap_fraction >= 0.45
@@ -385,4 +400,50 @@ def test_equal_grid_analytical_fast_path_matches_legacy_selection(monkeypatch):
     np.testing.assert_array_equal(
         raster.cathode_mask,
         resize_nearest_numpy(raster.cathode_mask, 193),
+    )
+
+
+def test_e064_staggered_uses_bc_effective_width_convention():
+    """Regression for E064: 10 raw pixels are only 1.865285 mm in B/C QC."""
+    n = 193
+    domain_mm = 40.0
+    spacing_mm = domain_mm / n
+    assert 10 * spacing_mm > 2.0
+    assert 9 * spacing_mm == pytest.approx(1.8652849740932643)
+    assert 9 * spacing_mm < 2.0
+
+    limits = GeometryLimits(
+        domain_mm=domain_mm,
+        grid_size=n,
+        margin_mm=0.75,
+        minimum_gap_mm=3.0,
+        minimum_width_mm=2.0,
+        maximum_width_mm=40.0,
+        target_area_fraction_per_polarity=0.085,
+        area_tolerance_fraction=0.01,
+        maximum_components_per_polarity=2,
+        maximum_total_components=4,
+    )
+    _, raster, params = generate_area_matched_staggered(
+        limits,
+        physics_grid_size=n,
+        target_area_fraction_per_polarity=0.085,
+    )
+
+    assert params.common_finger_width_px >= 11
+    for mask in (raster.anode_mask, raster.cathode_mask):
+        labels, count = ndimage.label(mask, np.ones((3, 3), int))
+        assert count == 2
+        for component_index in range(1, count + 1):
+            component = labels == component_index
+            radius_px = float(np.max(ndimage.distance_transform_edt(component)))
+            effective_width_mm = (
+                max(0.0, 2.0 * radius_px - 1.0) * spacing_mm
+            )
+            assert effective_width_mm + 1e-12 >= 2.0
+
+    assert raster.descriptors["physics_effective_finger_width_mm"] >= 2.0
+    assert (
+        raster.descriptors["bc_manufacturing_width_definition"]
+        == "distance_transform_2r_minus_1"
     )
