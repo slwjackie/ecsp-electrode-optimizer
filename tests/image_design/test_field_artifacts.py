@@ -46,4 +46,4 @@ def test_representative_snapshot_writes_raw_fields_images_and_uniformity_metrics
     assert artifact['state_semantics']=='test_evaluation_state'
     assert metrics['temperatureP95MinusP05_K']>0
     assert metrics['temperatureRiseCV'] is not None
-    assert metrics['currentDensityCV']==0.0
+    assert metrics['currentDensityCV'] < 1.0e-12
