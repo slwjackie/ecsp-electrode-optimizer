@@ -1,0 +1,13 @@
+# Separate from every existing optimizer/148-case configuration.
+# Voltage and time below are equality assertions, not hidden physics overrides.
+study:
+  schema: full_height_strip_doe_v1
+  domain_mm: 25.0
+  electrode_length_mm: 25.0
+  grid_size: 200   # CELL-centred: dx=25/N=0.125 mm, not 25/(N-1).
+  replicates: 5   # Physical experiment template only; simulations are not repeated.
+  seed: 20261005
+  batch_size: 4
+  save_representative_fields: true
+  reference_voltage_V: 260.0
+  end_time_s: 2.0
