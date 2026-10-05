@@ -1,0 +1,17 @@
+schema: full_height_strip_study_v1
+domain_mm: 25.0
+electrode_length_mm: 25.0
+# The production B/C grid is cell-centred: dx = L/N, not L/(N-1).
+# 200 gives exactly 0.125 mm; all specified edges lie on cell faces.
+grid_size: 200
+placement: centered_assembly
+experimental_replicates: 5
+cases:
+  - {id: SP_G1, anode_width_mm: 2.0, cathode_width_mm: 2.0, gap_mm: 1.0, groups: [spacing]}
+  - {id: BASE_G2_W2, anode_width_mm: 2.0, cathode_width_mm: 2.0, gap_mm: 2.0, groups: [spacing, width]}
+  - {id: SP_G4, anode_width_mm: 2.0, cathode_width_mm: 2.0, gap_mm: 4.0, groups: [spacing]}
+  - {id: WD_W1, anode_width_mm: 1.0, cathode_width_mm: 1.0, gap_mm: 2.0, groups: [width]}
+  - {id: WD_W4, anode_width_mm: 4.0, cathode_width_mm: 4.0, gap_mm: 2.0, groups: [width]}
+  - {id: AR_1TO2, anode_width_mm: 2.0, cathode_width_mm: 4.0, gap_mm: 2.0, groups: [area_ratio]}
+  - {id: AR_1TO1, anode_width_mm: 3.0, cathode_width_mm: 3.0, gap_mm: 2.0, groups: [area_ratio]}
+  - {id: AR_2TO1, anode_width_mm: 4.0, cathode_width_mm: 2.0, gap_mm: 2.0, groups: [area_ratio]}
