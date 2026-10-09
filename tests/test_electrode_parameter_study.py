@@ -130,6 +130,37 @@ def test_generate_audit_template_and_no_overwrite(tmp_path, spec):
         study.audit(out)
 
 
+def test_randomized_schedule_is_balanced_reproducible_and_matches_template(tmp_path, spec):
+    plans = []
+    for name, seed in (("first", 42), ("repeat", 42), ("different", 43)):
+        out = tmp_path / name
+        study.generate(spec, out, experiment_seed=seed)
+        with (out / "experiment_schedule.csv").open() as stream:
+            schedule = list(csv.DictReader(stream))
+        with (out / "experiment_measurements_template.csv").open() as stream:
+            template = list(csv.DictReader(stream))
+        assert len(schedule) == 40
+        assert [int(r["run_order"]) for r in schedule] == list(range(1, 41))
+        assert {int(r["random_seed"]) for r in schedule} == {seed}
+        assert {(r["case_id"], r["replicate"]) for r in schedule} == {
+            (r["case_id"], r["replicate"]) for r in template}
+        assert all(r["valid"] == r["exclusion_reason"] == "" for r in template)
+        for block in range(1, 6):
+            rows = [r for r in schedule if r["block"] == str(block)]
+            assert len(rows) == 8 and {r["case_id"] for r in rows} == set(study.CASES)
+            assert all(r["replicate"] == str(block) for r in rows)
+        plans.append([r["case_id"] for r in schedule])
+    assert plans[0] == plans[1] and plans[0] != plans[2]
+
+
+@pytest.mark.parametrize("seed", [-1, True, 1.5])
+def test_invalid_experiment_seed_does_not_create_output(tmp_path, spec, seed):
+    out = tmp_path / "run"
+    with pytest.raises(ValueError, match="experiment_seed"):
+        study.generate(spec, out, experiment_seed=seed)
+    assert not out.exists()
+
+
 def test_runtime_does_not_modify_shared_physics(project):
     _, _, base = project
     before = copy.deepcopy(base)
@@ -243,6 +274,69 @@ def test_raw_penalties_are_not_reported_as_delays():
     assert raw["ignitionDelay_s"] == 1e12
 
 
+def test_invalid_physical_metrics_are_blank_in_all_csvs_but_raw_is_preserved(project, spec):
+    root, physics, _ = project
+    out = root / "runs/invalid"
+    study.generate(spec, out)
+    class InvalidEvaluator(FakeEvaluator):
+        def evaluate_batch(self, items):
+            return [dict(geometry_id=i[2]["geometry_id"], ignitionSucceeded=True,
+                ignitionDelay_s=1e12, minimumIgnitionVoltage_V=1e12,
+                peakCurrentCongestionToEvaluationTime=1e12,
+                inputElectricalEnergyToIgnition_J=1e12, inputElectricalEnergyAtEvaluationTime_J=1e12,
+                peakMaximumTemperature_K=1e12, areaAveragedUndecomposedFractionAtEvaluationTime=.5,
+                converged=False, allElectricalLinearSolvesConverged=False,
+                allNonlinearRobinSolvesConverged=True, physicsRejected=False,
+                minimumIgnitionVoltageSearchValid=False,
+                minimumIgnitionVoltageSearchStatus="invalid") for i in items]
+        def _trial_valid(self, row):
+            return False, "electrical_nonconvergence"
+    study.evaluate(root, out, physics, "cpu", 8, False, lambda *_: InvalidEvaluator())
+    for name in ("parameter_study", "spacing", "width", "area_ratio"):
+        with (out / f"{name}_summary.csv").open() as stream:
+            rows = list(csv.DictReader(stream))
+        assert rows
+        for row in rows:
+            assert row["result_state"] == "numerically_invalid"
+            assert all(row[k] == "" for k in study.SUMMARY_KEYS
+                       if k not in study.SUMMARY_DIAGNOSTIC_KEYS)
+            assert row["converged"] == row["external_numerical_valid"] == "False"
+            assert row["allNonlinearRobinSolvesConverged"] == "True"
+            assert row["external_numerical_reason"] == "electrical_nonconvergence"
+            assert row["minimumIgnitionVoltageSearchStatus"] == "invalid"
+    raw = study.read_json(out / "cases/SP_G1/result.json")["raw"]
+    assert raw["ignitionSucceeded"] is True and raw["peakMaximumTemperature_K"] == 1e12
+
+
+@pytest.mark.parametrize("ignited", [True, False])
+def test_valid_results_keep_fixed_time_metrics_and_censor_nonignition(ignited):
+    raw = dict(ignitionSucceeded=ignited, ignitionDelay_s=.25,
+               inputElectricalEnergyToIgnition_J=.75, inputElectricalEnergyAtEvaluationTime_J=3.,
+               peakMaximumTemperature_K=400., peakCurrentCongestionToEvaluationTime=2.,
+               areaAveragedUndecomposedFractionAtEvaluationTime=.9,
+               minimumIgnitionVoltage_V=260., minimumIgnitionVoltageSearchValid=True,
+               minimumIgnitionVoltageRightCensored=not ignited, external_numerical_valid=True)
+    before = copy.deepcopy(raw)
+    row = study.summary_rows([dict(geometry=study.make_case("WD_W1", 200)[2], raw=raw)])[0]
+    assert row["ignitionSucceeded"] is ignited
+    assert row["ignitionDelay_s"] == (.25 if ignited else None)
+    assert row["inputElectricalEnergyToIgnition_J"] == (.75 if ignited else None)
+    assert row["minimumIgnitionVoltage_V"] == (260. if ignited else None)
+    for key in ("inputElectricalEnergyAtEvaluationTime_J", "peakMaximumTemperature_K",
+                "peakCurrentCongestionToEvaluationTime", "areaAveragedUndecomposedFractionAtEvaluationTime"):
+        assert row[key] == raw[key]
+    assert raw == before
+
+
+def test_physics_rejection_cannot_be_reported_as_valid_measurement():
+    raw = dict(external_numerical_valid=True, physicsRejected=True, ignitionSucceeded=True,
+               peakMaximumTemperature_K=1e12)
+    row = study.summary_rows([dict(geometry=study.make_case("WD_W1", 200)[2], raw=raw)])[0]
+    assert row["result_state"] == "numerically_invalid"
+    assert row["physicsRejected"] is True
+    assert row["ignitionSucceeded"] is row["peakMaximumTemperature_K"] is None
+
+
 def test_experimental_statistics_preserve_censoring(tmp_path):
     source, out = tmp_path / "measurements.csv", tmp_path / "summary.csv"
     rows = [dict(case_id="SP_G1", replicate=i+1, ignition_observed=status,
@@ -259,3 +353,43 @@ def test_experimental_statistics_preserve_censoring(tmp_path):
     study.write_csv(source, rows)
     with pytest.raises(ValueError, match="censored"):
         study.summarize_experiments(source, out)
+
+
+def test_excluded_pending_and_nonignition_trials_are_counted_separately(tmp_path):
+    source, out = tmp_path / "measurements.csv", tmp_path / "summary.csv"
+    source.write_text("case_id,replicate,valid,exclusion_reason,ignition_observed,ignition_delay_s,observation_window_s\n"
+        "SP_G1,1,true,,true,0.2,2\nSP_G1,2,true,,true,0.4,2\n"
+        "SP_G1,3,true,,false,,2\nSP_G1,4,false,contact failure,true,99,2\n"
+        "SP_G1,5,,,,,2\nAR_1TO2,1,false,camera failure,,,\n")
+    before = source.read_bytes()
+    study.summarize_experiments(source, out)
+    with out.open() as stream:
+        rows = {r["case_id"]: r for r in csv.DictReader(stream)}
+    row = rows["SP_G1"]
+    assert int(row["n_completed"]) == 4
+    assert int(row["n_valid"]) == int(row["n_observed"]) == 3
+    assert int(row["n_excluded"]) == int(row["n_pending"]) == int(row["n_no_ignition"]) == 1
+    assert int(row["n_ignited"]) == 2
+    assert float(row["ignition_fraction"]) == pytest.approx(2 / 3)
+    assert float(row["mean_delay_ignited_only_s"]) == pytest.approx(.3)
+    assert float(row["sample_sd_delay_ignited_only_s"]) == pytest.approx(.2 / 2**.5)
+    assert rows["AR_1TO2"]["n_excluded"] == "1"
+    assert rows["AR_1TO2"]["ignition_fraction"] == rows["AR_1TO2"]["mean_delay_ignited_only_s"] == ""
+    assert source.read_bytes() == before
+
+
+@pytest.mark.parametrize("values,match", [
+    (",,true,.2,2", "explicit valid flag"),
+    ("false,,,,2", "exclusion_reason"),
+    ("true,contact failure,true,.2,2", "must not have exclusion_reason"),
+    ("true,,,,2", "requires ignition_observed"),
+    ("maybe,,true,.2,2", "valid must be"),
+    ("true,,false,2,2", "censored"),
+])
+def test_ambiguous_experimental_validity_is_rejected(tmp_path, values, match):
+    source, out = tmp_path / "measurements.csv", tmp_path / "summary.csv"
+    source.write_text("case_id,replicate,valid,exclusion_reason,ignition_observed,ignition_delay_s,observation_window_s\n"
+                      f"SP_G1,1,{values}\n")
+    with pytest.raises(ValueError, match=match):
+        study.summarize_experiments(source, out)
+    assert not out.exists()

@@ -190,8 +190,10 @@ def geometry_svg(meta: Mapping) -> str:
             'stroke="black" stroke-width="0.08"/>' + ''.join(rects) + '</svg>\n')
 
 
-def generate(spec: Mapping, out: Path) -> None:
+def generate(spec: Mapping, out: Path, *, experiment_seed: int = 20261005) -> None:
     spec = validate_spec(spec)
+    if isinstance(experiment_seed, bool) or not isinstance(experiment_seed, int) or experiment_seed < 0:
+        raise ValueError("experiment_seed must be a nonnegative integer")
     if out.exists():
         raise FileExistsError("Output already exists; use a new path. No files were overwritten")
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -209,10 +211,19 @@ def generate(spec: Mapping, out: Path) -> None:
         records.append(meta)
     write_json(staging / "study.json", spec)
     write_json(staging / "geometry_manifest.json", records)
-    template = [dict(case_id=sid, replicate=k, batch_id="", ignition_observed="",
-                     ignition_delay_s="", observation_window_s="", notes="")
+    template = [dict(case_id=sid, replicate=k, batch_id="", valid="", exclusion_reason="",
+                     ignition_observed="", ignition_delay_s="", observation_window_s="", notes="")
                 for sid in CASES for k in range(1, spec["experimental_replicates"] + 1)]
     write_csv(staging / "experiment_measurements_template.csv", template)
+    # Each block contains every condition once. This orders physical experiments,
+    # not solver calls; the seed is recorded with the plan for reproducibility.
+    rng = np.random.default_rng(experiment_seed)
+    schedule = []
+    for block in range(1, spec["experimental_replicates"] + 1):
+        for sid in rng.permutation(list(CASES)):
+            schedule.append(dict(run_order=len(schedule) + 1, block=block,
+                                 case_id=str(sid), replicate=block, random_seed=experiment_seed))
+    write_csv(staging / "experiment_schedule.csv", schedule)
     write_json(staging / "GENERATED.json", dict(schema=SCHEMA, cases=8, pde_executed=False))
     audit(staging)
     # Rename atomically; a concurrent creator is not allowed to have its files replaced.
@@ -334,12 +345,20 @@ SUMMARY_KEYS = ("ignitionSucceeded", "ignitionDelay_s", "minimumIgnitionVoltage_
     "allElectricalLinearSolvesConverged", "allNonlinearRobinSolvesConverged",
     "physicsRejected", "external_numerical_valid", "external_numerical_reason")
 
+# Keep failure diagnostics visible while suppressing unreliable physical values.
+SUMMARY_DIAGNOSTIC_KEYS = {
+    "minimumIgnitionVoltageSearchValid", "minimumIgnitionVoltageSearchStatus",
+    "minimumIgnitionVoltageLeftCensored", "minimumIgnitionVoltageRightCensored",
+    "converged", "allElectricalLinearSolvesConverged", "allNonlinearRobinSolvesConverged",
+    "physicsRejected", "external_numerical_valid", "external_numerical_reason",
+}
+
 
 def summary_rows(records: list[dict]) -> list[dict]:
     rows = []
     for rec in records:
         m, raw = rec["geometry"], rec["raw"]
-        good = raw.get("external_numerical_valid") is True
+        good = raw.get("external_numerical_valid") is True and not raw.get("physicsRejected", False)
         state = ("numerically_invalid" if not good else
                  "condensed_onset" if raw.get("ignitionSucceeded") is True else
                  "no_onset_within_horizon")
@@ -348,10 +367,15 @@ def summary_rows(records: list[dict]) -> list[dict]:
             "anode_to_cathode_area_ratio", "grid_size", "grid_spacing_mm")}
         row.update(groups=";".join(m["groups"]), result_state=state)
         row.update({k: raw.get(k) for k in SUMMARY_KEYS})
-        # Preserve every original raw field in result.json. Do not present
-        # numerical-failure penalties or no-onset sentinels as a measured delay.
+        # Preserve every original raw field in result.json. No physical value
+        # from a numerically invalid trial is an experimental observation.
+        if not good:
+            for key in SUMMARY_KEYS:
+                if key not in SUMMARY_DIAGNOSTIC_KEYS:
+                    row[key] = None
         if not good or raw.get("ignitionSucceeded") is not True:
             row["ignitionDelay_s"] = None
+            row["inputElectricalEnergyToIgnition_J"] = None
         if (not good or raw.get("minimumIgnitionVoltageSearchValid") is not True
             or raw.get("minimumIgnitionVoltageRightCensored") is True):
             row["minimumIgnitionVoltage_V"] = None
@@ -439,10 +463,16 @@ def summarize_experiments(source: Path, destination: Path) -> None:
     """Sample mean/SD of successful trials; nonignition remains right-censored."""
     if source.resolve() == destination.resolve():
         raise ValueError("Experimental input and summary output must be different files")
-    groups = {sid: {"delays": [], "failed": 0} for sid in CASES}
+    groups = {sid: {"delays": [], "failed": 0, "excluded": 0, "pending": 0} for sid in CASES}
     seen = set()
     with source.open(newline="", encoding="utf-8-sig") as stream:
-        for row in csv.DictReader(stream):
+        reader = csv.DictReader(stream)
+        required = {"case_id", "replicate", "ignition_observed", "ignition_delay_s",
+                    "observation_window_s"}
+        if not required.issubset(reader.fieldnames or []):
+            raise ValueError("Missing required experimental CSV columns")
+        explicit_validity = "valid" in reader.fieldnames
+        for row in reader:
             sid, rep = row["case_id"], row["replicate"]
             if sid not in CASES or not rep.isdigit() or int(rep) < 1:
                 raise ValueError("Invalid experimental case/replicate")
@@ -452,9 +482,31 @@ def summarize_experiments(source: Path, destination: Path) -> None:
             seen.add(key)
             status = row["ignition_observed"].strip().lower()
             value = row["ignition_delay_s"].strip()
+            reason = (row.get("exclusion_reason") or "").strip()
+            if explicit_validity:
+                validity = (row.get("valid") or "").strip().lower()
+                if not validity:
+                    if status or value or reason:
+                        raise ValueError("An entered observation or exclusion requires an explicit valid flag")
+                    groups[sid]["pending"] += 1
+                    continue
+                if validity in {"false", "0", "no"}:
+                    if not reason:
+                        raise ValueError("An excluded experiment requires exclusion_reason")
+                    groups[sid]["excluded"] += 1
+                    continue
+                if validity not in {"true", "1", "yes"}:
+                    raise ValueError("valid must be true/false or blank")
+                if reason:
+                    raise ValueError("A valid experiment must not have exclusion_reason")
+                if not status:
+                    raise ValueError("A valid experiment requires ignition_observed")
+            elif reason:
+                raise ValueError("An exclusion_reason requires a valid column")
             if not status:
                 if value:
                     raise ValueError("Delay given without ignition status")
+                groups[sid]["pending"] += 1
                 continue
             window = float(row["observation_window_s"])
             if not math.isfinite(window) or window <= 0:
@@ -474,7 +526,9 @@ def summarize_experiments(source: Path, destination: Path) -> None:
     for sid, g in groups.items():
         values = g["delays"]
         total = len(values) + g["failed"]
-        output.append(dict(case_id=sid, n_observed=total, n_ignited=len(values),
+        output.append(dict(case_id=sid, n_completed=total + g["excluded"],
+            n_valid=total, n_excluded=g["excluded"], n_pending=g["pending"],
+            n_observed=total, n_ignited=len(values),
             n_no_ignition=g["failed"], ignition_fraction=len(values) / total if total else None,
             mean_delay_ignited_only_s=statistics.mean(values) if values else None,
             sample_sd_delay_ignited_only_s=statistics.stdev(values) if len(values) >= 2 else None))
@@ -490,6 +544,8 @@ def main() -> int:
     parser.add_argument("--out", type=Path)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
     parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--experiment-seed", type=int, default=20261005,
+                        help="Random seed for the physical experiment schedule (generate only)")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--input", type=Path)
     args = parser.parse_args()
@@ -501,7 +557,7 @@ def main() -> int:
     out = relative(args.out)
     if args.command == "generate":
         spec = yaml.safe_load(relative(args.study_config).read_text(encoding="utf-8"))
-        generate(spec, out)
+        generate(spec, out, experiment_seed=args.experiment_seed)
         print(f"Generated 8 exact full-height cases: {out}")
     elif args.command == "audit":
         spec, items = audit(out)

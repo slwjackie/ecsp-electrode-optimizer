@@ -115,6 +115,13 @@ case 단위로 자주 checkpoint하려면 처음부터 `--batch-size 1`로 실�
 Staggered 정규화, Pareto 선별, no-ignition penalty를 물리적 측정값으로 제시하지 않는다.
 각 그룹의 CSV는 공유 직선 baseline을 포함해 3행이다.
 
+수치적으로 무효인 결과 또는 `physicsRejected` 결과는 CSV의 점화 여부, 지연시간,
+Vmin, 전류 집중도, 에너지, 최대 온도, 미분해율을 모두 공란으로 저장한다.
+`result_state`, 수렴 여부, 거부 여부, 수치 오류 사유와 Vmin 진단 flag는 남긴다.
+**원본 값은 `cases/<ID>/result.json`에 그대로 보존**하므로 실패 원인을 추적할 수 있다.
+유효한 무점화 결과는 지연시간과 점화까지의 에너지만 공란으로 두고, 고정 평가시점의
+온도·에너지·미분해율 등 유효한 값은 유지한다. Vmin은 검색이 무효이거나 우측 검열이면 공란이다.
+
 Reference onset 실패는 `no_onset_within_horizon`, numerical rejection은
 `numerically_invalid`로 구분한다. 계산/컴파일 예외는 `execution_failure.json`에
 기록하고 실행을 중단한다. 수치 실패와 물리적 nonignition을 섞지 않는다.
@@ -130,8 +137,39 @@ Vmin의 left/right censoring과 search validity는 별도 열로 남긴다.
 
 8개 조건 × 5회 = 40행의 빈 `experiment_measurements_template.csv`를 제공한다.
 이는 **실험 기록 양식**이지 가짜 실험결과나 40회 시뮬레이션이 아니다.
-원본 template을 복사하여 `ignition_observed`에 true/false, 실제 지연시간과
-`observation_window_s`를 기록한다. 무점화 시험의 delay는 빈칸으로 남긴다.
+
+`generate`는 `experiment_schedule.csv`도 만든다. 각 block에 8조건을 한 번씩
+포함하고 그 순서를 독립적으로 섞는다. 기본 5개 block에서 조건당 5회씩 실험하며,
+`BASE_G2_W2`도 block당 한 번만 포함한다. `run_order` 순서대로 실험하고
+`case_id`와 `replicate`가 같은 template 행에 기록한다. `block`은 반복 묶음이며
+시편 제조 batch를 뜻하지 않는다. 실제 제조 batch는 template의 `batch_id`에 기록한다.
+
+난수 seed 기본값은 `20261005`이며 schedule의 `random_seed` 열에도 저장된다.
+같은 환경과 seed로 생성하면 같은 순서를 재현한다. 다음처럼 다른 seed를 지정할 수 있다.
+기존 output을 덮어쓰지 않으므로 새 경로를 사용한다.
+
+```bash
+python python/run_electrode_parameter_study.py generate \
+  --out runs/straight25_new_plan --experiment-seed 42
+```
+
+이 순서표와 seed는 실제 실험에만 적용되며 solver의 계산 순서나 물리 설정을 바꾸지 않는다.
+생성된 순서표를 보관하고 실험 중 결과에 따라 다시 섞지 않는다.
+
+원본 template을 복사하여 다음과 같이 기록한다.
+
+| 시험 상태 | `valid` | `exclusion_reason` | `ignition_observed` | `ignition_delay_s` |
+|---|---|---|---|---|
+| 유효한 점화 | true | 공란 | true | 관측값 |
+| 유효한 무점화 | true | 공란 | false | 공란 |
+| 접촉 불량·계측 실패 등 제외할 시험 | false | 구체적인 제외 사유 필수 | 기록이 있으면 보존 가능 | 기록이 있으면 보존 가능 |
+| 아직 실시하지 않은 시험 | 공란 | 공란 | 공란 | 공란 |
+
+유효한 시험에는 실제 `observation_window_s`도 기록한다. 제외된 시험은 통계에서만
+빠지며 원본 CSV 행은 삭제하거나 수정하지 않는다. 제외 기준은 실험 전에 정하고,
+**정상적으로 수행된 무점화 시험을 불량으로 제외하지 않는다.** 새 형식에서 관측값을
+입력하고 `valid`를 비워 두면 오류로 처리한다. `valid` 열이 없는 기존 CSV도 지원하며,
+그 경우 기존처럼 완료된 관측을 모두 유효한 시험으로 집계한다.
 
 ```bash
 python python/run_electrode_parameter_study.py summarize-experiments \
@@ -143,6 +181,19 @@ python python/run_electrode_parameter_study.py summarize-experiments \
 분리한다. 무점화를 0초/관측 종료시간으로 대체하지 않는다. 관측창이 다른 실험들의
 점화율/지연시간을 직접 비교하면 안 된다. 공유 baseline 데이터를 독립적인 두 표본으로
 중복 계산하지 않는다. 동일 deterministic simulation을 5회 반복하지 않는다.
+
+| 집계 열 | 의미 |
+|---|---|
+| `n_completed` | 유효 시험 + 제외된 시험 |
+| `n_valid` | 유효 시험 수; 점화율의 분모 |
+| `n_excluded` | 제외 사유가 기록된 불량 시험 수 |
+| `n_pending` | 입력 CSV에 있는 미실시·미기록 행 수 |
+| `n_observed` | 기존 열과의 호환용이며 `n_valid`와 같음 |
+| `n_ignited`, `n_no_ignition` | 유효 시험 중 점화·무점화 횟수 |
+| `ignition_fraction` | `n_ignited / n_valid`; 유효 시험이 없으면 공란 |
+
+평균과 표본표준편차는 유효하게 점화된 시험만 사용하며, 해당 관측이 없거나
+표준편차를 계산할 표본이 부족하면 공란으로 둔다.
 
 ## 최초 추가 시점의 검증 기록
 
