@@ -15,7 +15,9 @@
 ## 기존 suite
 
 기존 테스트 전체: **668 passed, 6 skipped, 8 failed**.
-`existing_regression.log`, `existing_regression.xml`에 원본 출력을 보존했습니다.
+`existing_regression.log`, `existing_regression.xml`에 실행 결과를 기록했습니다.
+저장소에 남아 있는 XML의 개인 환경 절대경로는 `VALIDATION_WORKSPACE`로
+정리했으며, 테스트 항목과 성공·실패·건너뜀 결과는 변경하지 않았습니다.
 6 skipped는 M2에 CUDA/A100 하드웨어가 없어 실행할 수 없는 GPU 테스트입니다.
 
 8개 실패는 아래 기존 코드/config 테스트입니다. 이 작업은 해당 코드와 YAML을

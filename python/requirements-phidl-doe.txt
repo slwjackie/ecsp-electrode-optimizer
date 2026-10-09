@@ -1,4 +1,4 @@
-# Optional DOE environment; does not change existing NSGA-II dependencies.
+# Optional CAD/DOE environment; install separately from the solver environment.
 # PHIDL 1.7.2 supports Python >=3.6, fixes NumPy 2 compatibility.
 # Validated here with the production ecsp-m2 Python 3.10.21 / NumPy 2.2.6.
 -r requirements.txt

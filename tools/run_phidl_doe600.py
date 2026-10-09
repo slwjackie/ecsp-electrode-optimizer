@@ -9,8 +9,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "python"))
-# The optional per-project dependency directory isolates PHIDL's pinned CAD
-# stack from the existing NSGA-II environment. Conventional pip installs work too.
+# Optional local CAD installation; not part of the repository.
+# Standard virtual environments use python/requirements-phidl-doe.txt.
 if (ROOT / ".doe-deps").is_dir():
     sys.path.insert(0, str(ROOT / ".doe-deps"))
 

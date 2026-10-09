@@ -26,6 +26,7 @@ htmlcov/
 # Python virtual environments
 # ------------------------------------------------------------
 .venv/
+.venv-*/
 venv/
 env/
 ENV/
@@ -170,13 +171,19 @@ kubeconfig.*
 *.tmp
 *.temp
 *.bak
+*.bak_*
 *.swp
 *.swo
 *~
 
+# Local backups, optional dependency installs, and diagnostic runs
+*_backups/
+/backup_*/
+/debug_*/
+/.doe-deps/
+*.pid
+
 # Preflame C++/CUDA build cache
 .cpp_cuda_build/
 
-.native_build/
-
-.native_build_A100_Linux/
+.native_build*/

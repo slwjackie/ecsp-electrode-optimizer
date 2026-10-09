@@ -63,3 +63,8 @@ CPU 실행은 `--device cpu`로 선택합니다. `generate`와 `audit`는 PDE를
 
 `README_V*_KR.md`, 버전별 검증 보고서와 기존 audit 결과는 당시 구현의 기록입니다.
 과거 NSGA-II 실행 명령과 옛 모듈 이름은 현재 실행 안내로 사용하지 마십시오.
+
+로컬 백업, 설치된 라이브러리 복사본, 컴파일 캐시와 임시 실행 결과는 Git에 포함하지 않습니다.
+선택적 CAD/DOE 환경은 [의존성 설치 안내](docs/PHIDL_DOE600_KR.md#dependency)를 따릅니다.
+과거 검증 보고서의 일부 개인 환경 절대경로는 상대경로 또는 `VALIDATION_WORKSPACE`로
+정리했으며, 당시 테스트의 성공·실패·건너뜀 결과와 소스 해시는 보존했습니다.
