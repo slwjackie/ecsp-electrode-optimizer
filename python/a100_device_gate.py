@@ -15,8 +15,8 @@ from typing import Any
 
 SCHEMA = "ecsp.a100-production-gate/v1"
 REQUIRED_NATIVE_CUDA_TEST_IDS = (
-    "python.tests.test_bc_native::test_native_cuda32_64_batch_size_invariance",
-    "python.tests.test_bc_native::test_native_cuda_cpu_full_field_and_mixed_voltage_parity",
+    "python.tests.test_preflame_cpp_cuda::test_native_cuda32_64_batch_size_invariance",
+    "python.tests.test_preflame_cpp_cuda::test_native_cuda_cpu_full_field_and_mixed_voltage_parity",
 )
 
 
@@ -325,13 +325,13 @@ def _load_preflight(path: Path, expected_kind: str | None = None) -> dict[str, A
                 "Native CUDA preflight did not execute the exact required tests: "
                 f"{test_ids!r}"
             )
-    elif kind == "corrected_v8_2_python_bc_global":
+    elif kind == "corrected_v8_2_python_preflame_model":
         if payload.get("physics_device_reported_by_workflow") != "cuda":
-            raise ValueError("Python B/C preflight did not report physicsDevice=cuda")
-        if payload.get("bc_global_preflame_used") is not True:
-            raise ValueError("Python B/C preflight did not exercise B/C pre-flame physics")
+            raise ValueError("Python electrochemical-thermal-decomposition preflight did not report physicsDevice=cuda")
+        if payload.get("preflame_torch_used") is not True:
+            raise ValueError("Python electrochemical-thermal-decomposition preflight did not exercise electrochemical-thermal-decomposition pre-flame physics")
         if payload.get("gas_phase_cfd_used") is not False:
-            raise ValueError("Python B/C preflight unexpectedly reports gas-phase CFD")
+            raise ValueError("Python electrochemical-thermal-decomposition preflight unexpectedly reports gas-phase CFD")
     else:
         raise ValueError(f"Unsupported preflight kind: {kind!r}")
     return payload

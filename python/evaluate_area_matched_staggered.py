@@ -64,13 +64,13 @@ def main() -> int:
     if str(python_root) not in sys.path:
         sys.path.insert(0, str(python_root))
 
-    from ecsp_nsga2.nsga2 import Individual
-    from ecsp_nsga2.geometry import RasterizedGeometry
-    from ecsp_nsga2.workflow import NSGA2ElectricalSolidWorkflow, OBJECTIVE_NAMES
+    from ecsp_preflame.candidate_ranking import CandidateEvaluation
+    from ecsp_preflame.geometry import RasterizedGeometry
+    from ecsp_preflame.evaluation_workflow import EvaluationWorkflow, OBJECTIVE_NAMES
 
     config = _load_config(config_path)
     runtime_dir = workdir / ".area_matched_staggered_runtime"
-    workflow = NSGA2ElectricalSolidWorkflow(
+    workflow = EvaluationWorkflow(
         package_root=package_root,
         config=config,
         workdir=runtime_dir,
@@ -86,7 +86,7 @@ def main() -> int:
         data = json.loads(recommendation_path.read_text(encoding="utf-8"))
         objective_map = data.get("objectives", {})
         if all(name in objective_map for name in OBJECTIVE_NAMES):
-            recommendation = Individual(
+            recommendation = CandidateEvaluation(
                 geometry_id=str(data.get("geometry_id", "RECOMMENDED_AI")),
                 topology_id=str(data.get("topology_id", "UNKNOWN")),
                 genome=dict(data.get("genome", {})),
@@ -132,7 +132,7 @@ def main() -> int:
                     constraint_violation=0.0,
                     violation_details={},
                 )
-                recommendation = Individual(
+                recommendation = CandidateEvaluation(
                     geometry_id=str(data.get("geometry_id", "RECOMMENDED_AI")),
                     topology_id=str(data.get("topology_id", "UNKNOWN")),
                     genome=genome,

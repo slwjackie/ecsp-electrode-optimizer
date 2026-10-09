@@ -5,7 +5,7 @@ v7.9.0의 corrected surface-contact physics는 **C++ CPU FP64** backend에 구�
 사용할 설정:
 
 ```text
-config/nsga2_condensed_phase_no_f_m2_cpp_fp64.yaml
+config/preflame_condensed_phase_m2_cpp_fp64.yaml
 ```
 
 필수 검증:

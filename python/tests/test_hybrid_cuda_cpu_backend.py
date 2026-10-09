@@ -9,7 +9,7 @@ import numpy as np
 
 from ecsp_cpp.backend import CppPhysicsRunner, serialise_cpp_config
 from ecsp_cuda import CudaBatchCase, TorchCudaSurfaceContactBatchRunner
-from ecsp_nsga2.hybrid import HybridCudaCpuFp64Evaluator, _HybridTask
+from ecsp_preflame.hybrid import HybridCudaCpuFp64Evaluator, _HybridTask
 from ecsp_v6.config import load_config
 from ecsp_v6.physics.composition_model import build_composition
 
@@ -130,8 +130,8 @@ def test_torch_batched_equations_match_buffered_cpp_short_horizon(tmp_path: Path
 
 
 def test_create_evaluator_routes_hybrid_backend(monkeypatch, tmp_path: Path):
-    import ecsp_nsga2.hybrid as hybrid_module
-    from ecsp_nsga2.evaluator import create_evaluator
+    import ecsp_preflame.hybrid as hybrid_module
+    from ecsp_preflame.evaluator import create_evaluator
 
     sentinel = object()
     monkeypatch.setattr(

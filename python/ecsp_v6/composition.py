@@ -11,7 +11,7 @@ def _resolve_retained_water(comp: dict[str, Any], masses: dict[str, float]) -> t
     """Return (retained fraction of recipe water, cured-water mass fraction, basis).
 
     Legacy v7.x configurations specify ``retained_water_fraction`` as the
-    fraction of the *mixing water* that remains after cure.  The B/C paper-based
+    fraction of the *mixing water* that remains after cure.  The electrochemical-thermal-decomposition paper-based
     configuration instead specifies the experimentally meaningful
     ``cured_water_mass_fraction`` in the final cured specimen.  Supporting both
     definitions keeps every legacy profile byte-for-byte usable while removing
@@ -70,7 +70,7 @@ def composition_summary(config: dict[str, Any]) -> dict[str, Any]:
     dry_total = total_analyzed - adjusted["water"]
     molar = comp["molar_masses_g_per_mol"]
     # Optional ingredients remain supported.  Missing ingredients are treated
-    # as zero rather than forcing the non-glycerol B/C recipe to invent a mass.
+    # as zero rather than forcing the non-glycerol electrochemical-thermal-decomposition recipe to invent a mass.
     moles = {
         "LP": adjusted.get("LP", 0.0) / float(molar["LP"]),
         "water": adjusted.get("water", 0.0) / float(molar["water"]),

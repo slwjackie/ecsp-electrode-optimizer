@@ -27,7 +27,7 @@ def row(ignited=True, t=.2, v=100., temperature=650., j=10.):
                 minimumIgnitionVoltageLeftCensored=False, minimumIgnitionVoltageRightCensored=not ignited,
                 minimumIgnitionVoltage_V=v if ignited else None, minimumIgnitionVoltageBracketWidth_V=5.,
                 peakMaximumTemperature_K=temperature, peakCurrentCongestionToEvaluationTime=j,
-                nativeExecution={"completedFullHorizon": True})
+                cppCudaExecution={"completedFullHorizon": True})
 
 
 def pair(c=None, b=None, sid="E114"):
@@ -156,9 +156,12 @@ def test_inconsistent_ignition_time(t):
     assert screen_pair(p)["comparison_state"] == "incomplete_observation"
 
 
-def test_nonignition_does_not_imply_full_horizon_if_marked_incomplete():
+@pytest.mark.parametrize("execution_key", ["cppCudaExecution", "nativeExecution"])
+def test_nonignition_does_not_imply_full_horizon_if_marked_incomplete(execution_key):
     p = pair(row(False), row(False))
-    p["candidate_raw"]["nativeExecution"]["completedFullHorizon"] = False
+    execution = p["candidate_raw"].pop("cppCudaExecution")
+    execution["completedFullHorizon"] = False
+    p["candidate_raw"][execution_key] = execution
     assert screen_pair(p)["comparison_state"] == "incomplete_observation"
 
 

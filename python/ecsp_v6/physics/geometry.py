@@ -265,7 +265,7 @@ def load_geometry_batch(
     anode_t = torch.as_tensor(np.stack(anodes), device=device, dtype=torch.bool)
     cathode_t = torch.as_tensor(np.stack(cathodes), device=device, dtype=torch.bool)
     # Keep the shared loader's historical embedded-electrode semantics for
-    # legacy/non-B/C profiles.  The corrected B/C evaluator deliberately
+    # legacy/non-electrochemical-thermal-decomposition profiles.  The corrected electrochemical-thermal-decomposition evaluator deliberately
     # overrides these two fields after loading so only that production family
     # uses full-domain propellant plus separate surface-contact masks.
     fixed = anode_t | cathode_t

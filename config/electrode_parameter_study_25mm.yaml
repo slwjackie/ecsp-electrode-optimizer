@@ -1,7 +1,7 @@
 schema: full_height_strip_study_v1
 domain_mm: 25.0
 electrode_length_mm: 25.0
-# The production B/C grid is cell-centred: dx = L/N, not L/(N-1).
+# The production electrochemical-thermal-decomposition grid is cell-centred: dx = L/N, not L/(N-1).
 # 200 gives exactly 0.125 mm; all specified edges lie on cell faces.
 grid_size: 200
 placement: centered_assembly

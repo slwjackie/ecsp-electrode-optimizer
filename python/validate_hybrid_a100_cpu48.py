@@ -64,7 +64,7 @@ def main() -> int:
     if str(root / "python") not in sys.path:
         sys.path.insert(0, str(root / "python"))
 
-    from ecsp_nsga2.hybrid import HybridCudaCpuFp64Evaluator
+    from ecsp_preflame.hybrid import HybridCudaCpuFp64Evaluator
 
     cfg = yaml.safe_load(args.config.read_text(encoding="utf-8"))
     cfg = copy.deepcopy(cfg)

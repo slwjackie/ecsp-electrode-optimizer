@@ -15,7 +15,7 @@ EXCLUDED_DIRS = {
     "__pycache__",
     "runs",
     "build",
-    ".native_build",
+    ".native_build", ".cpp_cuda_build",
 }
 
 

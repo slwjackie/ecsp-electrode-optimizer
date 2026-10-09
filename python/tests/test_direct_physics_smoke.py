@@ -5,14 +5,14 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-from ecsp_nsga2.evaluator import DirectCondensedV772NoFEvaluator, canonicalise_metrics
+from ecsp_preflame.evaluator import DirectCondensedV772NoFEvaluator, canonicalise_metrics
 
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_direct_no_f_physics_one_step_cpu(tmp_path: Path) -> None:
-    nsga = yaml.safe_load((ROOT / "config/nsga2_condensed_phase_no_f.yaml").read_text())
+    nsga = yaml.safe_load((ROOT / "config/preflame_condensed_phase.yaml").read_text())
     nsga["project"]["device"] = "cpu"
     nsga["physics"]["end_time_s"] = 1.0e-4
     nsga["condensed_ignition"]["reference_time_s"] = 1.0e-4

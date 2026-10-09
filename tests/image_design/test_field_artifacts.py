@@ -8,7 +8,7 @@ import numpy as np
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'python'))
 
-from ecsp_nsga2.field_diagnostics import write_snapshot_artifacts
+from ecsp_preflame.field_diagnostics import write_snapshot_artifacts
 
 
 def test_representative_snapshot_writes_raw_fields_images_and_uniformity_metrics(tmp_path):
@@ -51,8 +51,8 @@ def test_representative_snapshot_writes_raw_fields_images_and_uniformity_metrics
 
 def test_run_model_return_output_contract_is_independent_of_handoff():
     """Field capture must not depend on handoff/history storage being enabled."""
-    source=(ROOT/'python/ecsp_nsga2/evaluator.py').read_text(encoding='utf-8')
+    source=(ROOT/'python/ecsp_preflame/evaluator.py').read_text(encoding='utf-8')
     assert 'return_output: bool = False' in source
     assert 'output if (save_handoff or return_output) else None' in source
-    native=(ROOT/'python/ecsp_nsga2/bc_native.py').read_text(encoding='utf-8')
+    native=(ROOT/'python/ecsp_preflame/cpp_cuda_evaluator.py').read_text(encoding='utf-8')
     assert 'return_output=capture_fields' in native

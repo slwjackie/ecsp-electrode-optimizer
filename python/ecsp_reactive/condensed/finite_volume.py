@@ -9,7 +9,7 @@ stoichiometric invariants survive advection. No reaction-front speed is fitted.
 from __future__ import annotations
 import numpy as np
 from ecsp_reactive.numerics import _weno_js_weights
-from ecsp_nsga2.propagation import PropagationConfigurationError, PropagationCandidateNumericalError
+from ecsp_preflame.propagation import PropagationConfigurationError, PropagationCandidateNumericalError
 from .chemistry import *
 
 

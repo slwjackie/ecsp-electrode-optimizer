@@ -12,7 +12,7 @@ import yaml
 from ecsp_reactive.condensed.chemistry import (
     A1, A2, RHO, _CoordinateCertificationFailure,
 )
-from ecsp_reactive.condensed.handoff import BCReactiveHandoffAdapter
+from ecsp_reactive.condensed.handoff import PreflameReactiveHandoffAdapter
 from ecsp_reactive.condensed.validation_cases import synthetic_condensed_case
 
 
@@ -35,7 +35,7 @@ def _adapted(*, rates=(4.0, 1.5), heats=(0.0, 0.0),
     handoff["temperatureAtOnset_K"][:] = temperature
     if change is not None:
         change(handoff, propagation, bc, reactive)
-    return BCReactiveHandoffAdapter(propagation, bc, reactive).adapt(handoff)
+    return PreflameReactiveHandoffAdapter(propagation, bc, reactive).adapt(handoff)
 
 
 def _coordinate(adapted, alpha0, temperature, duration, capacity=10.0,
@@ -573,7 +573,7 @@ def test_stiff_shared_inventory_event_matches_independent_radau_fast(swapped):
 
 def test_v009_hard_cell_matches_radau_and_keeps_exact_ledgers():
     production = yaml.safe_load(
-        (ROOT / "config/nsga2_bc_reactive_m2cpu_200x3.yaml").read_text(
+        (ROOT / "config/preflame_reactive_m2cpu.yaml").read_text(
             encoding="utf-8"
         )
     )
@@ -583,8 +583,8 @@ def test_v009_hard_cell_matches_radau_and_keeps_exact_ledgers():
     progress_capacity = 0.562979977
 
     def change(_handoff, _propagation, bc, _reactive):
-        bc["kinetics"] = copy.deepcopy(production["bc_global"]["kinetics"])
-        bc["thermal"] = copy.deepcopy(production["bc_global"]["thermal"])
+        bc["kinetics"] = copy.deepcopy(production["preflame_model"]["kinetics"])
+        bc["thermal"] = copy.deepcopy(production["preflame_model"]["thermal"])
 
     adapted = _adapted(
         rates=(1.0, 1.0), heats=(1.0, 1.0), alpha=tuple(alpha0),

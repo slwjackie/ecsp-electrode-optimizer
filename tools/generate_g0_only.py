@@ -6,8 +6,8 @@ from pathlib import Path
 import csv
 import yaml
 
-from ecsp_nsga2.bootstrap import build_bootstrap, resolved_physics_grid
-from ecsp_nsga2.geometry import save_geometry
+from ecsp_preflame.bootstrap import build_bootstrap, resolved_physics_grid
+from ecsp_preflame.geometry import save_geometry
 
 
 def main() -> int:

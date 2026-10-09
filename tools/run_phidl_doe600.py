@@ -17,7 +17,7 @@ if (ROOT / ".doe-deps").is_dir():
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=ROOT / "config/nsga2_preflame_only_200x3.yaml",
+    parser.add_argument("--config", type=Path, default=ROOT / "config/preflame_only.yaml",
                         help="Existing experiment YAML; sole source for geometry and physics constraints")
     parser.add_argument("--doe-config", type=Path, default=ROOT / "config/phidl_doe600.yaml")
     parser.add_argument("--run-dir", type=Path, help="New run directory, or exact original directory for --resume")

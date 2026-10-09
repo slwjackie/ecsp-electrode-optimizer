@@ -36,7 +36,7 @@ EXCLUDED_PARTS = {
     ".git",
     ".pytest_cache",
     ".ruff_cache",
-    ".native_build",
+    ".native_build", ".native_build_A100_Linux", ".cpp_cuda_build",
     "__pycache__",
     "build",
     "runs",

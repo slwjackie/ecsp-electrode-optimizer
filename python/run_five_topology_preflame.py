@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate/audit the original five geometries; evaluate by paired screening.
 
-The geometry functions, native solver and postflame implementation are unchanged.
+The geometry functions, C++/CUDA solver and postflame implementation are unchanged.
 For the full fixed catalogue or reclassification use run_paired_preflame_screening.py.
 """
 from __future__ import annotations
@@ -67,7 +67,7 @@ def evaluate(project_root, config_path, out):
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('mode',choices=['generate','audit','evaluate'])
     ap.add_argument('--project-root',type=Path,default=Path.cwd());ap.add_argument('--refs',type=Path,default=Path('data/image_design/five_topology_references.json'))
-    ap.add_argument('--out',type=Path,default=Path('runs/five_topologies'));ap.add_argument('--config',type=Path,default=Path('config/nsga2_bc_reactive_a100_cpu8_poweroff_200x3.yaml'))
+    ap.add_argument('--out',type=Path,default=Path('runs/five_topologies'));ap.add_argument('--config',type=Path,default=Path('config/preflame_electrochemical_thermal_decomposition_a100_cpu8.yaml'))
     args=ap.parse_args();refs=args.refs if args.refs.is_absolute() else args.project_root/args.refs;out=args.out if args.out.is_absolute() else args.project_root/args.out
     if args.mode=='generate':generate(load_refs(refs),out)
     elif args.mode=='audit':audit(out)

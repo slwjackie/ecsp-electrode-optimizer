@@ -1,8 +1,12 @@
-# 현재 배포: ECSP v8.4.2 — GeometrySafe / Power-OFF
+# 현재 안내
 
-**현재 실행은 `README_V8_4_2_KR.md`를 참조하십시오.** 5 mm 폭 상한을 유지하고, BC 생산 면적 tolerance를 1%로 강화했으며, 20×50 유효·고유 형상 확인 전 후보 해석을 시작하지 않습니다. 현재 전원 OFF 명령은 `bash tools/run_bc_reactive_a100_cpu8_poweroff.sh "$PWD/runs/v842_poweroff"`입니다.
+현재 구조와 실행 방법은 [README.md](README.md), 이름 변경과 물리식 읽기 순서는
+[공통 preflame 해석기 안내](docs/PREFLAME_REFACTOR_KR.md)를 참조하십시오.
+공통 해석기는 `ecsp_preflame`, 컴파일된 실행은 `ecsp_cpp_cuda`로 분리했으며
+사용하지 않는 NSGA-II 최적화 실행기는 제거했습니다.
 
-아래 v8.4.1 설명은 상속한 GPU/물리 모델의 역사적 설명입니다. 현재 시험 결과는 `VALIDATION_V8_4_2_KR.md`, 현재 manifest는 `PACKAGE_SHA256_MANIFEST_V8_4_2.txt`를 따릅니다.
+아래 내용과 버전별 README·검증 보고서는 **리팩터링 이전 배포의 기록**입니다.
+과거 실행 명령·경로·시험 개수를 현재 배포의 사용법이나 검증 결과로 해석하지 마십시오.
 
 ---
 
@@ -24,14 +28,14 @@ v8.4.0 직접 기반. **신규 응축상 12변수 Reactive를 FP64 Torch 배치 
 python -m pip install -r python/requirements.txt pytest
 
 # GPU 없이 전체 연결 확인용: 합성/단축 DEBUG 물리, 연구 순위로 사용 금지
-CONFIG="$PWD/config/nsga2_bc_reactive_tensor_cpu_debug.yaml" \
+CONFIG="$PWD/config/preflame_reactive_tensor_cpu_debug.yaml" \
 bash tools/run_bc_reactive.sh "$PWD/runs/v841_cpu_debug"
 
 # A100 + CPU8. 기본: 기존 baseline을 추천기준으로 유지하고 GPU Reactive와 비교
 bash tools/run_bc_reactive_a100_cpu8.sh "$PWD/runs/v841_dual"
 
 # 신규 Reactive 결과를 잠정 최종 추천기준으로 사용하는 명시적 선택
-CONFIG="$PWD/config/nsga2_bc_reactive_a100_cpu8.yaml" \
+CONFIG="$PWD/config/preflame_reactive_a100_cpu8.yaml" \
 bash tools/run_bc_reactive_a100_cpu8.sh "$PWD/runs/v841_reactive"
 ```
 
@@ -71,7 +75,7 @@ CPU는 실제 affinity/cgroup/quota에 맞춰 요청 8개 이하로 줄입니다
 - 후보별 `dt`, 거부/재시도, 완료 mask를 독립 관리. 가장 stiff한 후보의 dt를 다른 후보에 강제하지 않음.
 - 매 trial의 작은 후보별 진단표만 CPU로 복사. 격자장 다운로드는 snapshot/최종 출력 때. NP/BV ON에는 기존 반복 수렴 동기화가 남음.
 - 실제 OOM 또는 계획 메모리 초과 시 동일 장치에서 batch를 분할. 격자, 시간, LUT, precision, model을 바꾸지 않음. 단일 후보도 감당할 수 없으면 실패.
-- 선택적 CUDA Graph: `config/nsga2_bc_reactive_a100_cpu8_graph.yaml`. `U/dt/retry`를 static input buffer로 복사해 replay. **전원 ON의 iterative NP/BV는 graph=false만 허용**.
+- 선택적 CUDA Graph: `config/preflame_reactive_a100_cpu8_graph.yaml`. `U/dt/retry`를 static input buffer로 복사해 replay. **전원 ON의 iterative NP/BV는 graph=false만 허용**.
 
 **작은 격자에서는 GPU가 빠르다는 보장이 없습니다.** 여기서 Torch CPU 경로는 GPU 연산식의 대조용이며, 실제 CPU 벤치마크에서 NumPy보다 느린 경우도 있었습니다. A100 kernel-only benchmark는 다음과 같습니다.
 

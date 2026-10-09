@@ -7,29 +7,18 @@ workflow:
   gas_phase_cfd_enabled: false
   flame_progress_enabled: false
   evaluator_scope: electrochemical_solid_thermal_decomposition_only
-optimization:
-  algorithm: constrained_grammar_nsga2
+# Fixed-candidate sampling and evaluation; population_size is the bootstrap count.
+evaluation:
   population_size: 1000
-  generations: 5
   initial_topologies: 20
   variants_per_topology: 50
   physics_batch_size: 192
-  mating_performance_count: 70
-  mating_topology_count: 20
-  mating_diversity_count: 10
-  offspring_fractions:
-    crossover: 0.6
-    mutation: 0.25
-    new_grammar: 0.15
-  offspring_generation_attempts: 40
   objectives_minimise:
   - ignition_delay_s
   - area_undecomposed_fraction_at_2s
   - minimum_ignition_voltage_V
   - current_congestion
   no_ignition_penalty_s: 2.0
-  early_stop_patience: 2
-  early_stop_min_improvement: 0.001
   numerical_cap_thresholds:
     temperature: 0.02
     species: 0.02
@@ -106,7 +95,6 @@ baselines:
     minimum_interdigitation_overlap_fraction: 0.45
     hidden_bus_in_contact_mask: false
     maximum_gap_safety_pixels: 8
-    include_in_nsga2_population: false
     include_in_pareto_selection: false
 evaluator:
   backend: hybrid_cuda_cpu

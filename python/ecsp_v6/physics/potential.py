@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 
 from .geometry import GeometryBatch
-from .errors import BCCandidateBatchError
+from .errors import PreflameCandidateBatchError
 from .numerics import SolverDiagnostics, apply_neumann_boundary, harmonic_mean, matlab_gradient
 
 
@@ -305,7 +305,7 @@ def _build_linear_system(
             .cpu()
             .tolist()
         )
-        raise BCCandidateBatchError(
+        raise PreflameCandidateBatchError(
             "Potential system is singular or non-finite on active cells; "
             f"examples={examples}",
             bad,
@@ -417,7 +417,7 @@ def _equilibrate_linear_system(
             .tolist()
         )
         indices = torch.nonzero(invalid, as_tuple=False)[:8].detach().cpu().tolist()
-        raise BCCandidateBatchError(
+        raise PreflameCandidateBatchError(
             "Potential system has non-positive or non-finite active diagonal entries; "
             f"examples={indices}",
             bad,
@@ -1045,7 +1045,7 @@ def solve_pcg(
     ):
         bad = torch.nonzero(~diagnostics.converged).flatten().detach().cpu().tolist()
         values = diagnostics.relative_residual[~diagnostics.converged].detach().cpu().tolist()
-        raise BCCandidateBatchError(
+        raise PreflameCandidateBatchError(
             f"PCG potential solve did not converge for batch indices {bad}; "
             f"residuals={values}; method={diagnostics.method}; "
             f"restarts={diagnostics.restarts[~diagnostics.converged].detach().cpu().tolist()}",

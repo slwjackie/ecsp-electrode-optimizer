@@ -1,9 +1,8 @@
 # 25 mm full-height 직선 전극: 독립 parameter study
 
-기준 main: `563ffbff7ee1cfbf46a81ff946aac69383b4a461`.
-**기존 파일은 수정하지 않는다.** 기존 148개 형상, paired workflow, staggered,
-NSGA-II, pre-flame/native solver, post-onset solver와 원본 config는 그대로다.
-이번 추가 실행기는 staggered 형상을 생성하거나 비교하지 않는다.
+이 실행기는 직선 전극 8개 조건을 공통 `ecsp_preflame` 해석기로 평가한다.
+기존 148개 catalogue와 독립적으로 실행하며 staggered 형상을 생성하거나 비교하지 않는다.
+공통 코드의 분리와 이름 변경은 [리팩터링 안내](PREFLAME_REFACTOR_KR.md)를 따른다.
 
 ## 고정 설계
 
@@ -30,27 +29,27 @@ Area-ratio 그룹의 기준은 별개의 `AR_1TO1`이다. 해당 그룹의 총 �
 
 ## 추가 파일과 물리 보존
 
-- `python/run_electrode_parameter_study.py`: geometry, audit, native 실행, 결과/실험 요약.
+- `python/run_electrode_parameter_study.py`: geometry, audit, C++/CUDA 실행, 결과/실험 요약.
 - `config/electrode_parameter_study_25mm.yaml`: 실험 설계만 저장.
 - `tests/test_electrode_parameter_study.py`: 새 경로의 단위/실행 연결 테스트.
 - 이 문서.
 
 원래 evaluator의 equal-area 조건을 넓히거나 원본 파일에서 삭제하지 않는다.
-새 실행기의 지역 subclass는 `NativeBCGlobalEvaluator._build_geometry_batch()`만
+새 실행기의 지역 subclass는 `CppCudaPreflameEvaluator._build_geometry_batch()`만
 독립적으로 구현한다. 정확한 등록 직사각형과의 일치로 극성별 목표면적, 폭, gap,
 연결성, 경계 접촉 및 위치를 검증하고 동일한 `GeometryBatch` 자료형을 반환한다.
 1:2의 비대칭 면적을 허용하지만 임의 형상이나 잘못된 면적은 허용하지 않는다.
 원본 class를 monkey-patch하지 않으며 mask 수정/resize/fitting도 하지 않는다.
 
-시간적분, B/C 반응식, native CPU/CUDA 엔진, onset 판정, numerical validity와
+시간적분, 전기화학–열전달–분해반응식, C++ CPU/CUDA GPU 엔진, onset 판정, numerical validity와
 Vmin search는 원래 메서드를 그대로 상속한다. `fixed=False`, `propellant=True`로
-기존 surface-contact overlay 의미도 보존한다. 별도 NSGA-II/paired/post-onset
+기존 surface-contact overlay 의미도 보존한다. 별도 paired/post-onset
 orchestrator는 호출하지 않는다. 상속된 reference run 자체에 있는 공통 평가시점까지의
 응축상 continuation은 그대로이며, 이를 기체 화염 전파라고 해석하지 않는다.
 
 ## 격자: 201 대신 200
 
-실제 B/C 코드는 cell-centred 격자, **dx=L/N**을 사용한다. 기본 N=200이면
+실제 preflame 코드는 cell-centred 격자, **dx=L/N**을 사용한다. 기본 N=200이면
 25/200=0.125 mm이므로 1 mm 폭/gap은 정확히 8셀, 길이는 200셀이다.
 앞서 설명한 `201에서 25/(201-1)` 방식은 이 코드의 격자 정의와 맞지 않는다.
 이번 runner는 치수를 조용히 반올림하지 않고 201 같은 off-grid 입력을 거부한다.
@@ -75,12 +74,12 @@ python python/run_electrode_parameter_study.py evaluate \
 ```
 
 `generate`와 `audit`는 PDE를 실행하지 않는다. 기하학 단계는 NumPy/PyYAML만 필요하다.
-수치 단계에는 저장소의 기존 의존성, PyTorch, native compiler와 CUDA 개발 환경이 필요하다.
+수치 단계에는 저장소의 기존 의존성, PyTorch, C++ compiler와 CUDA 개발 환경이 필요하다.
 CPU 경로는 `--device cpu`이며 MPS를 사용하지 않는다.
-기존 native 초기화에서 지원하는 compiler/build 실패를 nonignition으로 숨기지 않는다.
+C++/CUDA 초기화에서 지원하는 compiler/build 실패를 nonignition으로 숨기지 않는다.
 
 기본 physics 입력은 기존
-`config/nsga2_bc_reactive_a100_cpu8_poweroff_200x3.yaml`이다.
+`config/preflame_electrochemical_thermal_decomposition_a100_cpu8.yaml`이다.
 전압, 해석시간, 물성, 조성, 잔류수분, 두께 관련 설정, 열경계와 onset/Vmin 기준을
 이 입력 및 그 `base_config`에서 상속한다. 원본 파일은 변경하지 않는다.
 실제 실험과 일치하도록 이미 보정한 config가 있다면 다음처럼 명시한다.
@@ -107,8 +106,8 @@ case 단위로 자주 checkpoint하려면 처음부터 `--batch-size 1`로 실�
 
 `library/<ID>/`에 `mask.npz`, `metadata.json`, 치수 기반 `geometry.svg`를 저장한다.
 `cases/<ID>/result.json`에는 변환 전 원본 solver 결과를 보존한다.
-기존 representative-field 기능을 활성화하여 native 출력의 대표장을 저장한다.
-정확한 생성 파일/field 의미는 기존 `ecsp_nsga2/field_diagnostics.py`를 따른다.
+기존 representative-field 기능을 활성화하여 C++/CUDA 출력의 대표장을 저장한다.
+정확한 생성 파일/field 의미는 `ecsp_preflame/field_diagnostics.py`를 따른다.
 시간이력 전체나 새로운 ignition-location/화염전파 모델을 추가한 것은 아니다.
 
 `parameter_study_summary.csv`와 `spacing_summary.csv`, `width_summary.csv`,
@@ -145,14 +144,16 @@ python python/run_electrode_parameter_study.py summarize-experiments \
 점화율/지연시간을 직접 비교하면 안 된다. 공유 baseline 데이터를 독립적인 두 표본으로
 중복 계산하지 않는다. 동일 deterministic simulation을 5회 반복하지 않는다.
 
-## 검증 범위
+## 최초 추가 시점의 검증 기록
+
+아래는 직선 전극 study를 처음 추가했을 때의 검증 기록이며, 이번 리팩터링의 시험 집계가 아니다.
 
 배포 전 새 테스트 **34개 통과**: 8개 형상의 면적/폭/gap/full-height,
 area-ratio mirror/150 mm², 격자 일치, 손상 입력 거부, full-propellant tensor,
 원본 config 불변, subclass의 geometry-only override, mock evaluator를 이용한
 8-case 실행/재개/caching/실패 분리 및 실험 통계 처리를 확인했다.
 
-실행 연결 테스트에는 명시적인 fake evaluator를 사용했다. **생산 native PDE,
+실행 연결 테스트에는 명시적인 fake evaluator를 사용했다. **생산 C++/CUDA PDE,
 실제 A100/CPU 수치 실행, 기존 148개 전체 회귀시험, 격자수렴성 및 실험 정확도는
 이 테스트로 검증되지 않는다.** 위 테스트를 저장소 환경에서 재실행한 뒤
 실제 `evaluate`의 numerical validity 결과를 확인해야 한다.

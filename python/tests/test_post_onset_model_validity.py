@@ -14,17 +14,17 @@ import numpy as np
 import pytest
 import torch
 
-from ecsp_nsga2.geometry import RasterizedGeometry
-from ecsp_nsga2.nsga2 import Individual
-from ecsp_nsga2.propagation import (
+from ecsp_preflame.geometry import RasterizedGeometry
+from ecsp_preflame.candidate_ranking import CandidateEvaluation
+from ecsp_preflame.propagation import (
     ConfiguredModelTemperatureRangeExceeded as RangeError,
     PropagationCandidateModelValidityError,
     PropagationCandidateNumericalError,
     candidate_failure_payload,
 )
-from ecsp_nsga2 import workflow as workflow_module
-from ecsp_nsga2.workflow import NSGA2ElectricalSolidWorkflow as Workflow
-from ecsp_reactive.condensed import BCReactiveHandoffAdapter, BCReactiveSolver
+from ecsp_preflame import evaluation_workflow as workflow_module
+from ecsp_preflame.evaluation_workflow import EvaluationWorkflow as Workflow
+from ecsp_reactive.condensed import PreflameReactiveHandoffAdapter, CondensedReactiveSolver
 from ecsp_reactive.condensed.tensor_math import (
     LOCAL_CHEMISTRY_DIAGNOSTIC_NAMES, TensorCondensedKernel,
 )
@@ -45,8 +45,8 @@ def model_case(temperature=2500.0, duration=1.0e-3):
                        snapshot_interval_s=duration)
     reactive.update(chemistry_integration_mode="local_adaptive_thermochemical",
                     stationary_mechanics_fast_path=True, riemann_solver="hllc")
-    adapted = BCReactiveHandoffAdapter(propagation, bc, reactive).adapt(handoff)
-    return BCReactiveSolver(adapted, propagation, bc, reactive,
+    adapted = PreflameReactiveHandoffAdapter(propagation, bc, reactive).adapt(handoff)
+    return CondensedReactiveSolver(adapted, propagation, bc, reactive,
                             initialize_electrical=False)
 
 
@@ -178,87 +178,16 @@ def test_tensor_range_failure_is_lane_local_and_success_unchanged(tmp_path):
     assert saved["postOnsetValidityReason"] == RangeError.code
 
 
-def workflow_fixture(monkeypatch, results):
-    candidates = [Individual(name, {}, np.asarray([0.1, 0.2, 0.3, 0.4]))
-                  for name in results]
-    raster = RasterizedGeometry(np.zeros((5, 5), bool), np.zeros((5, 5), bool),
-                                {}, 0.0, {})
-    monkeypatch.setattr(workflow_module, "rasterize_and_validate", lambda *_: raster)
-    handoff = {"handoff": {"onsetSucceeded": True}}
-    fake = SimpleNamespace(
-        evaluator=SimpleNamespace(config={"bcGlobal": {"probe": True}},
-            evaluate_handoff_batch=lambda payloads: [handoff for _ in payloads]),
-        post_onset_cfg={"backend": "reactive_euler", "compare_backends": False},
-        propagation_cfg={}, limits=None,
-        _select_propagation_candidates=lambda *_: candidates,
-        _propagation_metadata=lambda ind, raster, **kwargs: {"geometry_id": ind.geometry_id},
-        _validate_handoff_reevaluation=lambda *_: {"preflameHandoffReevaluationConsistent": True},
-        _write_population_csv=Workflow._write_population_csv,
-        _copy_recommendation_geometry=lambda *_: None,
-        _evaluate_area_matched_staggered=lambda *_, **__: None,
-    )
-    fake._run_propagation_refinement = lambda ind, raster, output, precomputed_result=None, **kwargs: (
-        Workflow._run_propagation_refinement(
-            fake, ind, raster, output, precomputed_result=results[ind.geometry_id], **kwargs))
-    return fake, candidates
 
 
-def complete_metrics():
-    return dict(status="complete", onsetSucceeded=True,
-                finalUnreactedAreaFraction=0.5, establishedTimeAfterOnset_s=0.01,
-                meanEffectiveRegressionVelocity_m_per_s=0.1, reactionFrontNonuniformity=0.2)
 
 
-def read_csv(path):
-    with path.open(newline="") as handle:
-        return list(csv.DictReader(handle))
 
 
-@pytest.mark.parametrize("all_invalid", [False, True])
-def test_workflow_filters_validity_before_pareto_and_retains_audit(
-        tmp_path, monkeypatch, all_invalid):
-    results = {"range": RangeError(2500, 2500.001, 7, 1.42e-10),
-               "numerical": PropagationCandidateNumericalError("work budget")}
-    if not all_invalid:
-        results["valid"] = complete_metrics()
-    fake, candidates = workflow_fixture(monkeypatch, results)
-    original_pareto = workflow_module.pareto_front
-    pareto_inputs = []
-
-    def inspect_pareto(population):
-        pareto_inputs.append([ind.geometry_id for ind in population])
-        return original_pareto(population)
-
-    monkeypatch.setattr(workflow_module, "pareto_front", inspect_pareto)
-    if all_invalid:
-        with pytest.raises(RuntimeError, match="failed post-onset"):
-            Workflow._finalise_with_propagation(fake, candidates, candidates, tmp_path)
-        assert not (tmp_path / "recommended_design.json").exists()
-        assert pareto_inputs == [[]]
-    else:
-        recommendation = Workflow._finalise_with_propagation(fake, candidates, candidates, tmp_path)
-        assert recommendation.geometry_id == "valid"
-        assert pareto_inputs == [["valid"]]  # Explicit exclusion, not penalty-based ranking.
-        for filename in ("final_pareto_designs.csv", "recommended_design_metrics.csv"):
-            assert [row["geometry_id"] for row in read_csv(tmp_path / filename)] == ["valid"]
-        assert json.loads((tmp_path / "recommended_design.json").read_text())["geometry_id"] == "valid"
-    audit = {row["geometry_id"]: row for row in read_csv(tmp_path / "all_propagation_refined_designs.csv")}
-    assert set(audit) == set(results)
-    assert audit["range"]["postOnsetModelValid"] == "False"
-    assert audit["range"]["postOnsetValidityReason"] == RangeError.code
-    assert audit["range"]["onsetSucceeded"] == "True"
-    assert audit["range"]["constraint_violation"] == "1.0"
-    assert audit["numerical"]["status"] == "propagation_failed"
-    assert audit["numerical"]["constraint_violation"] == "100.0"
-    assert audit["numerical"]["postOnsetValidityReason"] == ""
-    for ind in candidates:
-        assert ind.constraint_violation == 0.0
-        assert "postOnsetModelValid" not in ind.metrics
-        np.testing.assert_array_equal(ind.objectives, [0.1, 0.2, 0.3, 0.4])
 
 
 def test_post_onset_writer_preserves_typed_failure(tmp_path, monkeypatch):
-    from ecsp_nsga2.post_onset import run_post_onset
+    from ecsp_preflame.post_onset import run_post_onset
     from ecsp_reactive.condensed import solver as solver_module
     h, p, b, r = synthetic_condensed_case(shape=(5, 5))
 
@@ -317,7 +246,7 @@ def test_tensor_second_half_range_failure_retains_accepted_state():
 
 @pytest.mark.parametrize("backend", ["numpy_cpu", "torch_batch"])
 def test_batch_dispatch_preserves_structured_validity_error(tmp_path, backend):
-    from ecsp_nsga2.post_onset_batch import run_post_onset_batch
+    from ecsp_preflame.post_onset_batch import run_post_onset_batch
     h, p, b, r = synthetic_condensed_case(shape=(5, 5))
     h["temperatureAtOnset_K"][1, 2] = 2500.0
     before = h["temperatureAtOnset_K"].copy()

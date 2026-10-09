@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Short-horizon numerical parity check: Python FP64 vs C++ FP64.
 
-The same deterministic NSGA-II population is evaluated by both backends on a
+The same deterministic fixed candidate set is evaluated by both backends on a
 small grid and short evolving-state horizon.  This checks model-port parity,
 not experimental calibration and not production 2-s runtime.
 """
@@ -42,26 +42,38 @@ def _run(
     end_time: float,
     population_size: int,
 ) -> None:
-    cmd = [
-        sys.executable,
-        str(root / "python" / "run_nsga2_electrical_solid_loop.py"),
-        "--package-root", str(root),
-        "--config", str(config),
-        "--device", "cpu",
-        "--population-size", str(population_size),
-        "--generations", "1",
-        "--grid-size", str(grid),
-        "--end-time-s", str(end_time),
-        "--allow-no-feasible",
-        "--workdir", str(workdir),
-    ]
-    env = dict(os.environ)
-    env["PYTHONPATH"] = str(root / "python") + os.pathsep + env.get("PYTHONPATH", "")
-    completed = subprocess.run(cmd, cwd=root, env=env, text=True)
-    if completed.returncode != 0:
-        raise RuntimeError(
-            f"backend command failed ({completed.returncode}): {' '.join(cmd)}"
+    import yaml
+    from ecsp_preflame.bootstrap import build_bootstrap
+    from ecsp_preflame.configuration import normalize_preflame_config
+    from ecsp_preflame.candidate_ranking import CandidateEvaluation
+    from ecsp_preflame.evaluation_workflow import EvaluationWorkflow
+
+    cfg = normalize_preflame_config(yaml.safe_load(config.read_text(encoding="utf-8")))
+    cfg.setdefault("project", {})["device"] = "cpu"
+    cfg.setdefault("evaluator", {}).update(
+        device="cpu", grid_size=grid, end_time_s=end_time,
+        metric_evaluation_time_s=end_time,
+    )
+    cfg.setdefault("physics", {})["end_time_s"] = end_time
+    cfg.setdefault("condensed_ignition", {})["reference_time_s"] = end_time
+    if isinstance(cfg.get("preflame_model"), dict):
+        cfg["preflame_model"].update(endTime_s=end_time, evaluationTime_s=end_time)
+    sample = cfg.setdefault("evaluation", {})
+    sample.update(population_size=population_size, initial_topologies=1,
+                  variants_per_topology=population_size)
+    workflow = EvaluationWorkflow(root, cfg, workdir)
+    entries, _ = build_bootstrap(
+        cfg, physics_grid_size=grid, audit_dir=workdir / "geometry_bootstrap",
+    )
+    candidates, rasters = [], {}
+    for genome, raster in entries:
+        candidate = CandidateEvaluation(
+            geometry_id=str(genome["geometry_id"]), genome=genome,
+            topology_id=str(genome["topology_id"]), source_role="parity_check",
         )
+        candidates.append(candidate)
+        rasters[candidate.geometry_id] = raster
+    workflow._evaluate_population(candidates, rasters, generation=0)
 
 
 def main() -> int:
@@ -93,7 +105,7 @@ def main() -> int:
 
     _run(
         root,
-        root / "config" / "nsga2_condensed_phase_no_f.yaml",
+        root / "config" / "preflame_condensed_phase.yaml",
         py_dir,
         args.grid_size,
         args.end_time_s,
@@ -101,7 +113,7 @@ def main() -> int:
     )
     _run(
         root,
-        root / "config" / "nsga2_condensed_phase_no_f_m2_cpp_fp64.yaml",
+        root / "config" / "preflame_condensed_phase_m2_cpp_fp64.yaml",
         cpp_dir,
         args.grid_size,
         args.end_time_s,

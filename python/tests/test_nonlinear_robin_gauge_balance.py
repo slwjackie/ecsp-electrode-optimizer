@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import yaml
 
-from ecsp_nsga2.evaluator import DirectCondensedV772NoFEvaluator
+from ecsp_preflame.evaluator import DirectCondensedV772NoFEvaluator
 from ecsp_v6.config import load_config
 from ecsp_v6.physics.composition_model import build_composition
 from ecsp_v6.physics.electrochem import (
@@ -90,7 +90,7 @@ def test_exact_global_gauge_balances_batched_bv_currents_fp32() -> None:
 def test_mps_fp32_profile_one_step_on_cpu_reference(tmp_path: Path) -> None:
     """Exercise the exact MPS/FP32 equations without requiring Apple hardware."""
     nsga = yaml.safe_load(
-        (ROOT / "config/nsga2_condensed_phase_no_f_m2_mps.yaml").read_text()
+        (ROOT / "config/preflame_condensed_phase_m2_mps.yaml").read_text()
     )
     nsga["project"]["device"] = "cpu"
     nsga["physics"]["end_time_s"] = 1.0e-4

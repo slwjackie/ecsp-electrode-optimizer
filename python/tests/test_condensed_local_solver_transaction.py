@@ -6,10 +6,10 @@ import math
 import numpy as np
 import pytest
 
-from ecsp_nsga2.propagation import PropagationCandidateNumericalError
+from ecsp_preflame.propagation import PropagationCandidateNumericalError
 from ecsp_reactive.condensed.chemistry import ENERGY, NCONS
-from ecsp_reactive.condensed.handoff import BCReactiveHandoffAdapter
-from ecsp_reactive.condensed.solver import BCReactiveSolver
+from ecsp_reactive.condensed.handoff import PreflameReactiveHandoffAdapter
+from ecsp_reactive.condensed.solver import CondensedReactiveSolver
 from ecsp_reactive.condensed.validation_cases import synthetic_condensed_case
 
 
@@ -48,7 +48,7 @@ def _local_case(*, hot_spot=False):
         progress_log_interval_steps=1000,
         progress_log_interval_wall_s=1.0e9,
     )
-    adapted = BCReactiveHandoffAdapter(
+    adapted = PreflameReactiveHandoffAdapter(
         propagation, bc, reactive
     ).adapt(handoff)
     return adapted, propagation, bc, reactive
@@ -57,7 +57,7 @@ def _local_case(*, hot_spot=False):
 def test_local_chemistry_work_exhaustion_is_terminal_and_uncommitted(
         tmp_path, monkeypatch):
     adapted, propagation, bc, reactive = _local_case(hot_spot=True)
-    solver = BCReactiveSolver(
+    solver = CondensedReactiveSolver(
         adapted, propagation, bc, reactive, initialize_electrical=False
     )
 
@@ -93,7 +93,7 @@ def test_local_chemistry_work_exhaustion_is_terminal_and_uncommitted(
 def test_qchem_source_and_ledger_are_the_accepted_state_energy_increment():
     adapted, propagation, bc, reactive = _local_case()
     propagation = dict(propagation, time_step_s=1.0e-3)
-    solver = BCReactiveSolver(
+    solver = CondensedReactiveSolver(
         adapted, propagation, bc, reactive, initialize_electrical=False
     )
     dt = 1.0e-3
@@ -115,7 +115,7 @@ def test_qchem_source_and_ledger_are_the_accepted_state_energy_increment():
 
 def test_post_chemistry_stability_retry_rolls_back_state_and_ledgers(tmp_path):
     adapted, propagation, bc, reactive = _local_case()
-    retry_solver = BCReactiveSolver(
+    retry_solver = CondensedReactiveSolver(
         adapted, propagation, bc, reactive, initialize_electrical=False
     )
     original_limit = retry_solver._nonchemical_time_step_limit
@@ -138,7 +138,7 @@ def test_post_chemistry_stability_retry_rolls_back_state_and_ledgers(tmp_path):
     reference_propagation = dict(
         propagation, time_step_s=propagation["duration_s"] / 2.0
     )
-    reference_solver = BCReactiveSolver(
+    reference_solver = CondensedReactiveSolver(
         adapted, reference_propagation, bc, reactive,
         initialize_electrical=False,
     )

@@ -645,7 +645,7 @@ numericalQuality:
   maximumDiffusiveCFLFraction: 1.0
 multiFidelity:
   enabled: false
-  reason: NSGA-II evaluates all feasible candidates with the same condensed-phase solver; no CFD fidelity tier is used.
+  reason: Fixed-candidate evaluation uses all feasible candidates with the same condensed-phase solver; no CFD fidelity tier is used.
 reducedCFD:
   enabled: false
   removedFromActivePackage: true

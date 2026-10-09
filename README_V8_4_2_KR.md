@@ -65,7 +65,7 @@ bash tools/run_bc_reactive_a100_cpu8_poweroff.sh \
   "$PWD/runs/v842_reactive_poweroff"
 ```
 
-기본 파일은 `config/nsga2_bc_reactive_a100_cpu8_poweroff.yaml`입니다.
+기본 파일은 `config/preflame_reactive_a100_cpu8_poweroff.yaml`입니다.
 
 ```yaml
 bc_global:
@@ -122,8 +122,8 @@ tail -f "${RUN}_launcher.log"
 ### GPU 없이 형상 1,000개만 확인
 
 ```bash
-python python/validate_nsga2_geometry.py \
-  --config config/nsga2_bc_reactive_a100_cpu8_poweroff.yaml \
+python python/validate_preflame_geometry.py \
+  --config config/preflame_reactive_a100_cpu8_poweroff.yaml \
   --output "$PWD/runs/geometry_20x50_check" \
   --require-power-off
 ```

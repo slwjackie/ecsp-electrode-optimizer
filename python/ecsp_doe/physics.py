@@ -1,6 +1,6 @@
 """Explicit DOE adapters around the unchanged production physics services.
 
-No NSGA-II workflow is constructed or run. The few production workflow methods
+Only shared fixed-candidate evaluation services are constructed. The few production workflow methods
 used here contain the existing handoff, model-validity and comparison contracts.
 Candidate generation, selection and result caching belong to the DOE caller.
 """
@@ -15,12 +15,13 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from ecsp_nsga2.baselines import generate_area_matched_staggered
-from ecsp_nsga2.evaluator import EvaluatorError, canonicalise_metrics, create_evaluator
-from ecsp_nsga2.geometry import GeometryLimits, RasterizedGeometry, save_geometry
-from ecsp_nsga2.nsga2 import Individual, rank_and_crowd
-from ecsp_nsga2.workflow import (
-    NSGA2ElectricalSolidWorkflow as ProductionWorkflow,
+from ecsp_preflame.baselines import generate_area_matched_staggered
+from ecsp_preflame.evaluator import EvaluatorError, canonicalise_metrics, create_evaluator
+from ecsp_preflame.configuration import normalize_preflame_config
+from ecsp_preflame.geometry import GeometryLimits, RasterizedGeometry, save_geometry
+from ecsp_preflame.candidate_ranking import CandidateEvaluation, rank_and_crowd
+from ecsp_preflame.evaluation_workflow import (
+    EvaluationWorkflow as ProductionWorkflow,
     OBJECTIVE_NAMES,
     REFINED_OBJECTIVE_NAMES,
     _json_safe,
@@ -91,7 +92,7 @@ def _unpack_cached_metrics(cached: Mapping[str, Any]) -> dict[str, Any]:
 
 
 class ProductionPhysicsAdapter:
-    """Reuse B/C evaluation and post-onset services without NSGA orchestration.
+    """Reuse preflame evaluation and post-onset services for a fixed candidate set.
 
     ``evaluator`` is an explicit injection point for small, solver-free tests.
     Production callers omit it and receive the configured production evaluator.
@@ -105,15 +106,15 @@ class ProductionPhysicsAdapter:
         *,
         evaluator: Any = None,
     ) -> None:
-        self.config = copy.deepcopy(dict(config))
+        self.config = normalize_preflame_config(config)
         self.package_root = Path(package_root).resolve()
         self.workdir = Path(run_root).resolve()
         self.limits = GeometryLimits(**self.config.get("geometry", {}))
-        self.opt = dict(self.config.get("optimization", {}))
+        self.opt = dict(self.config.get("evaluation", self.config.get("optimization", {})))
         self.end_time_s = float(self.config.get("physics", {}).get("end_time_s", 2.0))
         self.no_ignition_penalty_s = float(self.opt.get("no_ignition_penalty_s", 2.0))
         self.propagation_cfg = copy.deepcopy(self.config.get("propagation_refinement", {}))
-        from ecsp_nsga2.post_onset import validate_post_onset_config
+        from ecsp_preflame.post_onset import validate_post_onset_config
         self.post_onset_cfg = validate_post_onset_config(
             self.config.get("post_onset", {}),
             for_optimization=bool(self.propagation_cfg.get("enabled", False)),
@@ -122,12 +123,12 @@ class ProductionPhysicsAdapter:
             evaluator_cfg = dict(self.config.get("evaluator", {}))
             backend = str(evaluator_cfg.get("backend", "")).lower()
             if backend not in {
-                "bc_global_preflame", "bc_global_torch", "paper_bc_global",
-                "bc_global_preflame_propagation", "bc_global_native",
-                "bc_native_cpu", "bc_native_cuda", "bc_global_native_hybrid",
-                "bc_native_cpu_pool", "bc_global_native_cpu_pool",
+                "preflame_torch", "preflame_torch", "preflame_torch",
+                "preflame_torch_propagation", "preflame_cpp_cuda",
+                "preflame_cpp_cpu", "preflame_cuda", "preflame_cpp_cuda_hybrid",
+                "preflame_cpp_cpu_pool", "preflame_cpp_cpu_pool",
             }:
-                raise EvaluatorError("PHIDL DOE requires an existing production B/C evaluator")
+                raise EvaluatorError("PHIDL DOE requires an existing production electrochemical-thermal-decomposition evaluator")
             evaluator_cfg.setdefault("end_time_s", self.end_time_s)
             evaluator_cfg.setdefault("device", self.config.get("project", {}).get("device", "auto"))
             evaluator_cfg.setdefault("voltage_V", self.config.get("physics", {}).get("voltage_V", 260.0))
@@ -136,12 +137,12 @@ class ProductionPhysicsAdapter:
                 self.package_root, evaluator_cfg, self.workdir / "adapter", False,
             )
         self.evaluator = evaluator
-        resolved_bc = getattr(evaluator, "config", {}).get("bcGlobal", {})
+        resolved_bc = getattr(evaluator, "config", {}).get("preflameModel", {})
         if "endTime_s" in resolved_bc and not np.isclose(
             float(resolved_bc["endTime_s"]), self.end_time_s,
             rtol=0.0, atol=64.0 * np.finfo(float).eps * max(1.0, self.end_time_s),
         ):
-            raise EvaluatorError("physics.end_time_s and bc_global.endTime_s must agree")
+            raise EvaluatorError("physics.end_time_s and preflame_model.endTime_s must agree")
         self.config_hash = hashlib.sha256(
             json.dumps(_json_safe(self.config), sort_keys=True, allow_nan=False).encode("utf-8")
         ).hexdigest()
@@ -178,14 +179,14 @@ class ProductionPhysicsAdapter:
         return metrics
 
     @staticmethod
-    def _individual(record: Mapping[str, Any]) -> tuple[Individual, RasterizedGeometry]:
+    def _individual(record: Mapping[str, Any]) -> tuple[CandidateEvaluation, RasterizedGeometry]:
         metadata = copy.deepcopy(dict(record["metadata"]))
         metrics = copy.deepcopy(dict(record["metrics"]))
         pair = _component_pair(metadata)
         genome = copy.deepcopy(metadata.get("genome", metadata))
         for polarity, count in zip(("anode", "cathode"), pair):
             genome.setdefault(polarity, {"components": [{} for _ in range(int(count))]})
-        ind = Individual(
+        ind = CandidateEvaluation(
             geometry_id=str(metadata["geometry_id"]),
             topology_id=str(metadata["topology_id"]),
             genome=genome,
@@ -204,7 +205,7 @@ class ProductionPhysicsAdapter:
         ind.metrics.setdefault("geometry_descriptors", raster.descriptors)
         return ind, raster
 
-    def evaluate_baseline(self, final_dir: Path) -> tuple[Individual, RasterizedGeometry]:
+    def evaluate_baseline(self, final_dir: Path) -> tuple[CandidateEvaluation, RasterizedGeometry]:
         """Generate the existing external reference and resume its pre-flame result."""
         final_dir = Path(final_dir)
         final_dir.mkdir(parents=True, exist_ok=True)
@@ -223,7 +224,7 @@ class ProductionPhysicsAdapter:
             geometry_hash=geometry_hash, config_hash=self.config_hash,
             component_pair=[2, 2], geometry_descriptors=raster.descriptors,
             geometry_violation_details=raster.violation_details,
-            selection_role="post_optimization_reference_only",
+            selection_role="fixed_reference_only",
         )
         directory = final_dir / "area_matched_staggered"
         save_geometry(genome, raster, directory)
@@ -231,13 +232,13 @@ class ProductionPhysicsAdapter:
             (final_dir / f"area_matched_staggered.{suffix}").write_bytes(
                 (directory / f"{genome['geometry_id']}.{suffix}").read_bytes()
             )
-        ind = Individual(
+        ind = CandidateEvaluation(
             geometry_id=str(genome["geometry_id"]), topology_id=str(genome["topology_id"]),
-            genome=genome, source_role="post_optimization_area_matched_staggered_reference",
+            genome=genome, source_role="fixed_reference_area_matched_staggered",
         )
         metadata = self._propagation_metadata(ind, raster, baseline=True)
         metadata["propagation_refinement"] = False
-        metadata["selection_role"] = "post_optimization_reference_only"
+        metadata["selection_role"] = "fixed_reference_only"
         cache_path = directory / "preflame_result.json"
         cache = json.loads(cache_path.read_text()) if cache_path.is_file() else {}
         if cache.get("config_hash") == self.config_hash and cache.get("geometry_hash") == geometry_hash and cache.get("completed") is True:
@@ -298,7 +299,7 @@ class ProductionPhysicsAdapter:
         Existing candidate-local model-validity handling is used unchanged for
         both roles, including the configured 2500 K validity rule.
         """
-        from ecsp_nsga2.propagation import final_refinement_objectives
+        from ecsp_preflame.propagation import final_refinement_objectives
 
         final_dir = Path(final_dir)
         selection_path = final_dir / "preflame_top20.csv"

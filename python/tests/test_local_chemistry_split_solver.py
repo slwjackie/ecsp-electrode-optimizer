@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from scipy.integrate import quad, solve_ivp
 
-from ecsp_nsga2.propagation import (
+from ecsp_preflame.propagation import (
     PropagationCandidateNumericalError,
     PropagationConfigurationError,
     _kinetic_rate,
@@ -18,8 +18,8 @@ from ecsp_reactive.condensed.chemistry import (
     PVA, RHO, WATER,
     _CoordinateCertificationFailure,
 )
-from ecsp_reactive.condensed.handoff import BCReactiveHandoffAdapter
-from ecsp_reactive.condensed.solver import BCReactiveSolver
+from ecsp_reactive.condensed.handoff import PreflameReactiveHandoffAdapter
+from ecsp_reactive.condensed.solver import CondensedReactiveSolver
 from ecsp_reactive.condensed.validation_cases import synthetic_condensed_case
 
 
@@ -41,7 +41,7 @@ def _adapted(*, alpha=(0.2, 0.2), temperature=700.0, change=None):
     handoff["temperatureAtOnset_K"][:] = temperature
     if change is not None:
         change(handoff, propagation, bc, reactive)
-    adapted = BCReactiveHandoffAdapter(
+    adapted = PreflameReactiveHandoffAdapter(
         propagation, bc, reactive
     ).adapt(handoff)
     return handoff, propagation, bc, reactive, adapted
@@ -62,10 +62,10 @@ def _local_solver(*, duration=1.0e-3, time_step=1.0e-3):
         "chemistry_integration_mode": "local_adaptive_thermochemical",
         "progress_log_interval_wall_s": 30.0,
     }
-    adapted = BCReactiveHandoffAdapter(
+    adapted = PreflameReactiveHandoffAdapter(
         propagation, bc, reactive
     ).adapt(handoff)
-    return BCReactiveSolver(adapted, propagation, bc, reactive)
+    return CondensedReactiveSolver(adapted, propagation, bc, reactive)
 
 
 def _v009_hard_coordinate_case():
@@ -510,17 +510,17 @@ def test_local_solver_rejects_legacy_cap_or_subcycle_controls(retired_key):
         chemistry_integration_mode="local_adaptive_thermochemical",
         **{retired_key: 1},
     )
-    adapted = BCReactiveHandoffAdapter(propagation, bc, reactive).adapt(handoff)
+    adapted = PreflameReactiveHandoffAdapter(propagation, bc, reactive).adapt(handoff)
     with pytest.raises(PropagationConfigurationError, match="retired legacy"):
-        BCReactiveSolver(adapted, propagation, bc, reactive)
+        CondensedReactiveSolver(adapted, propagation, bc, reactive)
 
 
 def test_subcycle_raw_is_retired_but_legacy_cap_remains_available():
     handoff, propagation, bc, reactive = synthetic_condensed_case(shape=(5, 5))
     retired = {**reactive, "chemistry_integration_mode": "subcycle_raw"}
-    adapted = BCReactiveHandoffAdapter(propagation, bc, retired).adapt(handoff)
+    adapted = PreflameReactiveHandoffAdapter(propagation, bc, retired).adapt(handoff)
     with pytest.raises(PropagationConfigurationError, match="subcycle_raw is retired"):
-        BCReactiveSolver(adapted, propagation, bc, retired)
+        CondensedReactiveSolver(adapted, propagation, bc, retired)
 
     legacy = {
         **reactive,
@@ -528,8 +528,8 @@ def test_subcycle_raw_is_retired_but_legacy_cap_remains_available():
         "maximum_channel_increment": 0.01,
         "maximum_chemical_rate_cap_fraction": 0.0,
     }
-    adapted = BCReactiveHandoffAdapter(propagation, bc, legacy).adapt(handoff)
-    solver = BCReactiveSolver(adapted, propagation, bc, legacy)
+    adapted = PreflameReactiveHandoffAdapter(propagation, bc, legacy).adapt(handoff)
+    solver = CondensedReactiveSolver(adapted, propagation, bc, legacy)
     assert solver.chemistry_integration_mode == "legacy_cap"
     assert solver.alpha_step == 0.01
 

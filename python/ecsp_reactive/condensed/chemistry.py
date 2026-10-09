@@ -7,7 +7,7 @@ Euler densities and not gas sources. Product water is not mobile BV water.
 from __future__ import annotations
 import math
 import numpy as np
-from ecsp_nsga2.propagation import (_kinetic_rate, PropagationConfigurationError,
+from ecsp_preflame.propagation import (_kinetic_rate, PropagationConfigurationError,
                                    PropagationCandidateNumericalError,
                                    ConfiguredModelTemperatureRangeExceeded)
 
@@ -86,7 +86,7 @@ class _CoordinateCertificationFailure(RuntimeError):
     """Internal signal to retain the conservative midpoint fallback."""
 
 
-class BCTwoChannelChemistry:
+class TwoChannelDecompositionChemistry:
     def __init__(self, config, handoff, rho_bc, gas_constant):
         kinetics = config["kinetics"]
         self.channels = list(kinetics["channels"])

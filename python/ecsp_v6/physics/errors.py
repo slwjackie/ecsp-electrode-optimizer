@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Sequence
 
 
-class BCCandidateBatchError(RuntimeError):
-    """A numerical/physical failure confined to named B/C batch lanes."""
+class PreflameCandidateBatchError(RuntimeError):
+    """A numerical/physical failure confined to named electrochemical-thermal-decomposition batch lanes."""
 
     def __init__(
         self,
@@ -16,9 +16,9 @@ class BCCandidateBatchError(RuntimeError):
     ) -> None:
         indices = tuple(sorted({int(index) for index in candidate_indices}))
         if not indices:
-            raise ValueError("BCCandidateBatchError requires candidate indices")
+            raise ValueError("PreflameCandidateBatchError requires candidate indices")
         if not category:
-            raise ValueError("BCCandidateBatchError requires a category")
+            raise ValueError("PreflameCandidateBatchError requires a category")
         super().__init__(message)
         self.candidate_indices = indices
         self.category = str(category)

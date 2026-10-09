@@ -36,11 +36,10 @@ def test_base_config_has_no_flame_section_and_cfd_is_disabled() -> None:
 
 def test_active_package_has_no_openfoam_runtime_commands() -> None:
     paths = [
-        ROOT / "python/ecsp_nsga2",
+        ROOT / "python/ecsp_preflame",
         ROOT / "python/ecsp_v6/physics",
-        ROOT / "python/run_nsga2_electrical_solid_loop.py",
+        ROOT / "python/run_electrode_parameter_study.py",
         ROOT / "tools",
-        ROOT / "RUN_NSGA2_ONLY.sh",
     ]
     text_parts: list[str] = []
     for path in paths:
@@ -57,6 +56,6 @@ def test_active_package_has_no_openfoam_runtime_commands() -> None:
 
 def test_production_requires_condensed_phase_ignition_for_recommendation() -> None:
     import yaml
-    config = yaml.safe_load((ROOT / "config/nsga2_condensed_phase_no_f.yaml").read_text())
-    assert config["optimization"]["require_ignition_for_feasibility"] is True
-    assert config["optimization"]["no_ignition_constraint_violation"] > 0.0
+    config = yaml.safe_load((ROOT / "config/preflame_condensed_phase.yaml").read_text())
+    assert config["evaluation"]["require_ignition_for_feasibility"] is True
+    assert config["evaluation"]["no_ignition_constraint_violation"] > 0.0

@@ -4,14 +4,14 @@
 
 이 경로는 전극 형상끼리 1~148등을 매기지 않는다. 각 candidate는 **자신과 같은 물리 domain, grid, 초기온도, 기준전압, 평가시간, 물성/반응/수치 설정을 사용하는 staggered**와만 비교한다. 실제 solver mask에서 측정한 양극/음극 접촉면적을 각각 1% 이내로 맞춘다. Coverage만 같은 다른 크기의 baseline은 재사용하지 않는다.
 
-새 파일은 `paired_screening.py`, `paired_workflow.py`, `run_paired_preflame_screening.py`, catalogue manifest, 테스트와 이 문서다. 기존 `run_five_topology_preflame.py`의 **평가 호출만 새 screening 경로에 연결**했다. 그 파일의 generate/audit 함수와 `five_topologies.py`, 기존 143개 형상, `ecsp_nsga2`·native·CUDA·C++·preflame·postflame solver 및 원본 config 파일은 변경하지 않았다. 기존 `objectives.py`의 legacy 함수도 호환성을 위해 남아 있지만 새 경로에서는 Pareto/vector/rank를 생성하지 않는다.
+`paired_screening.py`, `paired_workflow.py`, `run_paired_preflame_screening.py`가 이 실행 경로를 구성하며, `run_five_topology_preflame.py`의 평가도 같은 screening으로 연결한다. 공통 해석기는 `ecsp_preflame`과 `ecsp_cpp_cuda`에 있다. 기존 143개 frozen 형상과 추가 5개 형상의 생성 규칙은 유지한다. 이 경로는 Pareto/vector/rank를 생성하지 않는다. 이름 변경은 [리팩터링 안내](../PREFLAME_REFACTOR_KR.md)를 따른다.
 
 ## 지표와 분류
 
 - `R_t = t_ign,c / t_ign,s`: 기준 전압에서 둘 다 점화하고 유한한 양의 시간이 있을 때만 계산.
 - `R_V = V_min,c / V_min,s`: 두 탐색이 유효하고 **둘 다 uncensored bracketed**인 경우에만 계산. penalty 값은 절대 사용하지 않음.
 - `R_J = C_J,c / C_J,s`, `C_J = peakCurrentCongestionToEvaluationTime`: 기존 solver 정의 그대로. 동일 이름의 필드를 양쪽에서 사용하며, 전류밀도나 전류를 새로 계산하지 않음.
-- `R_T = (Tmax,c - T0) / (Tmax,s - T0)`: **두 기준전압 case가 모두 비점화**인 경우에만 계산. 온도는 `peakMaximumTemperature_K`, 초기온도는 실제 resolved B/C config에서 읽음. Kelvin 자체의 비율이 아님.
+- `R_T = (Tmax,c - T0) / (Tmax,s - T0)`: **두 기준전압 case가 모두 비점화**인 경우에만 계산. 온도는 `peakMaximumTemperature_K`, 초기온도는 실제 resolved preflame config에서 읽음. Kelvin 자체의 비율이 아님.
 
 분모가 0·극소값이거나 누락·NaN·무한대이면 해당 ratio는 JSON `null`과 사유로 남긴다. 0/0, 임의의 큰 penalty, 무한대 점화시간으로 우수성을 만들지 않는다.
 
@@ -83,7 +83,7 @@ python python/run_paired_preflame_screening.py audit \
 
 ## 5개 또는 148개 preflame 실행
 
-새 평가기는 NSGA-II/workflow.run을 호출하지 않고 기존 native evaluator와 독립 staggered generator만 호출한다. 기본은 명시적 CUDA 단일 lane이며 **서로 다른 context의 pair는 순차 실행**한다. CPU-first hybrid scheduler에 두 case를 넘겨 GPU가 비는 문제를 피한 것이다. 이 패치가 CPU 6 worker와 GPU를 동시에 최적 스케줄링한다고 주장하지 않는다.
+평가기에는 공통 `CppCudaPreflameEvaluator`와 독립 staggered generator를 사용한다. 기본은 명시적 CUDA 단일 lane이며 **서로 다른 context의 pair는 순차 실행**한다. CPU-first hybrid scheduler에 두 case를 넘겨 GPU가 비는 문제를 피한 것이다. 이 패치가 CPU 6 worker와 GPU를 동시에 최적 스케줄링한다고 주장하지 않는다.
 
 먼저 5개:
 
@@ -91,7 +91,7 @@ python python/run_paired_preflame_screening.py audit \
 python -u python/run_paired_preflame_screening.py evaluate \
   --library runs/five_topologies_a100_validation/library \
   --ids E058,E114,R038,R050,R091 \
-  --config config/nsga2_bc_reactive_a100_cpu8_poweroff_200x3.yaml \
+  --config config/preflame_electrochemical_thermal_decomposition_a100_cpu8.yaml \
   --device cuda --pcg-max-iterations 6000 \
   --out runs/paired_five_validation
 ```
@@ -101,7 +101,7 @@ python -u python/run_paired_preflame_screening.py evaluate \
 ```bash
 python -u python/run_paired_preflame_screening.py evaluate \
   --library runs/paired_catalogue_148/library \
-  --config config/nsga2_bc_reactive_a100_cpu8_poweroff_200x3.yaml \
+  --config config/preflame_electrochemical_thermal_decomposition_a100_cpu8.yaml \
   --device cuda --pcg-max-iterations 6000 \
   --out runs/paired_148
 ```
@@ -110,7 +110,7 @@ python -u python/run_paired_preflame_screening.py evaluate \
 
 `--pcg-max-iterations 6000`은 이미 E114에서 사용한 반복 예산을 **runtime config 복사본**에 적용하는 명시적 옵션이다. 원본 config, PCG 코드, residual tolerance, time step, 전압범위, onset criterion, 반응계수는 변경하지 않는다. 옵션을 생략하면 제공한 config의 budget을 그대로 사용한다.
 
-Resume는 동일 명령에 `--resume`을 추가한다. 이전 실행 예외 case까지 다시 시도하려면 `--resume --retry-failed`를 사용한다. source/config/geometry hash가 달라진 완료 case는 재사용하지 않는다. Screening policy만 바꾼 경우 raw PDE 결과로 재분류한다. CUDA/PCG 예외가 나면 그 case를 `execution_failed`로 보존하고 다른 pair를 계속 처리한다. 비점화로 위장하지 않으며 자동 tolerance 완화도 없다. `RUN_FINISHED.json`에 실행실패 개수가 기록되고, CLI 종료코드는 실행 예외가 있으면 1이다.
+리팩터링 전 결과는 소스 fingerprint가 달라지므로 새 output 경로로 실행한다. Resume는 동일 명령에 `--resume`을 추가한다. 이전 실행 예외 case까지 다시 시도하려면 `--resume --retry-failed`를 사용한다. source/config/geometry hash가 달라진 완료 case는 재사용하지 않는다. Screening policy만 바꾼 경우 raw PDE 결과로 재분류한다. CUDA/PCG 예외가 나면 그 case를 `execution_failed`로 보존하고 다른 pair를 계속 처리한다. 비점화로 위장하지 않으며 자동 tolerance 완화도 없다. `RUN_FINISHED.json`에 실행실패 개수가 기록되고, CLI 종료코드는 실행 예외가 있으면 1이다.
 
 전체 job 재시작 전에 기존 프로세스가 없는지 확인한다. 새 CLI는 같은 output에 대한 동시 실행을 lock으로 거부한다. nohup으로 실행하려면 `python -u ... > runs/<new_log>.log 2>&1 &`를 사용하고, 로그 디렉터리는 미리 만든다.
 
@@ -145,7 +145,7 @@ integration, or baseline geometry rule is changed.
 
 - Non-igniting reference: evaluation-time snapshot (normally 2 s).
 - Igniting reference: first-onset snapshot plus evaluation-time preflame state.
-  The strict B/C lane freezes at first onset, so the evaluation snapshot is
+  The strict electrochemical-thermal-decomposition lane freezes at first onset, so the evaluation snapshot is
   explicitly labelled as a frozen onset state rather than a new post-onset
   electrical solution.
 - Vmin lower/bisection/final-verification trials remain scalar-only; field
@@ -175,7 +175,7 @@ The NPZ stores full-grid `temperature_K`, `potential_V`,
 `joule_heat_W_per_m3`, electrode masks, coordinates and snapshot time.
 The PDE remains FP64; archives are compressed float32 copies for diagnostics
 and visualization. Current density is not a proxy: it is evaluated by the
-production `compute_current()` closure from the native solver's saved
+production `compute_current()` closure from the C++/CUDA solver's saved
 state/potential and therefore retains the configured conductive and diffusion
 current terms.
 

@@ -21,7 +21,7 @@ NAME='ECSP_v8_4_0_BCReactive_Condensed'
 VERSION='8.4.0-BCReactive-Condensed-Experimental'
 MANIFEST='PACKAGE_SHA256_MANIFEST_V8_4.txt'
 ALIAS='PACKAGE_SHA256_MANIFEST.txt'
-EXCLUDE={'.git','.pytest_cache','.ruff_cache','__pycache__','.native_build','build','runs'}
+EXCLUDE={'.git','.pytest_cache','.ruff_cache','__pycache__','.native_build','.native_build_A100_Linux','.cpp_cuda_build','build','runs'}
 REGENERATE={MANIFEST,ALIAS,'PACKAGE_MANIFEST.txt','PACKAGE_BUILD_METADATA_V8_4_0.json'}
 SOURCE_SUFFIX={'.py','.cpp','.cu','.cuh','.h','.hpp','.cc','.c','.sh','.yaml','.yml','.toml'}
 

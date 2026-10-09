@@ -93,7 +93,7 @@ report = (root / "docs" / "V8_2_1_VALIDATION_REPORT_KR.md").read_text(encoding="
 if "| pending final" in report.lower():
     raise SystemExit("Validation report still contains pending-final result rows")
 
-forbidden_dirs = {".git", ".pytest_cache", ".ruff_cache", "__pycache__", "runs", "build", ".native_build"}
+forbidden_dirs = {".git", ".pytest_cache", ".ruff_cache", "__pycache__", "runs", "build", ".native_build", ".native_build_A100_Linux", ".cpp_cuda_build"}
 bad = []
 for path in root.rglob("*"):
     rel = path.relative_to(root).as_posix()
@@ -131,7 +131,7 @@ def included(path: Path) -> bool:
         return False
     if path in {sha_manifest, generic_sha_manifest}:
         return False
-    excluded = {".git", ".pytest_cache", ".ruff_cache", "__pycache__", "runs", "build", ".native_build"}
+    excluded = {".git", ".pytest_cache", ".ruff_cache", "__pycache__", "runs", "build", ".native_build", ".native_build_A100_Linux", ".cpp_cuda_build"}
     if any(part in excluded or part.startswith("tmp_") or part.startswith(".tmp_") for part in rel.parts):
         return False
     return path.suffix not in {".pyc", ".pyo"}
@@ -195,7 +195,7 @@ expected_evidence = {
     "full_suite.log",
     "native_python_parity_strict.json",
     "cuda_readiness.json",
-    "pipeline_audit/bc_global_pipeline_audit.json",
+    "pipeline_audit/preflame_model_pipeline_audit.json",
     "pipeline_semantic_comparison.json",
     "preservation/audit.json",
     "release_manifest_verification.json",
@@ -229,7 +229,7 @@ current_hashes = {
         (root / "docs" / "V821_EXPECTED_CHANGES.json").read_bytes()
     ).hexdigest(),
     "checked_in_pipeline_audit_sha256": hashlib.sha256(
-        (root / "docs" / "generated_bc_audit" / "bc_global_pipeline_audit.json").read_bytes()
+        (root / "docs" / "generated_bc_audit" / "preflame_model_pipeline_audit.json").read_bytes()
     ).hexdigest(),
     "authoritative_manifest_sha256": hashlib.sha256(
         (root / "PACKAGE_SHA256_MANIFEST_V8_2_1.txt").read_bytes()
@@ -251,7 +251,7 @@ VERIFY_DIR="$TEMP_RELEASE_DIR/extracted"
 cd "$PARENT"
 zip -qr "$TEMP_ZIP" "$NAME" \
   -x '*/.git/*' '*/.pytest_cache/*' '*/.ruff_cache/*' '*/__pycache__/*' \
-     '*/runs/*' '*/build/*' '*/.native_build/*' '*/tmp_*' '*/tmp_*/*' \
+     '*/runs/*' '*/build/*' '*/.native_build/*' '*/.native_build_A100_Linux/*' '*/.cpp_cuda_build/*' '*/tmp_*' '*/tmp_*/*' \
      '*/.tmp_*' '*/.tmp_*/*' '*.pyc' '*.pyo' '*/.DS_Store'
 unzip -tq "$TEMP_ZIP"
 mkdir "$VERIFY_DIR"

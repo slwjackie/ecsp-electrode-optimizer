@@ -132,7 +132,7 @@ def screen_pair(record: Mapping[str, Any], policy: ScreeningPolicy | None = None
         t = row.get("ignitionDelay_s")
         if not isinstance(ignited, bool) or (ignited and (not positive(t) or t > cc["evaluation_time_s"] + 1e-12)) or (ignited is False and finite(t)):
             errors.append(label + ":inconsistent_ignition_observation")
-        if ignited is False and row.get("nativeExecution", {}).get("completedFullHorizon") is False:
+        if ignited is False and row.get("cppCudaExecution", row.get("nativeExecution", {})).get("completedFullHorizon") is False:
             errors.append(label + ":incomplete_nonigniting_reference")
     if errors:
         out.update(comparison_state="incomplete_observation", labels=["incomplete_observation"], reasons=errors)

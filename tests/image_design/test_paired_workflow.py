@@ -52,8 +52,8 @@ def setup(tmp_path, monkeypatch):
              electrode_area_fraction=float(a.mean()+c.mean()),anode_components=1,cathode_components=1)
         (d/'metadata.json').write_text(json.dumps(meta));(d/'master.json').write_text('{}')
         np.savez_compressed(d/'mask.npz',anode=a,cathode=c,propellant=np.ones_like(a),domain_mm=25.)
-    base={'geometry':{},'evaluator':{'device':'cuda','backend':'bc_global_native_hybrid',
-          'native':{'cpu_workers':6},'base_overrides':{'numerics':{'potentialSolver':{
+    base={'geometry':{},'evaluator':{'device':'cuda','backend':'preflame_cpp_cuda_hybrid',
+          'cpp_cuda':{'cpu_workers':6},'base_overrides':{'numerics':{'potentialSolver':{
               'relativeToleranceCoupled':1e-9,'absoluteTolerance':1e-12,'maximumIterationsCoupled':1500}}}},
           'physics':{'voltage_V':260.,'end_time_s':2.},'post_onset':{'backend':'unchanged'}}
     cfg=root/'input.yaml';cfg.write_text(yaml.safe_dump(base))
@@ -64,7 +64,7 @@ def setup(tmp_path, monkeypatch):
     class Evaluator:
         def __init__(self,adapter):
             self.device=adapter['device'];self.grid_size=adapter['grid_size'];self.voltage=260.
-            self.config={'geometry':{'domainSize_m':.025},'bcGlobal':{
+            self.config={'geometry':{'domainSize_m':.025},'preflameModel':{
                 'evaluationTime_s':2.,'thermal':{'initialTemperature_K':298.15}}}
         def evaluate_batch(self,items):
             ids=[x[2]['geometry_id'] for x in items];calls.append(ids)
@@ -88,7 +88,7 @@ def test_same_pair_gpu_no_genetic_loop_and_config_preserved(setup):
     rows=w.evaluate_library(s.root,s.cfg,s.lib,s.out,only_ids=['E114'],expected_count=1,pcg_max_iterations=6000)
     assert s.calls==[['E114','E114_staggered']]
     assert rows[0]['screening_valid'] and rows[0]['R_T'] < 1 and rows[0]['R_J'] < 1
-    assert s.adapters[0]['backend']=='bc_global_native' and s.adapters[0]['native']['cpu_workers']==0
+    assert s.adapters[0]['backend']=='preflame_cpp_cuda' and s.adapters[0]['cpp_cuda']['cpu_workers']==0
     assert s.adapters[0]['save_representative_fields'] is True
     ps=s.adapters[0]['base_overrides']['numerics']['potentialSolver']
     assert ps==dict(relativeToleranceCoupled=1e-9,absoluteTolerance=1e-12,maximumIterationsCoupled=6000)
@@ -153,7 +153,8 @@ def test_duplicate_and_missing_ids(setup):
     with pytest.raises(ValueError):w.case_ids(setup.lib,['NO_SUCH_ID'])
 
 
-def test_legacy_context_recovers_saved_e114_without_pde(setup):
+@pytest.mark.parametrize("model_key", ["preflameModel", "bcGlobal"])
+def test_legacy_context_recovers_saved_e114_without_pde(setup, model_key):
     s=setup;case=s.root/'old/preflame/E114';case.mkdir(parents=True)
     oldlib=s.root/'old/library/E114';oldlib.mkdir(parents=True)
     np.savez(oldlib/'mask.npz',anode=s.a,cathode=s.c,domain_mm=25.)
@@ -166,7 +167,7 @@ def test_legacy_context_recovers_saved_e114_without_pde(setup):
     path=case/'result.json';w.write_json(path,record);before=path.read_bytes()
     w.write_json(case/'adapter/primary/resolved_physics_config.json',
         {'geometry':{'domainSize_m':.025},'coupled':{'voltage_V':260.},
-         'bcGlobal':{'evaluationTime_s':2.,'thermal':{'initialTemperature_K':298.15}}})
+         model_key:{'evaluationTime_s':2.,'thermal':{'initialTemperature_K':298.15}}})
     w.write_json(case/'baseline_parameters.json',{'physics_grid_size':101,
                   'physics_area_fraction_per_polarity':float(s.a.mean())})
     rows=w.reclassify([path],s.root/'reports')
