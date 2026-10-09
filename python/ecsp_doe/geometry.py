@@ -20,7 +20,7 @@ from shapely.ops import unary_union
 from shapely import contains_xy, prepare
 from skimage.morphology import skeletonize
 
-from ecsp_nsga2.geometry import GeometryLimits, RasterizedGeometry, minimum_clear_gap_pixels
+from ecsp_preflame.geometry import GeometryLimits, RasterizedGeometry, minimum_clear_gap_pixels
 
 
 class GeometryReject(ValueError):
@@ -596,7 +596,7 @@ def realize(spec, parameters, limits: GeometryLimits, physics_grid_size: int, op
                         raise GeometryReject(f'{name}_same_polarity_gap')
             results[p]={**stats,'area_mm2':area,'area_relative_error':abs(area-target)/target}
         grid_results[name]={'grid_size':int(n),'opposite_gap_mm':gap,'polarities':results}
-    from ecsp_nsga2.bootstrap import validate_solver_grid
+    from ecsp_preflame.bootstrap import validate_solver_grid
     component_metadata={p:{'components':[{} for _ in range(pair[i])]} for i,p in enumerate(('anode','cathode'))}
     solver_grid_report=validate_solver_grid(masks['physics']['anode'], masks['physics']['cathode'], component_metadata, limits, physics_grid_size)
     if solver_grid_report['violations']:

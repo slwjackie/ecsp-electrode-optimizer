@@ -50,7 +50,7 @@ def file_hash(path):
 
 def protected_hashes(root):
     root = Path(root)
-    prefixes = ("cpp", "python/ecsp_native", "python/ecsp_nsga2", "python/ecsp_v6",
+    prefixes = ("cpp", "python/ecsp_cpp_cuda", "python/ecsp_preflame", "python/ecsp_v6",
                 "python/ecsp_cuda", "python/ecsp_cpp", "python/ecsp_reactive", "config")
     return {p.relative_to(root).as_posix(): file_hash(p) for prefix in prefixes
             for p in sorted((root / prefix).rglob("*"))
@@ -173,7 +173,7 @@ def prepare_library(root, base_archive, out, five_library=None):
 
 def make_context(m, a, c, resolved, voltage, settings_hash):
     L = float(m["domain_mm"])
-    bc = resolved["bcGlobal"]
+    bc = resolved["preflameModel"]
     return dict(domain_mm=L, grid_size=int(m["grid_size"]),
                 anode_area_mm2=float(a.mean() * L * L), cathode_area_mm2=float(c.mean() * L * L),
                 electrode_area_fraction=float((a.mean() + c.mean()) * L * L / L ** 2),
@@ -195,9 +195,9 @@ def metadata(m, baseline=False):
 
 
 def _production_dependencies():
-    from ecsp_nsga2.evaluator import create_evaluator
-    from ecsp_nsga2.baselines import generate_area_matched_staggered
-    from ecsp_nsga2.geometry import GeometryLimits
+    from ecsp_preflame.evaluator import create_evaluator
+    from ecsp_preflame.baselines import generate_area_matched_staggered
+    from ecsp_preflame.geometry import GeometryLimits
     return create_evaluator, generate_area_matched_staggered, GeometryLimits
 
 
@@ -212,7 +212,8 @@ def evaluate_library(root, config_path, library, out, *, only_ids=None, expected
     root, library, out = Path(root).resolve(), Path(library).resolve(), Path(out).resolve()
     policy = policy or ScreeningPolicy()
     ids = case_ids(library, only_ids, expected_count)
-    base = yaml.safe_load(Path(config_path).read_text())
+    from ecsp_preflame.configuration import normalize_preflame_config
+    base = normalize_preflame_config(yaml.safe_load(Path(config_path).read_text()))
     if device not in ("cuda", "cpu"):
         raise ValueError("Explicit cuda or cpu device is required")
     fence = protected_hashes(root)
@@ -250,9 +251,9 @@ def evaluate_library(root, config_path, library, out, *, only_ids=None, expected
                 cfg = runtime_config(base, m)
                 # Runtime geometry and routing only. Original config files are untouched.
                 cfg["geometry"]["target_area_fraction_per_polarity"] = float((a.mean() + c.mean()) / 2)
-                cfg["evaluator"]["backend"] = "bc_global_native"
+                cfg["evaluator"]["backend"] = "preflame_cpp_cuda"
                 cfg["evaluator"]["device"] = device
-                cfg["evaluator"].setdefault("native", {})["cpu_workers"] = 0
+                cfg["evaluator"].setdefault("cpp_cuda", {})["cpu_workers"] = 0
                 numerics = cfg["evaluator"].setdefault("base_overrides", {}).setdefault("numerics", {})
                 numerics["physicsDevice"] = device
                 if pcg_max_iterations is not None:
@@ -395,7 +396,8 @@ def enrich_legacy_record(record, result_path):
     resolved_path = next((p for p in candidates if p.is_file()), None)
     if resolved_path is None:
         return r
-    resolved = read_json(resolved_path)
+    from ecsp_preflame.configuration import normalize_resolved_preflame_config
+    resolved = normalize_resolved_preflame_config(read_json(resolved_path))
     sid = r["source_id"]
     # Old five-topology and old image-library layouts are both supported.
     masks = [case.parents[1] / "library" / sid / "mask.npz",
@@ -424,7 +426,7 @@ def enrich_legacy_record(record, result_path):
             expected = frac * bc["domain_mm"] ** 2
             if all(np.isclose(bc.get(k, -1), expected) for k in ("anode_area_mm2", "cathode_area_mm2")):
                 bc["area_basis"] = "solver_mask"
-    saved_bc = resolved.get("bcGlobal", {})
+    saved_bc = resolved.get("preflameModel", {})
     try:
         t0 = float(saved_bc["thermal"]["initialTemperature_K"])
         end = float(saved_bc["evaluationTime_s"])

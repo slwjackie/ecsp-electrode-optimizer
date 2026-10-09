@@ -1,11 +1,11 @@
-# PHIDL DOE600 — ECSP v8.4.2
+# PHIDL DOE600
 
 ## 구현 범위
 
-독립 실행 파일은 `tools/run_phidl_doe600.py`입니다. 기존 NSGA-II 실행 파일,
-bootstrap, mutation, crossover, geometry fitter, electrical/B/C/Post-onset solver와
-physics YAML은 수정하지 않습니다. 기존 파일 중 변경한 것은
-`tools/resume_final_only.py`의 handoff 재사용 wrapper뿐입니다.
+독립 실행 파일은 `tools/run_phidl_doe600.py`입니다. 공통 해석·평가 기능은
+`ecsp_preflame`으로 분리했습니다. 후보 생성·고정 DOE 결과 선별은 유지하며,
+사용하지 않는 NSGA-II 진화 최적화 실행기는 제거했습니다.
+[이름 변경 안내](PREFLAME_REFACTOR_KR.md)를 함께 참조하십시오.
 
 기본 호출은 **Stage 1 형상만 생성**합니다. 실제 Pre-flame 계산에는
 `--execute-physics`, Post-flame 계산에는 추가로 `--postflame`이 필요합니다.
@@ -121,8 +121,8 @@ baseline은 600개 pool과 Pareto selection에 포함되지 않습니다.
 
 `ProductionPhysicsAdapter`는 기존 `create_evaluator()`,
 `_run_propagation_refinement()`, `_write_propagation_comparison()`,
-`_load_persisted_baseline_raster()`를 재사용합니다. NSGA-II workflow를
-생성하거나 실행하지 않습니다. 전체 600개 목록은 refinement 함수에 넘기지
+`_load_persisted_baseline_raster()`를 재사용합니다. `ecsp_preflame.evaluation_workflow.EvaluationWorkflow`의 공통 기능을
+사용하며 진화 최적화 루프를 실행하지 않습니다. 전체 600개 목록은 refinement 함수에 넘기지
 않으며, 저장된 final20 ID와 정확히 일치하는 목록 + baseline만 전달합니다.
 
 `configured_model_temperature_range_exceeded`는 기존 model-validity rejection으로
@@ -130,13 +130,8 @@ baseline은 600개 pool과 Pareto selection에 포함되지 않습니다.
 실패한 design도 `preflame_top20.csv`에는 그대로 남고, post-onset valid ranking에서만
 빠집니다. 21번째 후보를 승격하지 않습니다.
 
-기존 `resume_final_only.py --reuse-handoff`는 patch 전에 original 단일/batch
-method를 저장합니다. candidate의 persisted handoff가 없으면 fail closed합니다.
-명시적 baseline role 또는 정확한 baseline output path인 경우에만, 두 handoff
-파일이 모두 없을 때 original evaluator로 한 번 새 계산합니다. 부분 파일이나
-손상된 파일은 새 계산을 허용하는 근거가 되지 않습니다. 결과에는
-`reusedPersistedHandoff=True/False`를 기록합니다. error 문자열로 role을 추론하지 않습니다.
-새 DOE 핵심 workflow는 이 monkey patch에 의존하지 않습니다.
+과거 최적화 전용 `resume_final_only.py` wrapper는 제거했습니다.
+DOE 핵심 workflow는 이 monkey patch에 의존하지 않았으며, 아래 자체 재개 경로를 사용합니다.
 
 ### 재개와 파일
 
@@ -148,6 +143,7 @@ spec/signature, parameter vector, seed, CAD polygons와 holes, electrode area,
 성공 완료는 재계산하지 않고, 중단된 running record는 재시도합니다. 실패 완료는
 `--retry-failed`가 있어야 재시도합니다. config, base-config 내용, code 및 주요
 dependency version의 fingerprint가 달라지면 resume를 거부합니다.
+리팩터링 전 실행과 소스 fingerprint가 달라지므로 새 run 디렉터리를 사용합니다.
 
 Post-onset은 candidate별 `result_checkpoint.json`을 사용합니다. 성공과
 model-validity rejection 모두 완료 상태로 재사용하며, JSON에 NaN을 쓰지 않고
@@ -156,14 +152,14 @@ artifact는 immutable이며 내용이 다른 덮어쓰기를 거부합니다.
 
 ## Dependency
 
-검증 환경: production `ecsp-m2`, Python 3.10.21, NumPy 2.2.6, SciPy 1.15.3.
+DOE 최초 검증 환경: production `ecsp-m2`, Python 3.10.21, NumPy 2.2.6, SciPy 1.15.3.
 [PHIDL 1.7.2](https://pypi.org/project/phidl/1.7.2/)는 Python ≥3.6을 지원하며,
 NumPy 2 compatibility 수정이 포함된 버전입니다.
 
 `python/requirements-phidl-doe.txt`는 PHIDL 1.7.2, gdspy 1.6.13,
 Shapely 2.0.7, NetworkX 3.2.1, scikit-image 0.24.0, matplotlib 3.10.8을 pin합니다.
 현재 프로젝트에는 검증한 CAD dependency를 `.doe-deps/`에 격리합니다.
-새 DOE entry point만 이 폴더를 우선 로드하므로 기존 NSGA-II 환경은 바뀌지 않습니다.
+새 DOE entry point만 이 폴더를 우선 로드하므로 다른 실행 환경의 의존성 설정과 분리합니다.
 다른 환경에서는 별도 venv에 위 requirements를 설치할 수 있습니다.
 
 ## 실행 명령
@@ -174,8 +170,8 @@ Shapely 2.0.7, NetworkX 3.2.1, scikit-image 0.24.0, matplotlib 3.10.8을 pin합�
 `docs/validation_phidl_doe600/HYBRID_INTERDIGITATED_VALIDATION_KR.md`에 있습니다.
 
 ```bash
-cd /Users/kimjiin/Desktop/ECSP_v8_4_2_A100CPU8_GeometrySafe
-export PATH="/Users/kimjiin/anaconda3/envs/ecsp-m2/bin:$PATH"
+# 저장소 루트에서 실행; 준비한 Python 환경을 먼저 활성화하십시오.
+export PYTHONPATH="$PWD/python${PYTHONPATH:+:$PYTHONPATH}"
 
 # 형상 생성만: 기본 동작
 python tools/run_phidl_doe600.py --run-dir runs/doe600_phidl_study

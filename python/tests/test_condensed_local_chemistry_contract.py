@@ -10,8 +10,8 @@ from ecsp_reactive.condensed.chemistry import (
     A1, A2, ANION, CATION, EC_LP, ENERGY, MX, MY, PRODUCT_WATER, PVA,
     RHO, WATER,
 )
-from ecsp_reactive.condensed.handoff import BCReactiveHandoffAdapter
-from ecsp_reactive.condensed.solver import BCReactiveSolver
+from ecsp_reactive.condensed.handoff import PreflameReactiveHandoffAdapter
+from ecsp_reactive.condensed.solver import CondensedReactiveSolver
 from ecsp_reactive.condensed.validation_cases import synthetic_condensed_case
 
 
@@ -34,7 +34,7 @@ def adapted_case(*, rates=(0.2, 0.1), heats=(1000.0, 2000.0),
     handoff["temperatureAtOnset_K"][:] = temperature
     if change is not None:
         change(handoff, propagation, bc, reactive)
-    return BCReactiveHandoffAdapter(propagation, bc, reactive).adapt(handoff)
+    return PreflameReactiveHandoffAdapter(propagation, bc, reactive).adapt(handoff)
 
 
 def test_constant_rates_are_exact_and_completed_state_is_stationary():
@@ -364,13 +364,13 @@ def test_full_strang_split_has_second_order_temporal_convergence():
         mass_budget_relative_tolerance=1.0e-10,
         energy_budget_relative_tolerance=1.0e-9,
     )
-    adapted = BCReactiveHandoffAdapter(
+    adapted = PreflameReactiveHandoffAdapter(
         propagation, bc, reactive
     ).adapt(handoff)
     horizon = 0.004
 
     def integrate(time_step):
-        solver = BCReactiveSolver(
+        solver = CondensedReactiveSolver(
             adapted, propagation, bc, reactive,
             initialize_electrical=False,
         )

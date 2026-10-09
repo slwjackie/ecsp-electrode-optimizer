@@ -15,8 +15,8 @@ import traceback
 import numpy as np
 import yaml
 
-from ecsp_nsga2.geometry import GeometryLimits
-from ecsp_nsga2.bootstrap import resolved_physics_grid
+from ecsp_preflame.geometry import GeometryLimits
+from ecsp_preflame.bootstrap import resolved_physics_grid
 from .selection import OBJECTIVES, rank_designs, select_final, select_topologies
 from .storage import (RejectionLog, atomic_bytes, canonical_json, contact_sheet, digest,
                       load_record, read_json, run_lock, runtime_versions, save_record,

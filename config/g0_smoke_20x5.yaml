@@ -7,30 +7,19 @@ workflow:
   openfoam_enabled: false
   gas_phase_cfd_enabled: false
   flame_progress_enabled: false
-  evaluator_scope: bc_global_preflame_plus_selectable_two_channel_condensed_post_onset
-optimization:
-  algorithm: constrained_grammar_nsga2
+  evaluator_scope: preflame_torch_plus_selectable_two_channel_condensed_post_onset
+# Fixed-candidate sampling and evaluation; population_size is the bootstrap count.
+evaluation:
   population_size: 100
-  generations: 3
   initial_topologies: 20
   variants_per_topology: 5
   physics_batch_size: 6
-  mating_performance_count: 70
-  mating_topology_count: 20
-  mating_diversity_count: 10
-  offspring_fractions:
-    crossover: 0.45
-    mutation: 0.3
-    new_grammar: 0.25
-  offspring_generation_attempts: 40
   objectives_minimise:
   - ignition_delay_s
   - area_undecomposed_fraction_at_evaluation_time
   - minimum_ignition_voltage_V
   - current_congestion
   no_ignition_penalty_s: 2.0
-  early_stop_patience: 2
-  early_stop_min_improvement: 0.001
   numerical_cap_thresholds:
     temperature: 0.02
     species: 0.02
@@ -66,7 +55,7 @@ physics:
   voltage_V: 260.0
   end_time_s: 2.0
   metric_evaluation_time_s: 2.0
-  interpretation: bc_global_preflame_condensed_phase_not_visible_flame
+  interpretation: preflame_torch_condensed_phase_not_visible_flame
   composition:
     lithium_perchlorate_mass_fraction: 0.3158
     water_mass_fraction: 0.5842
@@ -109,9 +98,8 @@ baselines:
     minimum_interdigitation_overlap_fraction: 0.45
     hidden_bus_in_contact_mask: false
     maximum_gap_safety_pixels: 8
-    include_in_nsga2_population: false
     include_in_pareto_selection: false
-bc_global:
+preflame_model:
   timeStep_s: 0.00025
   endTime_s: 2.0
   evaluationTime_s: 2.0
@@ -305,7 +293,7 @@ propagation_refinement:
     note: Historical fallback-only setting; post_onset.execution controls this profile.
   electrical_heating_mode: 'off'
 evaluator:
-  backend: bc_global_native_cpu_pool
+  backend: preflame_cpp_cpu_pool
   base_config: config/default_lp_pva.yaml
   device: cpu
   voltage_V: 260.0
@@ -340,7 +328,7 @@ evaluator:
           enabled: false
         gasCoverage:
           enabled: false
-  native:
+  cpp_cuda:
     torch_threads: 1
     cpu_budget: 8
     host_reserve: 2
@@ -363,8 +351,8 @@ post_onset:
       N: 7.0
       rho0_kg_per_m3: null
       provenance: ASSUMED_NOT_FROM_PAPER; inherited v8.3 example, not measured ECSP
-        Tait coefficients; rho0 defaults to resolved BC density
-    caloric_closure: bc_cp_integral_plus_tait_cold_energy
+        Tait coefficients; rho0 defaults to resolved preflame density
+    caloric_closure: heat_capacity_integral_plus_tait_cold_energy
     boundary: reflective
     riemann_solver: hllc
     weno_epsilon: 1.0e-06
@@ -387,9 +375,9 @@ post_onset:
     mass_budget_relative_tolerance: 1.0e-10
     energy_budget_relative_tolerance: 1.0e-09
     interpretation: single condensed continuum; no thermal pressure source in barotropic
-      Tait; retain BC Fourier conduction; no gas mass transfer
+      Tait; retain preflame Fourier conduction; no gas mass transfer
   note: Post-onset power OFF; no post-onset NP/BV recomputation; paired baseline retained.
-    Pre-onset BC NP/BV stays enabled.
+    Pre-onset preflame NP/BV stays enabled.
   execution:
     backend: numpy_cpu
     device: cpu

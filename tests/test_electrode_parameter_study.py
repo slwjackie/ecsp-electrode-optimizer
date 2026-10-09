@@ -28,12 +28,12 @@ def project(tmp_path):
     base = {
         "geometry": {"domain_mm": 20, "grid_size": 96, "target_area_fraction_per_polarity": .175},
         "evaluator": {"base_overrides": {"numerics": {"physicsDtype": "float64"}},
-                      "native": {"cpu_workers": 6}},
+                      "cpp_cuda": {"cpu_workers": 6}},
         "physics": {"voltage_V": 260, "end_time_s": 2, "composition": {"sentinel": 1}},
-        "bc_global": {"timeStep_s": .00025, "onsetCriterion": {"sentinel": 7}},
+        "preflame_model": {"timeStep_s": .00025, "onsetCriterion": {"sentinel": 7}},
         "minimum_ignition_voltage_search": {"enabled": True},
         "condensed_ignition": {"onset_temperature_K": 523.15},
-        "optimization": {"algorithm": "untouched"},
+        "evaluation": {"algorithm": "untouched"},
         "baselines": {"area_matched_staggered": {"enabled": True}},
         "post_onset": {"sentinel": "untouched"},
     }
@@ -137,7 +137,7 @@ def test_runtime_does_not_modify_shared_physics(project):
     assert base == before
     for key in set(base) - {"geometry", "evaluator"}:
         assert cfg[key] == base[key]
-    assert cfg["evaluator"]["backend"] == "bc_global_native"
+    assert cfg["evaluator"]["backend"] == "preflame_cpp_cuda"
     assert cfg["geometry"]["minimum_gap_mm"] == 1
     assert cfg["geometry"]["minimum_width_mm"] == 1
     assert cfg["evaluator"]["save_representative_fields"] is True
@@ -168,11 +168,11 @@ def test_subclass_overrides_only_geometry(monkeypatch):
             return "inherited integration"
         def _trial_valid(self, row):
             return True, "inherited validity"
-    for name in ("ecsp_nsga2", "ecsp_nsga2.bc_native", "ecsp_nsga2.evaluator",
+    for name in ("ecsp_preflame", "ecsp_preflame.cpp_cuda_evaluator", "ecsp_preflame.evaluator",
                  "ecsp_v6", "ecsp_v6.physics", "ecsp_v6.physics.geometry"):
         monkeypatch.setitem(sys.modules, name, ModuleType(name))
-    sys.modules["ecsp_nsga2.bc_native"].NativeBCGlobalEvaluator = Native
-    sys.modules["ecsp_nsga2.evaluator"].BCCandidateGeometryError = ValueError
+    sys.modules["ecsp_preflame.cpp_cuda_evaluator"].CppCudaPreflameEvaluator = Native
+    sys.modules["ecsp_preflame.evaluator"].PreflameCandidateGeometryError = ValueError
     sys.modules["ecsp_v6.physics.geometry"].GeometryBatch = SimpleNamespace
     ev = study.create_study_evaluator(Path("."), {"geometry": {"grid_size": 200},
               "evaluator": {"grid_size": 200}}, Path("unused"))

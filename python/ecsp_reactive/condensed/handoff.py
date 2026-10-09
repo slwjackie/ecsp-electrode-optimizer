@@ -10,17 +10,17 @@ import hashlib
 import json
 import math
 import numpy as np
-from ecsp_nsga2.propagation import PropagationConfigurationError, PropagationCandidateInputError
+from ecsp_preflame.propagation import PropagationConfigurationError, PropagationCandidateInputError
 from .chemistry import *
-from .thermo import BCTaitThermodynamics
+from .thermo import PreflameTaitThermodynamics
 
 
-def model_digest(bc_config):
-    return hashlib.sha256(json.dumps(bc_config,sort_keys=True,separators=(",",":"),allow_nan=False).encode()).hexdigest()
+def model_digest(preflame_model_config):
+    return hashlib.sha256(json.dumps(preflame_model_config,sort_keys=True,separators=(",",":"),allow_nan=False).encode()).hexdigest()
 
 
 @dataclass
-class AdaptedBCState:
+class AdaptedPreflameState:
     U: np.ndarray
     anode_mask: np.ndarray
     cathode_mask: np.ndarray
@@ -31,18 +31,18 @@ class AdaptedBCState:
     dx: float
     thickness: float
     absolute_onset_s: float
-    thermo: BCTaitThermodynamics
-    chemistry: BCTwoChannelChemistry
+    thermo: PreflameTaitThermodynamics
+    chemistry: TwoChannelDecompositionChemistry
     audit: dict[str, Any]
 
 
-class BCReactiveHandoffAdapter:
-    def __init__(self, propagation_config: Mapping[str, Any], bc_config: Mapping[str, Any], reactive_config: Mapping[str, Any]):
+class PreflameReactiveHandoffAdapter:
+    def __init__(self, propagation_config: Mapping[str, Any], preflame_model_config: Mapping[str, Any], reactive_config: Mapping[str, Any]):
         self.prop = dict(propagation_config)
-        self.bc = dict(bc_config)
+        self.bc = dict(preflame_model_config)
         self.reactive = dict(reactive_config)
 
-    def adapt(self, handoff: Mapping[str, Any]) -> AdaptedBCState:
+    def adapt(self, handoff: Mapping[str, Any]) -> AdaptedPreflameState:
         def scalar(key, *, nonnegative=False):
             try:
                 value = float(handoff[key])
@@ -106,15 +106,18 @@ class BCReactiveHandoffAdapter:
             if key in handoff and not math.isclose(scalar(key),expected,rel_tol=1e-12,abs_tol=1e-15):
                 raise PropagationCandidateInputError(f"Handoff and resolved BC config disagree: {key}")
         digest = model_digest(self.bc)
-        if "bcGlobalConfigSHA256" in handoff and handoff["bcGlobalConfigSHA256"]!=digest:
-            raise PropagationCandidateInputError("BC chemistry/thermal config changed since onset; handoff hash mismatch")
+        # Validate every supplied alias; a stale legacy digest must never be skipped.
+        for key in ("preflameModelConfigSHA256", "bcGlobalConfigSHA256"):
+            if key in handoff and handoff[key] != digest:
+                raise PropagationCandidateInputError(
+                    "Preflame chemistry/thermal config changed since onset; handoff hash mismatch")
         for key in ("xiMax_mol_per_m3","initialMobileLP_mol_per_m3","initialPVARepeat_mol_per_m3",
                     "molarMassLP_kg_per_mol","molarMassPVARepeat_kg_per_mol","initialReactiveMass_kg_per_m3"):
             if scalar(key,nonnegative=True)<=0:
                 raise PropagationCandidateInputError(f"{key} must be positive")
         scalar("initialMobileWater_mol_per_m3",nonnegative=True)
-        chemistry = BCTwoChannelChemistry(self.bc,handoff,rho,self.prop["gas_constant_J_per_molK"])
-        thermo = BCTaitThermodynamics(self.reactive["eos"],self.bc["thermal"],rho)
+        chemistry = TwoChannelDecompositionChemistry(self.bc,handoff,rho,self.prop["gas_constant_J_per_molK"])
+        thermo = PreflameTaitThermodynamics(self.reactive["eos"],self.bc["thermal"],rho)
         P = np.zeros((*shape,NCONS),dtype=np.float64)
         P[...,RHO] = rho
         P[...,3] = temperature
@@ -159,9 +162,9 @@ class BCReactiveHandoffAdapter:
         vol=dx*dx*depth
         audit = {
             "handoff_policy":"single_continuum_identity_mass_and_energy_transfer_not_solid_to_gas",
-            "bc_config_sha256":digest,"onset_time_s":onset,
+            "preflame_model_config_sha256":digest,"onset_time_s":onset,
             "density_source":"resolved_BC_bulk_density", "velocity_initialization":"zero_BC_has_no_momentum",
-            "energy_definition":"rho*(BC_cp_integral+Tait_cold_energy+kinetic_energy)",
+            "energy_definition":"rho*(PREFLAME_cp_integral+Tait_cold_energy+kinetic_energy)",
             "temperature_roundtrip_max_error_K":float(np.max(np.abs(recovered[...,3]-temperature))),
             "channel1_roundtrip_max_error":float(np.max(np.abs(recovered[...,A1]-P[...,A1]))),
             "channel2_roundtrip_max_error":float(np.max(np.abs(recovered[...,A2]-P[...,A2]))),
@@ -173,4 +176,4 @@ class BCReactiveHandoffAdapter:
             "same_eos_for_reactant_and_product":True,
             "material_interface_scope":"unreacted_to_reacted_internal_front_not_gas_ablation_boundary",
         }
-        return AdaptedBCState(U,anode,cathode,prop_mask,potential,qj,qe,dx,depth,onset,thermo,chemistry,audit)
+        return AdaptedPreflameState(U,anode,cathode,prop_mask,potential,qj,qe,dx,depth,onset,thermo,chemistry,audit)

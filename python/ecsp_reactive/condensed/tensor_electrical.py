@@ -9,8 +9,8 @@ from __future__ import annotations
 import copy
 import numpy as np
 import torch
-from ecsp_nsga2.propagation import PropagationConfigurationError
-from ecsp_v6.physics.bc_global import bc_transport_fields
+from ecsp_preflame.propagation import PropagationConfigurationError
+from ecsp_preflame.electrochemical_thermal_decomposition import preflame_transport_fields
 from ecsp_v6.physics.electrochem import initial_state,solve_electrical_and_reaction
 from ecsp_v6.physics.geometry import GeometryBatch
 from ecsp_v6.physics.composition_model import build_composition
@@ -19,12 +19,12 @@ from .handoff import model_digest
 from .chemistry import *
 
 
-class TensorBCElectricalAdapter:
-    def __init__(self,solvers,full_bc_config,kernel):
-        if not full_bc_config or 'bcGlobal' not in full_bc_config:
+class TensorPreflameElectricalAdapter:
+    def __init__(self,solvers,full_preflame_config,kernel):
+        if not full_preflame_config or 'preflameModel' not in full_preflame_config:
             raise PropagationConfigurationError('Tensor power-on continuation needs full resolved BC configuration')
-        self.cfg=copy.deepcopy(full_bc_config)
-        if any(model_digest(self.cfg['bcGlobal'])!=s.a.audit['bc_config_sha256'] for s in solvers):
+        self.cfg=copy.deepcopy(full_preflame_config)
+        if any(model_digest(self.cfg['preflameModel'])!=s.a.audit['preflame_model_config_sha256'] for s in solvers):
             raise PropagationConfigurationError('Tensor electrical and handoff BC hashes differ')
         if self.cfg.get('interface',{}).get('boundaryCouplingModel')!='surface_overlay_bv':
             raise PropagationConfigurationError('Tensor electrical callback requires surface_overlay_bv')
@@ -54,7 +54,7 @@ class TensorBCElectricalAdapter:
         X=k.progress(U);state['chemicalProgress']=X;state['globalProgress']=X
         state['alphaChannel1']=U[...,A1]/U[...,RHO];state['alphaChannel2']=U[...,A2]/U[...,RHO]
         state['potential']=self.potential
-        transport=bc_transport_fields(state,g,cfg,self.composition)
+        transport=preflame_transport_fields(state,g,cfg,self.composition)
         electrical,reaction,diagnostics=solve_electrical_and_reaction(state,transport,g,cfg,self.composition,
                                              self.voltage,k.dx,static=False)
         self.calls+=1

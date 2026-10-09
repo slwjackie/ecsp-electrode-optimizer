@@ -173,3 +173,10 @@ kubeconfig.*
 *.swp
 *.swo
 *~
+
+# Preflame C++/CUDA build cache
+.cpp_cuda_build/
+
+.native_build/
+
+.native_build_A100_Linux/

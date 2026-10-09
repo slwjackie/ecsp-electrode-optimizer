@@ -16,7 +16,7 @@ class CompositionModel:
     boric_acid_to_pva_repeat_molar_ratio: float
     effective_softening_temperature_K: float
     summary: dict
-    # v8 B/C global-reaction inventory fields.  Defaults preserve backwards
+    # v8 electrochemical-thermal-decomposition global-reaction inventory fields.  Defaults preserve backwards
     # compatibility for any external code that instantiated the legacy class.
     initial_lp_mol_per_m3: float = 0.0
     initial_pva_repeat_mol_per_m3: float = 0.0

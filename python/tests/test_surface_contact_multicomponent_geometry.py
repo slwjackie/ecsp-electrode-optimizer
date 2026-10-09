@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-import random
 
 import numpy as np
 
-from ecsp_nsga2.geometry import (
+from ecsp_preflame.geometry import (
     GeometryLimits,
-    crossover_genomes,
     instantiate_variant,
     make_topology_templates,
-    mutate_genome,
     rasterize_and_validate,
     save_geometry,
 )
@@ -50,39 +47,8 @@ def test_components_have_independent_poses_and_surface_contact_area():
     assert abs(raster.descriptors["cathode_area_fraction"] - 0.175) <= 0.012
 
 
-def test_component_mutations_obey_caps_and_change_counts():
-    limits = GeometryLimits()
-    base = instantiate_variant(
-        make_topology_templates(1, 17, limits)[0], 0, 19, limits
-    )
-    added = mutate_genome(base, random.Random(1), limits, operation="add_component")
-    assert sum(_pair(added)) == 3
-    split = mutate_genome(base, random.Random(2), limits, operation="split_component")
-    assert sum(_pair(split)) == 3
-    removed = mutate_genome(added, random.Random(3), limits, operation="remove_component")
-    assert sum(_pair(removed)) == 2
-    merged = mutate_genome(added, random.Random(4), limits, operation="merge_component")
-    assert sum(_pair(merged)) == 2
-    for genome in (added, split, removed, merged):
-        na, nc = _pair(genome)
-        assert 1 <= na <= 3
-        assert 1 <= nc <= 3
-        assert na + nc <= 4
 
 
-def test_component_level_crossover_obeys_caps():
-    limits = GeometryLimits()
-    templates = make_topology_templates(20, 20260828, limits)
-    first = instantiate_variant(
-        next(g for g in templates if _pair(g) == (1, 2)), 0, 7, limits
-    )
-    second = instantiate_variant(
-        next(g for g in templates if _pair(g) == (3, 1)), 0, 11, limits
-    )
-    for seed in range(20):
-        child = crossover_genomes(first, second, random.Random(seed), limits)
-        na, nc = _pair(child)
-        assert 1 <= na <= 3 and 1 <= nc <= 3 and na + nc <= 4
 
 
 def test_saved_geometry_contains_full_propellant_overlay_masks(tmp_path: Path):

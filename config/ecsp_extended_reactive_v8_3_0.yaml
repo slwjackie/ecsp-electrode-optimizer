@@ -4,7 +4,7 @@ strict_paper: false
 description: >-
   Non-paper extension boundary. The reactive Euler/thermal/level-set solver is
   retained, while electrical and electrochemical volumetric sources must be
-  supplied at every accepted SSPRK stage by the existing corrected BC-global
+  supplied at every accepted SSPRK stage by the existing corrected electrochemical-thermal-decomposition
   surface-contact/Butler-Volmer solver. This file does not relabel BV as paper
   physics and does not silently substitute a constant source when no callback
   is connected.

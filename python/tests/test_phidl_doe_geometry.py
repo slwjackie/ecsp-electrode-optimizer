@@ -14,12 +14,12 @@ from ecsp_doe.sampling import (derived_seed, generate_variants, lhs_parameters,
 from ecsp_doe.topology import (_target_sequence, generate_topology_library, grammar_spec,
                                graph_signature, interdigitated_grammar_spec,
                                parametric_grammar_spec, representative_iou)
-from ecsp_nsga2.geometry import GeometryLimits
+from ecsp_preflame.geometry import GeometryLimits
 
 
 @pytest.fixture(scope='module')
 def limits():
-    config=yaml.safe_load((Path(__file__).parents[2]/'config/nsga2_preflame_only_200x3.yaml').read_text())
+    config=yaml.safe_load((Path(__file__).parents[2]/'config/preflame_only.yaml').read_text())
     return GeometryLimits(**config['geometry'])
 
 
@@ -251,8 +251,8 @@ def test_attempt_limit_records_rejects(limits):
 
 
 def test_legacy_generator_and_fitter_are_not_called(limits,library,monkeypatch):
-    import ecsp_nsga2.geometry as old_geometry
-    import ecsp_nsga2.geometry_fit as old_fit
+    import ecsp_preflame.geometry as old_geometry
+    import ecsp_preflame.geometry_fit as old_fit
     def forbidden(*args,**kwargs):
         raise AssertionError("Legacy generator/fitter used by PHIDL DOE")
     for name in ('make_topology_templates','instantiate_variant','rasterize_and_validate','_fit_area_components'):

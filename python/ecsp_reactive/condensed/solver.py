@@ -14,14 +14,14 @@ import json
 import math
 import time
 import numpy as np
-from ecsp_nsga2.propagation import (PropagationConfigurationError, PropagationCandidateNumericalError,
+from ecsp_preflame.propagation import (PropagationConfigurationError, PropagationCandidateNumericalError,
     ConfiguredModelTemperatureRangeExceeded,candidate_failure_payload,
     _table_property,_div_k_grad,_arrival_time_statistics,_reaction_level_set,
     _front_edge_count,_effective_regression_velocity,_configuration_integer,_thermal_diffusive_cfl)
 from .chemistry import *
-from .handoff import BCReactiveHandoffAdapter
+from .handoff import PreflameReactiveHandoffAdapter
 from .finite_volume import flux_divergence, mechanically_stationary
-from .electrical import BCElectricalAdapter
+from .electrical import PreflameElectricalAdapter
 
 
 def _write_json(path,payload):
@@ -37,10 +37,10 @@ def _positive_configuration_float(raw,*,name):
     return value
 
 
-class BCReactiveSolver:
-    def __init__(self,adapted,propagation_config,bc_config,reactive_config,*,full_bc_config=None,initialize_electrical=True):
+class CondensedReactiveSolver:
+    def __init__(self,adapted,propagation_config,preflame_model_config,reactive_config,*,full_preflame_config=None,initialize_electrical=True):
         self.a=adapted
-        self.prop=dict(propagation_config); self.bc=dict(bc_config); self.cfg=dict(reactive_config)
+        self.prop=dict(propagation_config); self.bc=dict(preflame_model_config); self.cfg=dict(reactive_config)
         self.U=adapted.U.copy(); self.thermo=adapted.thermo; self.chem=adapted.chemistry
         self.duration=float(self.prop["duration_s"]); self.dtmax=float(self.prop["time_step_s"])
         self.snapshot_interval=float(self.prop.get("snapshot_interval_s",self.duration/10))
@@ -168,7 +168,7 @@ class BCReactiveSolver:
             raise PropagationConfigurationError("Power-off continuation contradicts electrical_heating_mode")
         if self.heating and mode not in {"recomputed","recompute"}:
             raise PropagationConfigurationError("Power-on Reactive requires recomputed BC NP/BV; frozen sources/history replay are forbidden")
-        self.electrical=BCElectricalAdapter(adapted,full_bc_config) if self.heating and initialize_electrical else None
+        self.electrical=PreflameElectricalAdapter(adapted,full_preflame_config) if self.heating and initialize_electrical else None
         self.concentration_floor=0.0
         if self.electrical is not None:
             tr=self.electrical.cfg["transport"]
@@ -1456,7 +1456,7 @@ class BCReactiveSolver:
             "numericalFlux":"WENO5_JS_shared_scalar_weights_"+self.riemann.upper(),
             "timeIntegrator":"chemistry_half__SSPRK33_nonchemical__chemistry_half"
                 if self.chemistry_integration_mode=="local_adaptive_thermochemical" else "SSPRK33",
-            "bcGlobalConfigSHA256":self.a.audit["bc_config_sha256"],"durationAfterOnset_s":t,
+            "preflameModelConfigSHA256":self.a.audit["preflame_model_config_sha256"],"durationAfterOnset_s":t,
             "wallClockTime_s":wall_clock,
             "computeBackend":"numpy_cpu", "floatingPointDtype":"float64",
         }
@@ -1496,7 +1496,7 @@ class BCReactiveSolver:
         return metrics
 
 
-def run_reactive_propagation(handoff,config,bc_global_config,output_dir,*,reactive_config,full_bc_config=None):
-    adapted=BCReactiveHandoffAdapter(config,bc_global_config,reactive_config).adapt(handoff)
-    solver=BCReactiveSolver(adapted,config,bc_global_config,reactive_config,full_bc_config=full_bc_config)
+def run_reactive_propagation(handoff,config,preflame_model_config,output_dir,*,reactive_config,full_preflame_config=None):
+    adapted=PreflameReactiveHandoffAdapter(config,preflame_model_config,reactive_config).adapt(handoff)
+    solver=CondensedReactiveSolver(adapted,config,preflame_model_config,reactive_config,full_preflame_config=full_preflame_config)
     return solver.run(output_dir)

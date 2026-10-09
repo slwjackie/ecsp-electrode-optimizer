@@ -15,7 +15,7 @@ from .chemistry import (RHO, MX, MY, ENERGY, A1, A2, CATION, ANION, WATER,
                         PVA, PRODUCT_WATER, EC_LP, NCONS, _GL8_NODES,
                         _GL8_WEIGHTS, _GL16_NODES, _GL16_WEIGHTS,
                         _DP54_C, _DP54_A, _DP54_B5, _DP54_B4)
-from ecsp_nsga2.propagation import PropagationConfigurationError, _table_property
+from ecsp_preflame.propagation import PropagationConfigurationError, _table_property
 
 SPATIAL = (1, 2)
 RECORD_NAMES = (

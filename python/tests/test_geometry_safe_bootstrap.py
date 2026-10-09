@@ -9,30 +9,30 @@ import pytest
 import yaml
 from scipy import ndimage
 
-from ecsp_nsga2.geometry import (GeometryLimits, _fit_area_components, instantiate_variant,
+from ecsp_preflame.geometry import (GeometryLimits, _fit_area_components, instantiate_variant,
     make_topology_templates, rasterize_and_validate, save_geometry, topology_signature)
-from ecsp_nsga2.bootstrap import (BootstrapGeometryError, build_bootstrap,
+from ecsp_preflame.bootstrap import (BootstrapGeometryError, build_bootstrap,
     require_post_onset_power_off, validate_solver_grid)
 
 ROOT=Path(__file__).resolve().parents[2]
 
 
 def config():
-    return yaml.safe_load((ROOT/'config/nsga2_bc_reactive_a100_cpu8_poweroff.yaml').read_text())
+    return yaml.safe_load((ROOT/'config/preflame_reactive_a100_cpu8_poweroff.yaml').read_text())
 
 
 def small_config():
     c=config()
-    c['optimization'].update(initial_topologies=1,variants_per_topology=2,population_size=2,
+    c['evaluation'].update(initial_topologies=1,variants_per_topology=2,population_size=2,
                               bootstrap_max_attempts_per_topology=100)
     return c
 
 
 def test_production_keeps_5mm_and_each_polarity_1percent():
     paths=[]
-    for p in (ROOT/'config').glob('nsga2_bc_*.yaml'):
+    for p in (ROOT/'config').glob('preflame_*.yaml'):
         cfg=yaml.safe_load(p.read_text())
-        if cfg.get('optimization',{}).get('population_size')==1000:
+        if 'preflame_model' in cfg and cfg.get('evaluation',{}).get('population_size')==1000:
             assert cfg['geometry']['maximum_width_mm']==5.0
             assert cfg['geometry']['area_tolerance_fraction']==0.01
             paths.append(p)
@@ -111,7 +111,7 @@ def test_revalidation_checks_each_polarity_not_average():
 
 
 def test_all_20_topologies_have_unique_feasible_small_quotas(tmp_path):
-    c=config();c['optimization'].update(population_size=40,variants_per_topology=2)
+    c=config();c['evaluation'].update(population_size=40,variants_per_topology=2)
     entries,report=build_bootstrap(c,physics_grid_size=193,audit_dir=tmp_path/'audit',verbose=False)
     assert len(entries)==40
     assert len(report['topologies'])==20
@@ -123,7 +123,7 @@ def test_all_20_topologies_have_unique_feasible_small_quotas(tmp_path):
 
 
 def test_bootstrap_never_pads_invalid_candidates(tmp_path,monkeypatch):
-    import ecsp_nsga2.bootstrap as module
+    import ecsp_preflame.bootstrap as module
     original=module.rasterize_and_validate
     calls=[]
     def invalid(g,lim):
@@ -133,7 +133,7 @@ def test_bootstrap_never_pads_invalid_candidates(tmp_path,monkeypatch):
         r.violation_details['forced_test_failure']=1.0
         return r
     monkeypatch.setattr(module,'rasterize_and_validate',invalid)
-    c=small_config();c['optimization']['bootstrap_max_attempts_per_topology']=3
+    c=small_config();c['evaluation']['bootstrap_max_attempts_per_topology']=3
     with pytest.raises(BootstrapGeometryError,match='no INVALID padding'):
         build_bootstrap(c,physics_grid_size=193,audit_dir=tmp_path/'failed',verbose=False)
     assert len(calls)==3
@@ -144,10 +144,10 @@ def test_bootstrap_never_pads_invalid_candidates(tmp_path,monkeypatch):
 
 
 def test_duplicate_masks_do_not_fill_a_topology_quota(tmp_path,monkeypatch):
-    import ecsp_nsga2.bootstrap as module
+    import ecsp_preflame.bootstrap as module
     original=module.instantiate_variant
     monkeypatch.setattr(module,'instantiate_variant',lambda t,i,s,l:original(t,0,s,l))
-    c=small_config();c['optimization']['bootstrap_max_attempts_per_topology']=3
+    c=small_config();c['evaluation']['bootstrap_max_attempts_per_topology']=3
     with pytest.raises(BootstrapGeometryError):
         build_bootstrap(c,physics_grid_size=193,audit_dir=tmp_path/'duplicate',verbose=False)
     report=json.loads((tmp_path/'duplicate/geometry_bootstrap_report.json').read_text())
@@ -177,10 +177,3 @@ def test_poweroff_requires_real_yaml_false(bad):
 def test_poweroff_does_not_accept_recomputed_mode():
     c=config();c['propagation_refinement']['electrical_heating_mode']='recomputed'
     with pytest.raises(ValueError):require_post_onset_power_off(c)
-
-
-def test_a100_launch_gates_geometry_before_gpu_and_reuses_cache():
-    script=(ROOT/'tools/run_bc_reactive_a100_cpu8.sh').read_text()
-    assert script.index('validate_nsga2_geometry.py')<script.index('preflight_reactive_a100.py')
-    assert '--bootstrap-cache' in script
-    assert '--require-power-off' in script

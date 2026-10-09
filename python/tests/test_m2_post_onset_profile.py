@@ -12,39 +12,41 @@ import numpy as np
 import pytest
 import yaml
 
-from ecsp_nsga2.geometry import RasterizedGeometry
-from ecsp_nsga2.nsga2 import Individual
-from ecsp_nsga2.post_onset import validate_post_onset_config
-from ecsp_nsga2.propagation import PropagationCandidateInputError
-from ecsp_nsga2.workflow import (
-    NSGA2ElectricalSolidWorkflow,OBJECTIVE_NAMES,REFINED_OBJECTIVE_NAMES,
+from ecsp_preflame.geometry import RasterizedGeometry
+from ecsp_preflame.candidate_ranking import CandidateEvaluation
+from ecsp_preflame.post_onset import validate_post_onset_config
+from ecsp_preflame.propagation import PropagationCandidateInputError
+from ecsp_preflame.evaluation_workflow import (
+    EvaluationWorkflow,OBJECTIVE_NAMES,REFINED_OBJECTIVE_NAMES,
 )
 from ecsp_reactive.condensed.validation_cases import synthetic_condensed_case
-from ecsp_reactive.condensed.handoff import BCReactiveHandoffAdapter, model_digest
+from ecsp_reactive.condensed.handoff import PreflameReactiveHandoffAdapter, model_digest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-M2_CONFIG = ROOT / "config" / "nsga2_bc_reactive_m2cpu_200x3.yaml"
-A100_CONFIG = ROOT / "config" / "nsga2_bc_reactive_a100_gpuonly_200x3.yaml"
+M2_CONFIG = ROOT / "config" / "preflame_reactive_m2cpu.yaml"
+A100_CONFIG = ROOT / "config" / "preflame_reactive_a100_gpuonly.yaml"
 
 PRE_FLAME_KEYS = (
     "project",
     "workflow",
-    "optimization",
+    "evaluation",
     "geometry",
     "physics",
     "condensed_ignition",
     "minimum_ignition_voltage_search",
     "baselines",
-    "bc_global",
+    "preflame_model",
     "evaluator",
 )
 
+# Config-name/metadata migration only; model and propagation digests below
+# retain the exact pre-refactor reference values.
 EXPECTED_PRE_FLAME_SHA256 = {
-    M2_CONFIG.name: "416134903da7d345aae2a5f3e71b54021cbcce9c976f1dba03a14eb0313efd63",
-    A100_CONFIG.name: "fca22383dab372af97edc3bcc9535c42ebe9ee330a83b8814ae486c708a33e09",
+    M2_CONFIG.name: "e5ba4d4ac51f821dbd884f7875af7144b12de7a3d24f34a558842a3099f17ec9",
+    A100_CONFIG.name: "2819503ef5fbaebe1b2d7bb80b5d626329e79072b24aff3ee91d7a06d56a1a64",
 }
-EXPECTED_BC_GLOBAL_SHA256 = (
+EXPECTED_PREFLAME_MODEL_SHA256 = (
     "b481bfe7308f917b7fe6559a01bb4a4f41b76aab38823f3f9a2a22cb37521730"
 )
 EXPECTED_PROPAGATION_REFINEMENT_SHA256 = (
@@ -94,12 +96,13 @@ def test_production_preflame_sections_are_immutable(path: Path) -> None:
     protected = {key: config[key] for key in PRE_FLAME_KEYS}
 
     assert _digest(protected) == EXPECTED_PRE_FLAME_SHA256[path.name]
-    assert model_digest(config["bc_global"]) == EXPECTED_BC_GLOBAL_SHA256
-    assert config["optimization"]["population_size"] == 200
-    assert config["optimization"]["generations"] == 3
-    assert tuple(config["optimization"]["objectives_minimise"]) == OBJECTIVE_NAMES
+    assert model_digest(config["preflame_model"]) == EXPECTED_PREFLAME_MODEL_SHA256
+    assert config["evaluation"]["population_size"] == 200
+    assert "generations" not in config["evaluation"]
+    assert "algorithm" not in config["evaluation"]
+    assert tuple(config["evaluation"]["objectives_minimise"]) == OBJECTIVE_NAMES
     assert config["condensed_ignition"]["onset_temperature_K"] == 523.15
-    assert config["bc_global"]["kinetics"]["maximum_rate_per_s"] == 1000.0
+    assert config["preflame_model"]["kinetics"]["maximum_rate_per_s"] == 1000.0
 
 
 def test_m2_propagation_objectives_and_settings_are_immutable() -> None:
@@ -126,7 +129,7 @@ def test_production_uses_only_local_adaptive_chemistry_controls(path: Path) -> N
     assert reactive["eos"]["A_Pa"] == 101325.0
     assert reactive["eos"]["B_Pa"] == 2.0e9
     assert reactive["eos"]["N"] == 7.0
-    assert reactive["caloric_closure"] == "bc_cp_integral_plus_tait_cold_energy"
+    assert reactive["caloric_closure"] == "heat_capacity_integral_plus_tait_cold_energy"
     assert reactive["boundary"] == "reflective"
     assert reactive["riemann_solver"] == "hllc"
     assert reactive["cfl"] == 0.35
@@ -157,7 +160,7 @@ def test_m2_and_a100_keep_only_the_intended_runtime_differences() -> None:
     assert a100["execution"]["batch_size"] == 8
 
 
-def _compatible_handoff(bc_global: dict) -> tuple[dict, dict]:
+def _compatible_handoff(preflame_model: dict) -> tuple[dict, dict]:
     shape = (8, 8)
     field = lambda value: np.full(shape, value, dtype=np.float64)
     anode = np.zeros(shape, dtype=bool)
@@ -165,7 +168,7 @@ def _compatible_handoff(bc_global: dict) -> tuple[dict, dict]:
     anode[:, 0] = True
     cathode[:, -1] = True
 
-    weights = np.asarray(bc_global["kinetics"]["mass_conversion_weights"])
+    weights = np.asarray(preflame_model["kinetics"]["mass_conversion_weights"])
     alpha = np.asarray([0.2, 0.2])
     progress = float(weights @ alpha)
     xi_max = 100.0
@@ -183,7 +186,7 @@ def _compatible_handoff(bc_global: dict) -> tuple[dict, dict]:
         "propagationHandoffAuthorizationReason": "ignition_and_numerics_valid",
         "ignitionDelay_s": 0.1,
         "continuedElectricalHeating": False,
-        "bcGlobalConfigSHA256": EXPECTED_BC_GLOBAL_SHA256,
+        "preflameModelConfigSHA256": EXPECTED_PREFLAME_MODEL_SHA256,
         "temperatureAtOnset_K": field(523.15),
         "propellantMask": np.ones(shape, dtype=bool),
         "anodeContactMask": anode,
@@ -227,22 +230,22 @@ def _compatible_handoff(bc_global: dict) -> tuple[dict, dict]:
 
 def test_authorized_v82_handoff_digest_remains_compatible() -> None:
     config = _load(M2_CONFIG)
-    bc_global = config["bc_global"]
+    preflame_model = config["preflame_model"]
     reactive = config["post_onset"]["reactive_euler"]
-    handoff, propagation = _compatible_handoff(bc_global)
+    handoff, propagation = _compatible_handoff(preflame_model)
 
-    adapted = BCReactiveHandoffAdapter(
+    adapted = PreflameReactiveHandoffAdapter(
         propagation,
-        bc_global,
+        preflame_model,
         reactive,
     ).adapt(handoff)
-    assert adapted.audit["bc_config_sha256"] == EXPECTED_BC_GLOBAL_SHA256
+    assert adapted.audit["preflame_model_config_sha256"] == EXPECTED_PREFLAME_MODEL_SHA256
     assert adapted.audit["onset_time_s"] == 0.1
 
-    changed_bc = copy.deepcopy(bc_global)
+    changed_bc = copy.deepcopy(preflame_model)
     changed_bc["kinetics"]["channels"][0]["ln_Af_per_s"][0] += 1.0e-12
     with pytest.raises(PropagationCandidateInputError, match="hash mismatch"):
-        BCReactiveHandoffAdapter(
+        PreflameReactiveHandoffAdapter(
             propagation,
             changed_bc,
             reactive,
@@ -251,184 +254,31 @@ def test_authorized_v82_handoff_digest_remains_compatible() -> None:
     wrong_schema = copy.deepcopy(handoff)
     wrong_schema["handoffSchemaVersion"] = "changed"
     with pytest.raises(PropagationCandidateInputError, match="authorized v8.2"):
-        BCReactiveHandoffAdapter(
+        PreflameReactiveHandoffAdapter(
             propagation,
-            bc_global,
+            preflame_model,
             reactive,
         ).adapt(wrong_schema)
 
 
-def test_resume_final_only_reuse_flag_bypasses_bc_physics_and_stubs_post_onset(
-        tmp_path,monkeypatch) -> None:
-    """Exercise the real reuse patch and workflow batch-handoff call site."""
-    import ecsp_nsga2.bc_native as bc_native
-    import ecsp_nsga2.evaluator as evaluator_module
-    import ecsp_nsga2.post_onset_batch as post_onset_batch
-    import ecsp_nsga2.workflow as workflow_module
-
-    tool=ROOT/'tools'/'resume_final_only.py'
-    final_dir=tmp_path/'final'
-    handoff_dir=(final_dir/'propagation_candidates'/'route_probe'
-                 /'bc_handoff')
-    handoff_dir.mkdir(parents=True)
-    handoff, _propagation, _bc, _reactive = synthetic_condensed_case(
-        shape=(5,5)
-    )
-    fields={
-        key:value for key,value in handoff.items()
-        if isinstance(value,np.ndarray)
-    }
-    metadata={
-        key:value for key,value in handoff.items()
-        if not isinstance(value,np.ndarray)
-    }
-    metadata.update(
-        field_file='bc_handoff_fields.npz',geometry_id='route_probe'
-    )
-    fields_path=handoff_dir/'bc_handoff_fields.npz'
-    metadata_path=handoff_dir/'bc_handoff_metadata.json'
-    np.savez_compressed(fields_path,**fields)
-    metadata_path.write_text(
-        json.dumps(metadata,sort_keys=True),encoding='utf-8'
-    )
-
-    def fingerprint(path):
-        stat=path.stat()
-        return {
-            'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
-            'size':stat.st_size,
-            'mtime_ns':stat.st_mtime_ns,
-        }
-
-    before={path.name:fingerprint(path)
-            for path in (fields_path,metadata_path)}
-    candidate=Individual(
-        geometry_id='route_probe',genome={},
-        objectives=np.asarray([0.1,0.2,0.3,0.4]),
-        metrics={},topology_id='route_topology',
-    )
-    raster=RasterizedGeometry(
-        anode_mask=np.zeros((5,5),dtype=bool),
-        cathode_mask=np.zeros((5,5),dtype=bool),
-        descriptors={},constraint_violation=0.0,violation_details={},
-    )
-    post_metrics={
-        'status':'complete','onsetSucceeded':True,
-        'propagationSucceeded':True,
-        'finalUnreactedAreaFraction':0.75,
-        'establishedTimeAfterOnset_s':0.01,
-        'meanEffectiveRegressionVelocity_m_per_s':0.02,
-        'reactionFrontNonuniformity':0.03,
-    }
-    raw_evaluator_calls=[]
-    validated=[]
-    post_onset_calls=[]
-
-    def forbidden_evaluator(*_args,_label,**_kwargs):
-        raw_evaluator_calls.append(_label)
-        raise AssertionError('B/C evaluator was called in reuse mode')
-
-    with monkeypatch.context() as patch:
-        # resume_final_only assigns these class attributes directly.  Register
-        # their originals with pytest first so no test leaks the wrapper patch.
-        patch.setattr(
-            NSGA2ElectricalSolidWorkflow,'run',
-            NSGA2ElectricalSolidWorkflow.run,
-        )
-        patch.setattr(
-            NSGA2ElectricalSolidWorkflow,'_validate_handoff_reevaluation',
-            NSGA2ElectricalSolidWorkflow._validate_handoff_reevaluation,
-        )
-        seen=set()
-        for module in (evaluator_module,bc_native):
-            for name,cls in vars(module).items():
-                if not isinstance(cls,type):
-                    continue
-                for method_name in ('evaluate_handoff_batch',
-                                    'evaluate_handoff'):
-                    method=getattr(cls,method_name,None)
-                    identity=(cls,method_name)
-                    if not callable(method) or identity in seen:
-                        continue
-                    seen.add(identity)
-                    patch.setattr(
-                        cls,method_name,
-                        lambda *args,_label=(f'{module.__name__}.{name}.'
-                                             f'{method_name}'),**kwargs:
-                            forbidden_evaluator(
-                                *args,_label=_label,**kwargs
-                            ),
-                    )
-        patch.setattr(sys,'argv',[str(tool),'--reuse-handoff'])
-        patch.setattr(sys,'path',list(sys.path))
-        namespace=runpy.run_path(
-            str(tool),run_name='resume_reuse_route_test'
-        )
-        assert namespace['_REUSE_HANDOFF'] is True
-        assert '--reuse-handoff' not in sys.argv
-        from ecsp_nsga2.bc_native import NativeBCHybridEvaluator
-        assert NativeBCHybridEvaluator.evaluate_handoff_batch is (
-            namespace['_rh_reuse_batch']
-        )
-
-        def post_stub(handoffs,_propagation_config,_bc_config,output_dirs,
-                      **_kwargs):
-            post_onset_calls.append({
-                'handoff_count':len(handoffs),
-                'output_count':len(output_dirs),
-            })
-            return [post_metrics]
-
-        patch.setattr(post_onset_batch,'run_post_onset_batch',post_stub)
-        patch.setattr(
-            workflow_module,'rasterize_and_validate',
-            lambda _genome,_limits:raster,
-        )
-        evaluator=object.__new__(NativeBCHybridEvaluator)
-        evaluator.config={'bcGlobal':{'probe':True}}
-
-        def validate_reused(_individual,result):
-            validated.append(result)
-            assert result['reusedPersistedHandoff'] is True
-            return {'preflameHandoffReevaluationConsistent':True}
-
-        def refine_stub(clone,_raster,_directory,*,handoff_result,
-                        precomputed_result,**_kwargs):
-            assert handoff_result is validated[0]
-            assert precomputed_result is post_metrics
-            clone.metrics.update(precomputed_result)
-            return precomputed_result
-
-        fake=SimpleNamespace(
-            evaluator=evaluator,
-            post_onset_cfg={'execution':{},'compare_backends':False},
-            propagation_cfg={},limits=None,
-            _select_propagation_candidates=lambda *_args:[candidate],
-            _propagation_metadata=(
-                lambda individual,_raster:{
-                    'geometry_id':individual.geometry_id
-                }
-            ),
-            _resolved_propagation_config=lambda:{},
-            _write_population_csv=lambda *_args,**_kwargs:None,
-            _copy_recommendation_geometry=lambda *_args,**_kwargs:None,
-            _evaluate_area_matched_staggered=lambda *_args,**_kwargs:None,
-            _validate_handoff_reevaluation=validate_reused,
-            _run_propagation_refinement=refine_stub,
-        )
-        recommendation=(
-            NSGA2ElectricalSolidWorkflow._finalise_with_propagation(
-                fake,[candidate],[candidate],final_dir
-            )
-        )
-
-        assert raw_evaluator_calls==[]
-        assert len(validated)==1
-        assert validated[0]['reusedPersistedHandoff'] is True
-        assert validated[0]['handoffPreparationFailed'] is False
-        assert post_onset_calls==[{'handoff_count':1,'output_count':1}]
-        assert recommendation.geometry_id=='route_probe'
-
-    after={path.name:fingerprint(path)
-           for path in (fields_path,metadata_path)}
-    assert after==before
+@pytest.mark.parametrize("hashes,valid", [
+    ({"bcGlobalConfigSHA256": EXPECTED_PREFLAME_MODEL_SHA256}, True),
+    ({"bcGlobalConfigSHA256": "wrong"}, False),
+    ({"preflameModelConfigSHA256": EXPECTED_PREFLAME_MODEL_SHA256,
+      "bcGlobalConfigSHA256": "wrong"}, False),
+    ({"preflameModelConfigSHA256": "wrong",
+      "bcGlobalConfigSHA256": EXPECTED_PREFLAME_MODEL_SHA256}, False),
+])
+def test_handoff_model_hash_aliases_never_hide_a_mismatch(hashes, valid):
+    config = _load(M2_CONFIG)
+    model = config["preflame_model"]
+    handoff, propagation = _compatible_handoff(model)
+    handoff.pop("preflameModelConfigSHA256")
+    handoff.update(hashes)
+    adapter = PreflameReactiveHandoffAdapter(
+        propagation, model, config["post_onset"]["reactive_euler"])
+    if valid:
+        assert adapter.adapt(handoff).audit["preflame_model_config_sha256"] == EXPECTED_PREFLAME_MODEL_SHA256
+    else:
+        with pytest.raises(PropagationCandidateInputError, match="hash mismatch"):
+            adapter.adapt(handoff)

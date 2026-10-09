@@ -17,7 +17,7 @@ IGNORED_NAMES = {
     ".pytest_cache",
     ".ruff_cache",
     "__pycache__",
-    ".native_build",
+    ".native_build", ".native_build_A100_Linux", ".cpp_cuda_build",
 }
 IGNORED_PACKAGE_FILES = {
     "PACKAGE_MANIFEST.txt",

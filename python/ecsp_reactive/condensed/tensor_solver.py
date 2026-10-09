@@ -13,11 +13,11 @@ from pathlib import Path
 from types import SimpleNamespace
 import numpy as np
 import torch
-from ecsp_nsga2.propagation import (PropagationConfigurationError,PropagationCandidateError,
+from ecsp_preflame.propagation import (PropagationConfigurationError,PropagationCandidateError,
     ConfiguredModelTemperatureRangeExceeded,candidate_failure_payload,
     PropagationCandidateNumericalError,_reaction_level_set,_configuration_integer)
-from .handoff import BCReactiveHandoffAdapter
-from .solver import BCReactiveSolver,_write_json
+from .handoff import PreflameReactiveHandoffAdapter
+from .solver import CondensedReactiveSolver,_write_json
 from .tensor_math import (TensorCondensedKernel,RECORD_NAMES,NCONS,
                           LOCAL_CHEMISTRY_DIAGNOSTIC_NAMES)
 
@@ -113,7 +113,7 @@ def _local_chemistry_diagnostics(row):
 
 
 @torch.inference_mode()
-def run_tensor_solvers(solvers,output_dirs,execution_config,*,full_bc_config=None):
+def run_tensor_solvers(solvers,output_dirs,execution_config,*,full_preflame_config=None):
     """Run already-validated solvers. Return metrics OR a candidate error per case.
 
     Numerical failure of one lane does not cause its siblings to fail. Global
@@ -153,8 +153,8 @@ def run_tensor_solvers(solvers,output_dirs,execution_config,*,full_bc_config=Non
         raise PropagationConfigurationError('Reactive tensor batch exceeds estimated memory budget; reduce batch_size explicitly')
     k=TensorCondensedKernel(solvers,device)
     if s.heating:
-        from .tensor_electrical import TensorBCElectricalAdapter
-        k.electrical=TensorBCElectricalAdapter(solvers,full_bc_config,k)
+        from .tensor_electrical import TensorPreflameElectricalAdapter
+        k.electrical=TensorPreflameElectricalAdapter(solvers,full_preflame_config,k)
         k.floor=k.electrical.floor
     outs=[Path(o) for o in output_dirs]
     for i,o in enumerate(outs):
@@ -421,10 +421,10 @@ def run_tensor_solvers(solvers,output_dirs,execution_config,*,full_bc_config=Non
     return result
 
 
-def run_tensor_propagation_batch(handoffs,propagation_config,bc_config,output_dirs,*,reactive_config,execution_config,full_bc_config=None):
+def run_tensor_propagation_batch(handoffs,propagation_config,preflame_model_config,output_dirs,*,reactive_config,execution_config,full_preflame_config=None):
     solvers=[]
     for h in handoffs:
-        a=BCReactiveHandoffAdapter(propagation_config,bc_config,reactive_config).adapt(h)
-        solvers.append(BCReactiveSolver(a,propagation_config,bc_config,reactive_config,
-                                       full_bc_config=full_bc_config,initialize_electrical=False))
-    return run_tensor_solvers(solvers,output_dirs,execution_config,full_bc_config=full_bc_config)
+        a=PreflameReactiveHandoffAdapter(propagation_config,preflame_model_config,reactive_config).adapt(h)
+        solvers.append(CondensedReactiveSolver(a,propagation_config,preflame_model_config,reactive_config,
+                                       full_preflame_config=full_preflame_config,initialize_electrical=False))
+    return run_tensor_solvers(solvers,output_dirs,execution_config,full_preflame_config=full_preflame_config)

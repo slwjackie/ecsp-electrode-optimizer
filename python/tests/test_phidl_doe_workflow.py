@@ -209,7 +209,7 @@ def test_real_phidl_mini_workflow_with_mock_physics(tmp_path):
     """Exercise actual CAD/LHS/storage/Pareto together, without a physics solve."""
     import yaml
     root = Path(__file__).resolve().parents[2]
-    config = yaml.safe_load((root / "config/nsga2_preflame_only_200x3.yaml").read_text())
+    config = yaml.safe_load((root / "config/preflame_only.yaml").read_text())
     config["phidl_doe"] = {"representative_iou_threshold": 0.80,
                            "maximum_attempts_per_topology": 1000}
     physics = CountingPhysics()

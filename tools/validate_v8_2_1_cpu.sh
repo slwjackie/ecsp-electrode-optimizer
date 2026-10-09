@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# HISTORICAL RELEASE REPRODUCTION ONLY.
+# Commands below target pre-refactor commit 3f27d44dd60a1fa3a0758d5e1526a42b959b8e03.
+# Run in a checkout of that revision with its original release evidence; they
+# are not validation commands for the current refactored tree.
+# Current CPU verification: bash tools/validate_preflame_cpu.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

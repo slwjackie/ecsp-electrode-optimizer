@@ -6,7 +6,7 @@ from typing import Any, Sequence
 import torch
 
 from .composition_model import CompositionModel
-from .errors import BCCandidateBatchError
+from .errors import PreflameCandidateBatchError
 from .geometry import GeometryBatch
 from .numerics import batch_masked_mean, harmonic_mean, matlab_gradient, physical_floor
 from .potential import solve_potential
@@ -2991,7 +2991,7 @@ def _solve_surface_overlay_potential(
     if fail and not bool(torch.all(converged)):
         bad_mask = ~converged
         bad = torch.nonzero(bad_mask).flatten().detach().cpu().tolist()
-        raise BCCandidateBatchError(
+        raise PreflameCandidateBatchError(
             "Surface-footprint Butler-Volmer solve did not converge for "
             f"batch indices {bad}; "
             f"dphi={potential_change[bad_mask].detach().cpu().tolist()}, "
@@ -3376,7 +3376,7 @@ def solve_electrical_and_reaction(
                 .cpu()
                 .tolist()
             )
-            raise BCCandidateBatchError(
+            raise PreflameCandidateBatchError(
                 "Surface-contact normal Joule heat must be finite and non-negative",
                 bad,
                 "surface_contact_normal_heat",

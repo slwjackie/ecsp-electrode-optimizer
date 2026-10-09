@@ -10,7 +10,7 @@ import argparse,copy,json,os,platform,statistics,time
 from pathlib import Path
 import numpy as np
 import torch
-from ecsp_reactive.condensed import BCReactiveHandoffAdapter,BCReactiveSolver
+from ecsp_reactive.condensed import PreflameReactiveHandoffAdapter,CondensedReactiveSolver
 from ecsp_reactive.condensed.validation_cases import synthetic_condensed_case
 from ecsp_reactive.condensed.tensor_math import TensorCondensedKernel
 from ecsp_reactive.condensed.tensor_solver import CapturedTrial
@@ -35,7 +35,7 @@ def main():
       for B in batches:
         h,prop,bc,r=synthetic_condensed_case(shape=(n,n))
         h['temperatureAtOnset_K']+=np.cos(np.pi*(np.arange(n)[None,:]+.5)/n)
-        ss=[BCReactiveSolver(BCReactiveHandoffAdapter(prop,bc,r).adapt(h),prop,bc,r) for _ in range(B)]
+        ss=[CondensedReactiveSolver(PreflameReactiveHandoffAdapter(prop,bc,r).adapt(h),prop,bc,r) for _ in range(B)]
         if a.dynamic:
             for s in ss:
                 P=s.thermo.primitive(s.U);P[...,0]*=1+1e-7*np.cos(2*np.pi*(np.arange(n)[None,:]+.5)/n);s.U=s.thermo.conservative(P)

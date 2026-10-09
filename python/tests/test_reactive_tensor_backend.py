@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import torch
 from ecsp_reactive.condensed.validation_cases import synthetic_condensed_case as fixture
-from ecsp_reactive.condensed import BCReactiveHandoffAdapter,BCReactiveSolver
+from ecsp_reactive.condensed import PreflameReactiveHandoffAdapter,CondensedReactiveSolver
 from ecsp_reactive.condensed.tensor_math import (
     LOCAL_CHEMISTRY_DIAGNOSTIC_NAMES,NCONS,TensorCondensedKernel,
     conduction_and_diagonal,
@@ -21,12 +21,12 @@ from ecsp_reactive.condensed.chemistry import (
     A1,A2,ANION,CATION,EC_LP,ENERGY,PRODUCT_WATER,PVA,RHO,WATER,
 )
 from ecsp_reactive.condensed.finite_volume import flux_divergence
-from ecsp_nsga2.propagation import (
+from ecsp_preflame.propagation import (
     PropagationConfigurationError,PropagationCandidateNumericalError,
     _div_k_grad,_thermal_diffusive_cfl,final_refinement_objectives,
 )
-from ecsp_nsga2.post_onset import validate_post_onset_config
-from ecsp_nsga2.nsga2 import Individual,assign_crowding_distance
+from ecsp_preflame.post_onset import validate_post_onset_config
+from ecsp_preflame.candidate_ranking import CandidateEvaluation,assign_crowding_distance
 
 ROOT=Path(__file__).resolve().parents[2]
 
@@ -35,8 +35,8 @@ def solvers(n=2,shape=(8,8),**kwargs):
     h,p,b,r=fixture(shape=shape,**kwargs)
     result=[]
     for i in range(n):
-        a=BCReactiveHandoffAdapter(p,b,r).adapt(h)
-        result.append(BCReactiveSolver(a,p,b,r))
+        a=PreflameReactiveHandoffAdapter(p,b,r).adapt(h)
+        result.append(CondensedReactiveSolver(a,p,b,r))
     return result
 
 
@@ -52,7 +52,7 @@ def local_solvers(n=2,shape=(8,8),**kwargs):
         maximum_chemistry_local_refinements=10,
     )
     return [
-        BCReactiveSolver(BCReactiveHandoffAdapter(p,b,r).adapt(h),p,b,r)
+        CondensedReactiveSolver(PreflameReactiveHandoffAdapter(p,b,r).adapt(h),p,b,r)
         for _ in range(n)
     ]
 
@@ -119,8 +119,8 @@ def v009_coordinate_solver():
         maximum_chemistry_local_refinements=10,
         maximum_chemistry_reaction_coordinate_steps=64,
     )
-    adapted=BCReactiveHandoffAdapter(p,b,r).adapt(h)
-    return BCReactiveSolver(adapted,p,b,r)
+    adapted=PreflameReactiveHandoffAdapter(p,b,r).adapt(h)
+    return CondensedReactiveSolver(adapted,p,b,r)
 
 
 def heterogeneous_v009_local_solver():
@@ -214,8 +214,8 @@ def shared_inventory_coordinate_solver():
         maximum_chemistry_local_refinements=10,
         maximum_chemistry_reaction_coordinate_steps=64,
     )
-    adapted=BCReactiveHandoffAdapter(p,b,r).adapt(h)
-    return BCReactiveSolver(adapted,p,b,r)
+    adapted=PreflameReactiveHandoffAdapter(p,b,r).adapt(h)
+    return CondensedReactiveSolver(adapted,p,b,r)
 
 
 def fake_local_trial(failure_reason_by_call):
@@ -270,7 +270,7 @@ def fake_local_trial(failure_reason_by_call):
     {'mode':'table','temperature_K':[200.,300.,400.,900.],'values':[1500.,2300.,1900.,2800.]}])
 def test_tensor_thermo_inverse_and_cp_matches_reference(cp):
     h,p,b,r=fixture();b['thermal']['heat_capacity']=cp
-    a=BCReactiveHandoffAdapter(p,b,r).adapt(h);s=BCReactiveSolver(a,p,b,r);k=TensorCondensedKernel([s],'cpu')
+    a=PreflameReactiveHandoffAdapter(p,b,r).adapt(h);s=CondensedReactiveSolver(a,p,b,r);k=TensorCondensedKernel([s],'cpu')
     T=np.linspace(100,1200,64).reshape(1,8,8);rho=np.linspace(1000,1000.01,64).reshape(1,8,8)
     e=s.thermo.internal_energy(rho,T);got=k.temperature(k.tensor(rho),k.tensor(e)).numpy()
     np.testing.assert_allclose(got,T,rtol=2e-14,atol=1e-10)
@@ -395,7 +395,7 @@ def test_tensor_tiny_positive_chemistry_interval_is_not_a_noop():
         maximum_chemistry_local_refinements=10,
         maximum_chemistry_reaction_coordinate_steps=64,
     )
-    a=BCReactiveHandoffAdapter(p,b,r).adapt(h);s=BCReactiveSolver(a,p,b,r)
+    a=PreflameReactiveHandoffAdapter(p,b,r).adapt(h);s=CondensedReactiveSolver(a,p,b,r)
     k=TensorCondensedKernel([s],"cpu")
     after,valid,diagnostic=k.advance_local(
         k.initial,torch.tensor([1.0e-14],dtype=torch.float64))
@@ -902,7 +902,7 @@ def test_distinct_candidate_timestep_does_not_slow_fast_lane(tmp_path):
     states=[]
     for temp in (300,400):
         hh=copy.deepcopy(h);hh['temperatureAtOnset_K'][:]=temp
-        a=BCReactiveHandoffAdapter(p,b,r).adapt(hh);states.append(BCReactiveSolver(a,p,b,r))
+        a=PreflameReactiveHandoffAdapter(p,b,r).adapt(hh);states.append(CondensedReactiveSolver(a,p,b,r))
     metrics=run_tensor_solvers(states,[tmp_path/'cold',tmp_path/'hot'],{'backend':'torch_batch'})
     assert all(isinstance(m,dict) for m in metrics)
     assert metrics[0]['acceptedTimeSteps']==1
@@ -1029,7 +1029,7 @@ def test_numpy_thermal_bound_uses_face_conductance_not_4k_heuristic():
     b['thermal'].update(heat_capacity={'mode':'table','temperature_K':[300.,400.],'values':[1.,1e6]},
                        thermal_conductivity={'mode':'table','temperature_K':[300.,400.],'values':[1.,1000.]})
     p['time_step_s']=1.;p['duration_s']=1.
-    a=BCReactiveHandoffAdapter(p,b,r).adapt(h);s=BCReactiveSolver(a,p,b,r)
+    a=PreflameReactiveHandoffAdapter(p,b,r).adapt(h);s=CondensedReactiveSolver(a,p,b,r)
     P,cp,k,*_=s._thermal_terms(s.U);dt=s.time_step(s.U,1.)
     actual=_thermal_diffusive_cfl(k,P[...,0]*cp,a.propellant_mask,a.dx,dt)
     assert actual.max()<=s.thermal_cfl*(1+1e-12)
@@ -1048,7 +1048,7 @@ def test_exhausted_stock_does_not_force_impossible_tiny_timestep():
 
 
 def test_constant_objectives_cannot_create_artificial_crowding_endpoints():
-    F=[Individual(str(i),{},np.array([2.,2.])) for i in range(4)]
+    F=[CandidateEvaluation(str(i),{},np.array([2.,2.])) for i in range(4)]
     assign_crowding_distance(F)
     assert all(x.crowding_distance==0 for x in F)
 
@@ -1064,7 +1064,7 @@ def test_execution_config_rejects_silent_ignores(config):
 def test_cpu_worker_initializer_tolerates_missing_apple_blas_version(
         monkeypatch):
     import threadpoolctl
-    from ecsp_nsga2 import post_onset_batch
+    from ecsp_preflame import post_onset_batch
 
     def missing_version(*_args,**_kwargs):
         raise AttributeError("Apple BLAS returned no version string")
@@ -1083,8 +1083,8 @@ def test_string_false_is_not_treated_as_true(key):
     h,p,b,r=fixture()
     if key=='stationary_mechanics_fast_path':r[key]='false'
     else:p[key]='false'
-    a=BCReactiveHandoffAdapter(p,b,r).adapt(h)
-    with pytest.raises(PropagationConfigurationError):BCReactiveSolver(a,p,b,r)
+    a=PreflameReactiveHandoffAdapter(p,b,r).adapt(h)
+    with pytest.raises(PropagationConfigurationError):CondensedReactiveSolver(a,p,b,r)
 
 
 def test_no_cuda_never_silently_runs_on_cpu(tmp_path):
@@ -1099,7 +1099,7 @@ def test_memory_guard_before_tensor_allocations(tmp_path):
 
 
 def test_cpu_spawn_and_tensor_pair_dispatch(tmp_path):
-    from ecsp_nsga2.post_onset_batch import run_post_onset_batch
+    from ecsp_preflame.post_onset_batch import run_post_onset_batch
     h,p,b,r=fixture()
     cfg={'backend':'reactive_euler','compare_backends':True,'reactive_euler':r,
         'execution':{'backend':'torch_batch','device':'cpu','cpu_budget':4,'host_reserve':2,'cpu_workers':2,'batch_size':2}}
@@ -1110,38 +1110,6 @@ def test_cpu_spawn_and_tensor_pair_dispatch(tmp_path):
     assert report['cpu_workers']+report['host_reserve']<=report['detected_cpu_budget']
 
 
-@pytest.mark.parametrize('reactive_device',['cpu',pytest.param('cuda',marks=pytest.mark.skipif(not torch.cuda.is_available(),reason='CUDA hardware unavailable; real BC/NP/BV integration GPU preflight'))])
-def test_tensor_NSGA_workflow_really_dispatches_batch(tmp_path,reactive_device):
-    from ecsp_nsga2.workflow import NSGA2ElectricalSolidWorkflow
-    import yaml
-    cfg=yaml.safe_load((ROOT/'config/nsga2_bc_reactive_debug.yaml').read_text())
-    cfg['post_onset']['execution']={'backend':'torch_batch','device':reactive_device,'batch_size':4,'cpu_budget':4,'host_reserve':2,'cpu_workers':2}
-    wf=NSGA2ElectricalSolidWorkflow(ROOT,cfg,tmp_path/'workflow');ind=wf.run()
-    assert ind.metrics['computeBackend']==('torch_cuda_batch' if reactive_device=='cuda' else 'torch_cpu_batch')
-    assert ind.metrics['postOnsetBatchSize']>1
-    assert ind.metrics['postOnsetBackendComparison']['bothBackendsCompleted']
-    # Reuse actual BC snapshot for a nonzero-current tensor electrical callback parity test.
-    from ecsp_v6.physics.composition_model import build_composition
-    hd=next((tmp_path/'workflow/final/propagation_candidates').glob('*/bc_handoff'))
-    h=json.loads((hd/'bc_handoff_metadata.json').read_text())
-    with np.load(hd/'bc_handoff_fields.npz') as z:h.update({name:z[name] for name in z.files})
-    full=json.loads((tmp_path/'workflow/adapter/resolved_physics_config.json').read_text());full['coupled']['voltage_V']=5.
-    prop=copy.deepcopy(cfg['propagation_refinement']);prop.update(domain_size_m=full['geometry']['domainSize_m'],
-        surface_layer_thickness_m=full['geometry']['surfaceLayerThickness_m'],density_kg_per_m3=build_composition(full).density_kg_per_m3,
-        gas_constant_J_per_molK=full['transport']['gasConstant_J_per_molK'],continued_electrical_heating=True,
-        electrical_heating_mode='recomputed',duration_s=1e-5,time_step_s=5e-6,snapshot_interval_s=5e-6)
-    from ecsp_reactive.condensed.tensor_solver import run_tensor_propagation_batch
-    baseline_a=BCReactiveHandoffAdapter(prop,full['bcGlobal'],cfg['post_onset']['reactive_euler']).adapt(h)
-    baseline=BCReactiveSolver(baseline_a,prop,full['bcGlobal'],cfg['post_onset']['reactive_euler'],full_bc_config=full)
-    ref=baseline.run(tmp_path/'electric_numpy')
-    result=run_tensor_propagation_batch([h,h],prop,full['bcGlobal'],[tmp_path/'electric_tensor0',tmp_path/'electric_tensor1'],
-        reactive_config=cfg['post_onset']['reactive_euler'],execution_config={'backend':'torch_batch','device':reactive_device},full_bc_config=full)
-    for m in result:
-        assert isinstance(m,dict),str(m)
-        assert m['integratedJouleHeat_J']>0 and m['integratedElectrochemicalHeat_J']>0
-        assert m['postOnsetElectricalSolveCalls']==6
-        assert m['integratedJouleHeat_J']==pytest.approx(ref['integratedJouleHeat_J'],rel=2e-7,abs=1e-15)
-        assert m['maximumEnergyBudgetRelativeResidual']<1e-9
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(),reason='CUDA hardware unavailable; mandatory target A100 preflight')
@@ -1193,14 +1161,3 @@ def test_hll_stationary_contact_does_not_skip_acoustic_diffusion():
     acoustic=s.cfl*s.a.dx/(2*s.thermo.sound_speed(P[...,0]).max())
     assert s.time_step(s.U,.001)<=acoustic*(1+1e-12)
     assert float(k.step_size(k.initial,k.tensor([.001]))[0])<=acoustic*(1+1e-12)
-
-
-def test_preflight_rejects_skipped_cuda_results(tmp_path):
-    from preflight_reactive_a100 import NODES,require_gpu_tests
-    from xml.etree.ElementTree import Element,SubElement,ElementTree
-    root=Element('testsuites');suite=SubElement(root,'testsuite')
-    for node in NODES:SubElement(suite,'testcase',name=node.split('::')[-1])
-    path=tmp_path/'result.xml';ElementTree(root).write(path)
-    assert len(require_gpu_tests(path))==3
-    SubElement(list(suite)[0],'skipped');ElementTree(root).write(path)
-    with pytest.raises(RuntimeError):require_gpu_tests(path)

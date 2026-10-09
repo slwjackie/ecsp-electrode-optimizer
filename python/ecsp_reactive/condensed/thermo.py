@@ -10,10 +10,10 @@ from __future__ import annotations
 from typing import Mapping, Any
 import math
 import numpy as np
-from ecsp_nsga2.propagation import PropagationConfigurationError, PropagationCandidateNumericalError
+from ecsp_preflame.propagation import PropagationConfigurationError, PropagationCandidateNumericalError
 
 
-class BCHeatCapacity:
+class PreflameHeatCapacity:
     """Analytic integral and inverse of positive constant/piecewise-linear cp."""
     def __init__(self, raw: Any, reference_temperature_K: float):
         if isinstance(raw, (float, int)):
@@ -65,7 +65,7 @@ class BCHeatCapacity:
         return np.where(h >= self.integrals[-1], self.grid[-1] + (h-self.integrals[-1])/self.values[-1], t)
 
 
-class BCTaitThermodynamics:
+class PreflameTaitThermodynamics:
     def __init__(self, eos_config: Mapping[str, Any], thermal: Mapping[str, Any], rho_bc: float):
         required = ("A_Pa", "B_Pa", "N", "provenance")
         if any(k not in eos_config for k in required):
@@ -79,7 +79,7 @@ class BCTaitThermodynamics:
         self.rho0 = float(rho_bc if rho0 is None else rho0)
         if not all(math.isfinite(x) and x > 0 for x in (self.A,self.B,self.N,self.rho0)):
             raise PropagationConfigurationError("Tait parameters must be finite and positive")
-        self.heat = BCHeatCapacity(thermal["heat_capacity"], thermal.get("initialTemperature_K", 298.15))
+        self.heat = PreflameHeatCapacity(thermal["heat_capacity"], thermal.get("initialTemperature_K", 298.15))
         self.tmin = float(thermal.get("minimumTemperature_K", 1.0))
         self.tmax = float(thermal.get("maximumTemperature_K", 10000.0))
         if not 0 < self.tmin < self.tmax or not math.isfinite(self.tmax):

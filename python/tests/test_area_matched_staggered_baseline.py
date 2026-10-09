@@ -6,14 +6,14 @@ import numpy as np
 import pytest
 from scipy import ndimage
 
-from ecsp_nsga2.baselines import (
+from ecsp_preflame.baselines import (
     BaselineGeometryError,
     generate_area_matched_staggered,
     write_comparison_image,
     write_objective_comparison_csv,
 )
-from ecsp_nsga2.evaluator import CppCondensedFp64Evaluator, EvaluatorError
-from ecsp_nsga2.geometry import GeometryLimits, save_geometry
+from ecsp_preflame.evaluator import CppCondensedFp64Evaluator, EvaluatorError
+from ecsp_preflame.geometry import GeometryLimits, save_geometry
 from ecsp_v6.physics.numerics import resize_nearest_numpy
 
 
@@ -298,7 +298,7 @@ def test_area_matched_staggered_explicit_recommended_area_override():
 def test_area_matched_staggered_streaming_best_memory_regression():
     import inspect
 
-    import ecsp_nsga2.baselines as baseline_module
+    import ecsp_preflame.baselines as baseline_module
 
     source = inspect.getsource(baseline_module.generate_area_matched_staggered)
     assert "candidates.append" not in source
@@ -336,7 +336,7 @@ def test_area_matched_staggered_streaming_best_memory_regression():
 
 
 def test_equal_grid_analytical_fast_path_matches_legacy_selection(monkeypatch):
-    import ecsp_nsga2.baselines as baseline_module
+    import ecsp_preflame.baselines as baseline_module
 
     calls = 0
     original_builder = baseline_module._build_hidden_bus_vertical_staggered_masks
@@ -404,7 +404,7 @@ def test_equal_grid_analytical_fast_path_matches_legacy_selection(monkeypatch):
 
 
 def test_e064_staggered_uses_bc_effective_width_convention():
-    """Regression for E064: 10 raw pixels are only 1.865285 mm in B/C QC."""
+    """Regression for E064: 10 raw pixels are only 1.865285 mm in electrochemical-thermal-decomposition QC."""
     n = 193
     domain_mm = 40.0
     spacing_mm = domain_mm / n

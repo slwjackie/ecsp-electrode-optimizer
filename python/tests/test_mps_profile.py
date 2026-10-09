@@ -6,7 +6,7 @@ import pytest
 import torch
 import yaml
 
-from ecsp_nsga2.evaluator import DirectCondensedV772NoFEvaluator, EvaluatorError
+from ecsp_preflame.evaluator import DirectCondensedV772NoFEvaluator, EvaluatorError
 from ecsp_v6.physics.numerics import resolve_device, validate_device_dtype
 
 
@@ -62,7 +62,7 @@ def test_direct_evaluator_accepts_mps_fp32_profile(
 ) -> None:
     _mock_mps_available(monkeypatch)
     nsga = yaml.safe_load(
-        (ROOT / "config/nsga2_condensed_phase_no_f_m2_mps.yaml").read_text()
+        (ROOT / "config/preflame_condensed_phase_m2_mps.yaml").read_text()
     )
     evaluator = DirectCondensedV772NoFEvaluator(
         ROOT,
@@ -81,7 +81,7 @@ def test_direct_evaluator_rejects_mps_with_default_fp64(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _mock_mps_available(monkeypatch)
-    nsga = yaml.safe_load((ROOT / "config/nsga2_condensed_phase_no_f.yaml").read_text())
+    nsga = yaml.safe_load((ROOT / "config/preflame_condensed_phase.yaml").read_text())
     with pytest.raises(EvaluatorError, match="requires numerics.physicsDtype=float32"):
         DirectCondensedV772NoFEvaluator(
             ROOT,
@@ -97,10 +97,10 @@ def test_direct_evaluator_rejects_mps_with_default_fp64(
 def test_float32_physics_path_smoke_on_cpu(tmp_path: Path) -> None:
     """Exercise the same FP32 physics code path when MPS hardware is unavailable in CI."""
     import numpy as np
-    from ecsp_nsga2.evaluator import canonicalise_metrics
+    from ecsp_preflame.evaluator import canonicalise_metrics
 
     nsga = yaml.safe_load(
-        (ROOT / "config/nsga2_condensed_phase_no_f_m2_mps.yaml").read_text()
+        (ROOT / "config/preflame_condensed_phase_m2_mps.yaml").read_text()
     )
     nsga["project"]["device"] = "cpu"
     nsga["physics"]["end_time_s"] = 1.0e-4

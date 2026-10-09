@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Independent eight-case, full-height strip study. All legacy files stay unchanged.
 
-Only geometry-batch construction is specialized. The native B/C integration,
+Only geometry-batch construction is specialized. The compiled electrochemical-thermal-decomposition integration,
 reference metrics, numerical validity checks and voltage search are inherited.
 No topology fitting, optimization, staggered reference or post-onset runner is
 called. The inherited reference calculation may include its existing fixed-time
@@ -39,7 +39,7 @@ CASES = {
     "AR_1TO1": (3.0, 3.0, 2.0, ("area_ratio",)),
     "AR_2TO1": (4.0, 2.0, 2.0, ("area_ratio",)),
 }
-PHYSICS_DEFAULT = "config/nsga2_bc_reactive_a100_cpu8_poweroff_200x3.yaml"
+PHYSICS_DEFAULT = "config/preflame_electrochemical_thermal_decomposition_a100_cpu8.yaml"
 
 
 def clean(value: Any) -> Any:
@@ -247,14 +247,15 @@ def audit(out: Path) -> tuple[dict, list[tuple]]:
 def runtime_config(base: Mapping, n: int, device: str, batch_size: int) -> dict:
     if device not in {"cpu", "cuda"} or batch_size < 1:
         raise ValueError("Use an explicit cpu/cuda device and a positive batch size")
-    cfg = copy.deepcopy(dict(base))
+    from ecsp_preflame.configuration import normalize_preflame_config
+    cfg = normalize_preflame_config(base)
     cfg.setdefault("geometry", {}).update(domain_mm=25., grid_size=n,
         minimum_gap_mm=1., minimum_width_mm=1., maximum_components_per_polarity=1,
         maximum_total_components=2, surface_contact_model="overlay_on_full_propellant_domain")
     adapter = cfg.setdefault("evaluator", {})
-    adapter.update(backend="bc_global_native", device=device, grid_size=n,
+    adapter.update(backend="preflame_cpp_cuda", device=device, grid_size=n,
                    internal_batch_size=batch_size, save_representative_fields=True)
-    adapter.setdefault("native", {})["cpu_workers"] = 0
+    adapter.setdefault("cpp_cuda", {})["cpu_workers"] = 0
     numerics = adapter.setdefault("base_overrides", {}).setdefault("numerics", {})
     numerics["physicsDevice"] = device
     if str(numerics.get("physicsDtype", "float64")).lower() != "float64":
@@ -266,7 +267,7 @@ def runtime_config(base: Mapping, n: int, device: str, batch_size: int) -> dict:
 
 
 def build_geometry(items, n: int, device, minimum_gap_m: float, geometry_type):
-    """Make the same GeometryBatch type consumed by the original native engine."""
+    """Make the same GeometryBatch type consumed by the C++/CUDA engine."""
     import torch
     if not items:
         raise ValueError("Empty geometry batch")
@@ -289,11 +290,11 @@ def build_geometry(items, n: int, device, minimum_gap_m: float, geometry_type):
 
 def create_study_evaluator(root: Path, cfg: Mapping, workdir: Path):
     """Additive subclass: override geometry only, never monkey-patch shared code."""
-    from ecsp_nsga2.bc_native import NativeBCGlobalEvaluator
-    from ecsp_nsga2.evaluator import BCCandidateGeometryError
+    from ecsp_preflame.cpp_cuda_evaluator import CppCudaPreflameEvaluator
+    from ecsp_preflame.evaluator import PreflameCandidateGeometryError
     from ecsp_v6.physics.geometry import GeometryBatch
 
-    class FullHeightStripEvaluator(NativeBCGlobalEvaluator):
+    class FullHeightStripEvaluator(CppCudaPreflameEvaluator):
         def _build_geometry_batch(self, items):
             if not math.isclose(self.domain_size_m, 0.025, abs_tol=1e-15, rel_tol=0):
                 raise RuntimeError("Resolved physics domain is not 25 mm")
@@ -301,7 +302,7 @@ def create_study_evaluator(root: Path, cfg: Mapping, workdir: Path):
                 return build_geometry(items, self.grid_size, self.device,
                                       self.minimum_gap_m, GeometryBatch)
             except (ValueError, KeyError, TypeError) as exc:
-                raise BCCandidateGeometryError(str(exc)) from exc
+                raise PreflameCandidateGeometryError(str(exc)) from exc
 
     adapter = copy.deepcopy(cfg["evaluator"])
     adapter["physics_config"] = copy.deepcopy(dict(cfg))

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ecsp_nsga2.evaluator import CppCondensedFp64Evaluator
+from ecsp_preflame.evaluator import CppCondensedFp64Evaluator
 
 
 @dataclass

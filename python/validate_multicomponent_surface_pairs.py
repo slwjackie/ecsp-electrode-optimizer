@@ -12,8 +12,8 @@ import shutil
 
 import yaml
 
-from ecsp_nsga2.evaluator import create_evaluator
-from ecsp_nsga2.geometry import (
+from ecsp_preflame.evaluator import create_evaluator
+from ecsp_preflame.geometry import (
     GeometryLimits,
     instantiate_variant,
     make_topology_templates,
@@ -35,7 +35,7 @@ def main() -> int:
     if workdir.exists():
         raise SystemExit(f"validation workdir already exists: {workdir}")
     config = yaml.safe_load(
-        (root / "config" / "nsga2_condensed_phase_no_f_m2_cpp_fp64.yaml").read_text(
+        (root / "config" / "preflame_condensed_phase_m2_cpp_fp64.yaml").read_text(
             encoding="utf-8"
         )
     )

@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from scipy.integrate import quad, solve_ivp
 
-from ecsp_nsga2.propagation import (
+from ecsp_preflame.propagation import (
     PropagationCandidateNumericalError,
     PropagationConfigurationError,
 )
@@ -15,7 +15,7 @@ from ecsp_reactive.condensed.chemistry import (
     A1, A2, ANION, CATION, EC_LP, ENERGY, PRODUCT_WATER, PVA, RHO, WATER,
     _CoordinateCertificationFailure,
 )
-from ecsp_reactive.condensed.handoff import BCReactiveHandoffAdapter
+from ecsp_reactive.condensed.handoff import PreflameReactiveHandoffAdapter
 from ecsp_reactive.condensed.validation_cases import synthetic_condensed_case
 
 
@@ -38,7 +38,7 @@ def adapted_case(*, rates=(0.2, 0.1), heats=(1000.0, 2000.0),
     handoff["temperatureAtOnset_K"][:] = temperature
     if change is not None:
         change(handoff, propagation, bc, reactive)
-    return BCReactiveHandoffAdapter(propagation, bc, reactive).adapt(handoff)
+    return PreflameReactiveHandoffAdapter(propagation, bc, reactive).adapt(handoff)
 
 
 def test_fixed_beta_clock_crosses_knots_and_both_exponent_clamps():

@@ -181,8 +181,8 @@ def contact_sheet(paths, output, columns=10, tile=160):
 def source_fingerprint(package_root):
     root = Path(package_root)
     paths = []
-    for directory in ("python/ecsp_doe", "python/ecsp_nsga2", "python/ecsp_v6", "cpp"):
-        paths.extend(p for p in (root / directory).rglob("*") if p.suffix in (".py", ".cpp", ".h", ".hpp"))
+    for directory in ("python/ecsp_doe", "python/ecsp_preflame", "python/ecsp_cpp_cuda", "python/ecsp_v6", "cpp"):
+        paths.extend(p for p in (root / directory).rglob("*") if p.suffix in (".py", ".cpp", ".cu", ".h", ".hpp"))
     for name in ("tools/run_phidl_doe600.py", "python/requirements-phidl-doe.txt"):
         if (root / name).exists():
             paths.append(root / name)

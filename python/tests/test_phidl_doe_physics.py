@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from ecsp_doe.physics import ProductionPhysicsAdapter
-from ecsp_nsga2.propagation import ConfiguredModelTemperatureRangeExceeded
+from ecsp_preflame.propagation import ConfiguredModelTemperatureRangeExceeded
 
 
 def raw_metrics():
@@ -26,7 +26,7 @@ def raw_metrics():
         "maximumGasCapFraction": 0.0,
         "maximumChemicalRateCapFraction": 0.0,
         "solverConverged": True,
-        "modelStatus": "bc_global_preflame",
+        "modelStatus": "preflame_torch",
     }
 
 
@@ -35,8 +35,8 @@ def config():
         "project": {"seed": 123, "device": "cpu"},
         "geometry": {"grid_size": 96, "maximum_width_mm": 5.0},
         "physics": {"voltage_V": 260.0, "end_time_s": 2.0},
-        "evaluator": {"backend": "bc_global_preflame"},
-        "bc_global": {"endTime_s": 2.0, "thermal": {"maximumTemperature_K": 2500.0}},
+        "evaluator": {"backend": "preflame_torch"},
+        "preflame_model": {"endTime_s": 2.0, "thermal": {"maximumTemperature_K": 2500.0}},
         "propagation_refinement": {"enabled": False, "duration_s": 0.1},
     }
 
@@ -48,7 +48,7 @@ class FakeEvaluator:
         self.calls = []
         self.handoff_calls = []
         self.config = {
-            "bcGlobal": {"endTime_s": 2.0, "thermal": {
+            "preflameModel": {"endTime_s": 2.0, "thermal": {
                 "maximumTemperature_K": 2500.0, "density_kg_per_m3": 1000.0,
             }},
             "geometry": {"domainSize_m": 0.02},
@@ -75,7 +75,7 @@ def record(geometry_id="S1_T000_V000"):
     a = np.zeros((8, 8), dtype=bool)
     a[1:6, 1:3] = True
     c = np.fliplr(a)
-    from ecsp_nsga2.evaluator import canonicalise_metrics
+    from ecsp_preflame.evaluator import canonicalise_metrics
     metrics = canonicalise_metrics(raw_metrics(), 2.0, 2.0)
     return {
         "metadata": {"geometry_id": geometry_id, "topology_id": "T000",
@@ -189,7 +189,7 @@ def test_refines_only_frozen_candidates_plus_one_baseline(tmp_path, monkeypatch)
     service, evaluator = adapter(tmp_path)
     selected = [record("A"), record("B")]
     final, before = frozen_selection(tmp_path, selected)
-    monkeypatch.setattr("ecsp_nsga2.propagation.run_condensed_propagation", success_post)
+    monkeypatch.setattr("ecsp_preflame.propagation.run_condensed_propagation", success_post)
     rows = service.refine_selected(selected, baseline_pair(), final)
     assert len(rows) == 3
     assert [m["geometry_id"] for m, _ in evaluator.handoff_calls] == ["A", "B", "AREA_MATCHED_STAGGERED"]
@@ -218,10 +218,10 @@ def test_interrupted_post_resume_skips_completed_candidates(tmp_path, monkeypatc
             raise RuntimeError("simulated process interruption")
         return success_post()
 
-    monkeypatch.setattr("ecsp_nsga2.propagation.run_condensed_propagation", interrupted)
+    monkeypatch.setattr("ecsp_preflame.propagation.run_condensed_propagation", interrupted)
     with pytest.raises(RuntimeError, match="process interruption"):
         service.refine_selected(selected, baseline_pair(), final)
-    monkeypatch.setattr("ecsp_nsga2.propagation.run_condensed_propagation", success_post)
+    monkeypatch.setattr("ecsp_preflame.propagation.run_condensed_propagation", success_post)
     rows = service.refine_selected(selected, baseline_pair(), final)
     assert [metadata["geometry_id"] for metadata, _ in evaluator.handoff_calls] == ["A", "B", "B", "AREA_MATCHED_STAGGERED"]
     assert [row["reused_post_onset_result"] for row in rows] == [True, False, False]
@@ -245,7 +245,7 @@ def test_unestablished_post_checkpoint_preserves_nonfinite_diagnostics(tmp_path,
         )
         return result
 
-    monkeypatch.setattr("ecsp_nsga2.propagation.run_condensed_propagation", unestablished)
+    monkeypatch.setattr("ecsp_preflame.propagation.run_condensed_propagation", unestablished)
     first = service.refine_selected(selected, baseline_pair(), final)
     previous_comparison = (final / "propagation_comparison.csv").read_bytes()
     resumed = service.refine_selected(selected, baseline_pair(), final)
@@ -287,7 +287,7 @@ def test_same_production_model_validity_for_candidate_and_baseline(tmp_path, mon
         observed_caps.append(bc["thermal"]["maximumTemperature_K"])
         raise ConfiguredModelTemperatureRangeExceeded(2500.0, 2500.001, 7, 1.4e-10)
 
-    monkeypatch.setattr("ecsp_nsga2.propagation.run_condensed_propagation", invalid_post)
+    monkeypatch.setattr("ecsp_preflame.propagation.run_condensed_propagation", invalid_post)
     rows = service.refine_selected(selected, baseline_pair(), final)
     assert observed_caps == [2500.0, 2500.0, 2500.0]
     assert len(evaluator.handoff_calls) == 3
@@ -306,7 +306,7 @@ def test_same_production_model_validity_for_candidate_and_baseline(tmp_path, mon
 def test_mock_injection_never_constructs_production_workflow(tmp_path, monkeypatch):
     def forbidden(*args, **kwargs):
         pytest.fail("DOE must never initialize NSGA-II orchestration")
-    monkeypatch.setattr("ecsp_nsga2.workflow.NSGA2ElectricalSolidWorkflow.__init__", forbidden)
+    monkeypatch.setattr("ecsp_preflame.evaluation_workflow.EvaluationWorkflow.__init__", forbidden)
     service, evaluator = adapter(tmp_path)
     assert service.evaluator is evaluator
 
@@ -332,5 +332,5 @@ def test_production_factory_receives_unmodified_physics_config(tmp_path, monkeyp
 def test_approximate_backend_is_forbidden(tmp_path):
     cfg = config()
     cfg["evaluator"]["backend"] = "analytic_debug"
-    with pytest.raises(Exception, match="production B/C"):
+    with pytest.raises(Exception, match="production electrochemical-thermal-decomposition"):
         ProductionPhysicsAdapter(cfg, Path(__file__).parents[2], tmp_path)

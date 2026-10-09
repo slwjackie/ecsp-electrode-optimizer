@@ -21,7 +21,7 @@
 
 - 값: 349 °C = 622.15 K
 - 용도: `t_ignition`의 operational condensed-phase decomposition-onset threshold
-- 코드: `config/nsga2_condensed_phase_no_f.yaml` → `condensed_ignition.onset_temperature_K`
+- 코드: `config/preflame_condensed_phase.yaml` → `condensed_ignition.onset_temperature_K`
 - 주의: gas-flame ignition temperature가 아님
 
 ### 3.2 전체 열방출 reference

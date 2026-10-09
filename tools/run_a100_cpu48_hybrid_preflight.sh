@@ -2,7 +2,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKDIR="${1:-$ROOT/runs/a100_cpu48_hybrid_preflight}"
-CONFIG="${CONFIG:-$ROOT/config/nsga2_condensed_phase_no_f_a100_cpu48_hybrid.yaml}"
+CONFIG="${CONFIG:-$ROOT/config/preflame_condensed_phase_a100_cpu48_hybrid.yaml}"
 if [[ -e "$WORKDIR" ]]; then
   echo "ERROR: preflight workdir exists: $WORKDIR" >&2
   exit 2
