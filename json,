@@ -1,4 +1,0 @@
-  File "<stdin>", line 12
-    if isinstance(obj, dict):
-    ^
-IndentationError: expected an indented block after function definition on line 11

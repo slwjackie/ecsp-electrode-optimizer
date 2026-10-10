@@ -43,7 +43,7 @@
     "tools/run_reactive_reference.sh",
     "tools/validate_reactive_v8_3.py"
   ],
-  "candidate": "/Users/kimjiin/Documents/ChatGPT/ECSP/work/v830/ECSP_v8_3_0_PaperReactiveEuler_Experimental",
+  "candidate": "ECSP_v8_3_0_PaperReactiveEuler_Experimental",
   "candidate_file_count_excluding_package_manifests": 316,
   "deleted": [],
   "generated_at_utc": "2026-09-06T18:50:53.826791+00:00",
@@ -52,7 +52,7 @@
     "VERSION.json",
     "python/tests/test_v82_release_contract.py"
   ],
-  "parent": "/Users/kimjiin/Documents/ChatGPT/ECSP/ECSP_v8_2_1_P0P1Fixed_BCNative_Hybrid_A100_CPU8",
+  "parent": "ECSP_v8_2_1_P0P1Fixed_BCNative_Hybrid_A100_CPU8",
   "parent_file_count_excluding_package_manifests": 274,
   "schema": "ecsp.v821-parent-preservation/v1",
   "scope": {

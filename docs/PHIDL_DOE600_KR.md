@@ -158,9 +158,17 @@ NumPy 2 compatibility 수정이 포함된 버전입니다.
 
 `python/requirements-phidl-doe.txt`는 PHIDL 1.7.2, gdspy 1.6.13,
 Shapely 2.0.7, NetworkX 3.2.1, scikit-image 0.24.0, matplotlib 3.10.8을 pin합니다.
-현재 프로젝트에는 검증한 CAD dependency를 `.doe-deps/`에 격리합니다.
-새 DOE entry point만 이 폴더를 우선 로드하므로 다른 실행 환경의 의존성 설정과 분리합니다.
-다른 환경에서는 별도 venv에 위 requirements를 설치할 수 있습니다.
+설치된 CAD dependency의 복사본은 Git에 포함하지 않습니다.
+DOE를 실행할 별도 가상환경에 위 requirements를 설치합니다.
+
+```bash
+python -m venv .venv-doe
+source .venv-doe/bin/activate
+python -m pip install -r python/requirements-phidl-doe.txt
+```
+
+기존 환경에서 사용하던 선택적 `.doe-deps/` 로딩은 지원하지만, 이 로컬 설치
+디렉터리와 가상환경은 Git 추적 대상이 아닙니다.
 
 ## 실행 명령
 
@@ -205,7 +213,7 @@ python tools/run_phidl_doe600.py --run-dir runs/doe600_phidl_production \
 기존 테스트의 원본 재현 결과를 구분합니다. GPU 전용 테스트는 M2에서 skip됩니다.
 
 ```bash
-PYTHONPATH="$PWD/.doe-deps:$PWD/python" python -m pytest -q \
+PYTHONPATH="$PWD/python" python -m pytest -q \
   python/tests/test_phidl_doe_geometry.py \
   python/tests/test_phidl_doe_workflow.py \
   python/tests/test_phidl_doe_physics.py \

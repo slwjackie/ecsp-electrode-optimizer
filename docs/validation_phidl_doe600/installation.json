@@ -37,7 +37,6 @@
     "tools/resume_final_only.py": "03ed341e298dd3978283866c10b20ed18df7537cd30aea6fc92b1a9ffce27d6f",
     "tools/run_phidl_doe600.py": "3c289821545b4091741e7f8e81816f043f681db1a4b49b5fa54f2fbb37e78b31"
   },
-  "backup_directory": "/Users/kimjiin/Desktop/ECSP_v8_4_2_A100CPU8_GeometrySafe/.codex_backups/phidl_doe600_20260916_024617",
-  "geometry_only_validation_directory": "/Users/kimjiin/Desktop/ECSP_v8_4_2_A100CPU8_GeometrySafe/runs/doe600_phidl_geometry_validation",
+  "geometry_only_validation_directory": "runs/doe600_phidl_geometry_validation",
   "production_physics_started": false
 }
