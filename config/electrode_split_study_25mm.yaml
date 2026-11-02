@@ -1,0 +1,13 @@
+# Opt-in screenshot geometry plus its unchanged full-height WD_W4 control.
+# This profile does not change the original eight-case parameter study.
+schema: split_checkerboard_study_v1
+domain_mm: 25.0
+# Overall electrode envelope; the split pieces are each (25 - 1)/2 = 12 mm.
+electrode_length_mm: 25.0
+# Cell-centred dx=L/N=0.125 mm. All specified edges lie on cell faces.
+grid_size: 200
+placement: centered_assembly
+experimental_replicates: 5
+cases:
+  - {id: WD_W4, anode_width_mm: 4.0, cathode_width_mm: 4.0, gap_mm: 2.0, groups: [width]}
+  - {id: SPLIT_W4_G2_S1, anode_width_mm: 4.0, cathode_width_mm: 4.0, gap_mm: 2.0, central_split_gap_mm: 1.0, groups: [split_comparison]}
