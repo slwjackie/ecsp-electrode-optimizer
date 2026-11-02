@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independent eight-case, full-height strip study. All legacy files stay unchanged.
+"""Independent registered strip studies, including an opt-in split comparison.
 
 Only geometry-batch construction is specialized. The compiled electrochemical-thermal-decomposition integration,
 reference metrics, numerical validity checks and voltage search are inherited.
@@ -28,6 +28,8 @@ import yaml
 
 BASE_REVISION = "563ffbff7ee1cfbf46a81ff946aac69383b4a461"
 SCHEMA = "full_height_strip_study_v1"
+SPLIT_SCHEMA = "split_checkerboard_study_v1"
+SPLIT_CASE_ID = "SPLIT_W4_G2_S1"
 # id: (anode width, cathode width, edge-to-edge gap, analysis groups)
 CASES = {
     "SP_G1": (2.0, 2.0, 1.0, ("spacing",)),
@@ -39,6 +41,9 @@ CASES = {
     "AR_1TO1": (3.0, 3.0, 2.0, ("area_ratio",)),
     "AR_2TO1": (4.0, 2.0, 2.0, ("area_ratio",)),
 }
+# The original eight-case matrix stays unchanged. The split profile explicitly
+# opts into two cases: its existing WD_W4 control and this checkerboard contact.
+REGISTERED_CASES = {**CASES, SPLIT_CASE_ID: (4.0, 4.0, 2.0, ("split_comparison",))}
 PHYSICS_DEFAULT = "config/preflame_electrochemical_thermal_decomposition_a100_cpu8.yaml"
 
 
@@ -91,7 +96,7 @@ def validate_spec(spec: Mapping[str, Any]) -> dict:
     """A deliberately fixed study; reject silent changes of its physical design."""
     expected_keys = {"schema", "domain_mm", "electrode_length_mm", "grid_size",
                      "placement", "experimental_replicates", "cases"}
-    if set(spec) != expected_keys or spec["schema"] != SCHEMA:
+    if set(spec) != expected_keys or spec["schema"] not in {SCHEMA, SPLIT_SCHEMA}:
         raise ValueError("Unknown study schema/keys")
     if spec["domain_mm"] != 25.0 or spec["electrode_length_mm"] != 25.0:
         raise ValueError("This study requires a 25 x 25 mm domain and 25 mm contact length")
@@ -105,27 +110,33 @@ def validate_spec(spec: Mapping[str, Any]) -> dict:
     if isinstance(reps, bool) or not isinstance(reps, int) or reps < 5:
         raise ValueError("experimental_replicates must be an integer >=5")
     rows = spec["cases"]
-    if not isinstance(rows, list) or len(rows) != 8:
-        raise ValueError("Exactly eight unique cases are required")
+    case_ids = list(CASES) if spec["schema"] == SCHEMA else ["WD_W4", SPLIT_CASE_ID]
+    if not isinstance(rows, list) or len(rows) != len(case_ids):
+        raise ValueError(f"Exactly {len(case_ids)} registered cases are required for this study")
     found = {}
     for row in rows:
-        if set(row) != {"id", "anode_width_mm", "cathode_width_mm", "gap_mm", "groups"}:
+        keys = {"id", "anode_width_mm", "cathode_width_mm", "gap_mm", "groups"}
+        if row.get("id") == SPLIT_CASE_ID:
+            keys.add("central_split_gap_mm")
+        if set(row) != keys:
             raise ValueError("Invalid case keys")
         sid = row["id"]
-        if sid not in CASES or sid in found:
+        if sid not in case_ids or sid in found:
             raise ValueError("Unknown/duplicate case ID")
-        wa, wc, gap, groups = CASES[sid]
+        wa, wc, gap, groups = REGISTERED_CASES[sid]
         if (row["anode_width_mm"], row["cathode_width_mm"], row["gap_mm"],
             tuple(row["groups"])) != (wa, wc, gap, groups):
             raise ValueError(f"{sid}: dimensions/groups differ from the requested study")
+        if sid == SPLIT_CASE_ID and row["central_split_gap_mm"] != 1.0:
+            raise ValueError("The registered split case requires a 1 mm central gap")
         found[sid] = row
     result = copy.deepcopy(dict(spec))
-    result["cases"] = [found[sid] for sid in CASES]
+    result["cases"] = [found[sid] for sid in case_ids]
     return result
 
 
 def make_case(sid: str, n: int) -> tuple[np.ndarray, np.ndarray, dict]:
-    wa, wc, gap, groups = CASES[sid]
+    wa, wc, gap, groups = REGISTERED_CASES[sid]
     L = 25.0
     if isinstance(n, bool) or not isinstance(n, int) or n < 100 or n % 50:
         raise ValueError("Grid cannot represent every design edge exactly")
@@ -155,36 +166,74 @@ def make_case(sid: str, n: int) -> tuple[np.ndarray, np.ndarray, dict]:
                 intended_anode_components=1, intended_cathode_components=1,
                 surface_contact_model=True, hidden_bus_assumed=True,
                 propellant_domain_area_mm2=L * L, electrode_masks_remove_propellant=False)
+    if sid == SPLIT_CASE_ID:
+        split_gap = 1.0
+        segment_length = (L - split_gap) / 2
+        y_edges = (0.0, segment_length, segment_length + split_gap, L)
+        y_indices = [round(y / h) for y in y_edges]
+        if any(not math.isclose(i * h, y, abs_tol=1e-12, rel_tol=0)
+               for i, y in zip(y_indices, y_edges)):
+            raise ValueError("Off-grid split edge; no rounding or refitting is permitted")
+        a[:] = False
+        c[:] = False
+        a[y_indices[0]:y_indices[1], indices[0]:indices[1]] = True
+        c[y_indices[0]:y_indices[1], indices[2]:indices[3]] = True
+        c[y_indices[2]:y_indices[3], indices[0]:indices[1]] = True
+        a[y_indices[2]:y_indices[3], indices[2]:indices[3]] = True
+        # Coordinates use array/SVG convention: row zero is the displayed top.
+        meta.pop("anode_bounds_mm")
+        meta.pop("cathode_bounds_mm")
+        area = 2 * wa * segment_length
+        meta.update(schema=SPLIT_SCHEMA, layout="split_checkerboard",
+            central_split_gap_mm=split_gap, segment_length_mm=segment_length,
+            minimum_edge_gap_mm=min(gap, split_gap),
+            anode_rectangles_mm=[[edges[0], 0., edges[1], segment_length],
+                                 [edges[2], segment_length + split_gap, edges[3], L]],
+            cathode_rectangles_mm=[[edges[2], 0., edges[3], segment_length],
+                                   [edges[0], segment_length + split_gap, edges[1], L]],
+            anode_area_mm2=area, cathode_area_mm2=area,
+            total_electrode_area_mm2=2 * area,
+            target_anode_area_fraction=area / L**2,
+            target_cathode_area_fraction=area / L**2,
+            actual_anode_area_mm2=float(a.sum() * h * h),
+            actual_cathode_area_mm2=float(c.sum() * h * h),
+            intended_anode_components=2, intended_cathode_components=2,
+            unsplit_reference_id="WD_W4", contact_area_loss_mm2=2 * wa * split_gap,
+            contact_area_loss_fraction=split_gap / L,
+            disconnected_component_powering="implicit_3d_hidden_bus")
     return a, c, meta
 
 
 def validate_item(a: np.ndarray, c: np.ndarray, meta: Mapping, n: int) -> None:
     """Exact manufacturing contract replaces equal-area topology constraints.
 
-    Check dimensions, polarity assignment, area, gap, connectivity and full-height
-    contact together by equality to the analytically rasterised registered case.
+    Check dimensions, polarity assignment, area, both gaps and connectivity
+    together by equality to the analytically rasterised registered case.
     Never repair masks, resize them, loosen an area tolerance or drop metadata.
     """
     sid = meta.get("geometry_id")
-    if sid not in CASES:
+    if sid not in REGISTERED_CASES:
         raise ValueError("Unregistered parameter-study case")
     ea, ec, em = make_case(sid, n)
     if any(meta.get(k) != v for k, v in em.items()):
         raise ValueError(f"{sid}: missing or inconsistent geometry metadata")
     if (a.dtype != np.bool_ or c.dtype != np.bool_ or
         not np.array_equal(a, ea) or not np.array_equal(c, ec)):
-        raise ValueError(f"{sid}: mask differs from the exact full-height rectangle contract")
+        raise ValueError(f"{sid}: mask differs from the exact registered rectangle contract")
 
 
 def geometry_svg(meta: Mapping) -> str:
     # An engineering vector drawing from exact coordinates, not a generated image.
     rects = []
     for polarity in ("anode", "cathode"):
-        x0, y0, x1, y1 = meta[f"{polarity}_bounds_mm"]
-        rects.append(f'<rect x="{x0}" y="{y0}" width="{x1-x0}" height="{y1-y0}" '
-                     f'fill="none" stroke="black" stroke-width="0.08"/>'
-                     f'<text x="{(x0+x1)/2}" y="12.5" text-anchor="middle" '
-                     f'font-size="0.9">{polarity[0].upper()}</text>')
+        bounds = meta.get(f"{polarity}_rectangles_mm")
+        if bounds is None:
+            bounds = [meta[f"{polarity}_bounds_mm"]]
+        for x0, y0, x1, y1 in bounds:
+            rects.append(f'<rect x="{x0}" y="{y0}" width="{x1-x0}" height="{y1-y0}" '
+                         f'fill="none" stroke="black" stroke-width="0.08"/>'
+                         f'<text x="{(x0+x1)/2}" y="{(y0+y1)/2}" text-anchor="middle" '
+                         f'font-size="0.9">{polarity[0].upper()}</text>')
     return ('<svg xmlns="http://www.w3.org/2000/svg" width="25mm" height="25mm" '
             'viewBox="0 0 25 25"><rect width="25" height="25" fill="white" '
             'stroke="black" stroke-width="0.08"/>' + ''.join(rects) + '</svg>\n')
@@ -192,6 +241,7 @@ def geometry_svg(meta: Mapping) -> str:
 
 def generate(spec: Mapping, out: Path, *, experiment_seed: int = 20261005) -> None:
     spec = validate_spec(spec)
+    case_ids = [row["id"] for row in spec["cases"]]
     if isinstance(experiment_seed, bool) or not isinstance(experiment_seed, int) or experiment_seed < 0:
         raise ValueError("experiment_seed must be a nonnegative integer")
     if out.exists():
@@ -199,7 +249,7 @@ def generate(spec: Mapping, out: Path, *, experiment_seed: int = 20261005) -> No
     out.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=out.name + ".preparing-", dir=out.parent))
     records = []
-    for sid in CASES:
+    for sid in case_ids:
         a, c, meta = make_case(sid, spec["grid_size"])
         folder = staging / "library" / sid
         folder.mkdir(parents=True)
@@ -213,18 +263,18 @@ def generate(spec: Mapping, out: Path, *, experiment_seed: int = 20261005) -> No
     write_json(staging / "geometry_manifest.json", records)
     template = [dict(case_id=sid, replicate=k, batch_id="", valid="", exclusion_reason="",
                      ignition_observed="", ignition_delay_s="", observation_window_s="", notes="")
-                for sid in CASES for k in range(1, spec["experimental_replicates"] + 1)]
+                for sid in case_ids for k in range(1, spec["experimental_replicates"] + 1)]
     write_csv(staging / "experiment_measurements_template.csv", template)
     # Each block contains every condition once. This orders physical experiments,
     # not solver calls; the seed is recorded with the plan for reproducibility.
     rng = np.random.default_rng(experiment_seed)
     schedule = []
     for block in range(1, spec["experimental_replicates"] + 1):
-        for sid in rng.permutation(list(CASES)):
+        for sid in rng.permutation(case_ids):
             schedule.append(dict(run_order=len(schedule) + 1, block=block,
                                  case_id=str(sid), replicate=block, random_seed=experiment_seed))
     write_csv(staging / "experiment_schedule.csv", schedule)
-    write_json(staging / "GENERATED.json", dict(schema=SCHEMA, cases=8, pde_executed=False))
+    write_json(staging / "GENERATED.json", dict(schema=spec["schema"], cases=len(case_ids), pde_executed=False))
     audit(staging)
     # Rename atomically; a concurrent creator is not allowed to have its files replaced.
     if out.exists():
@@ -234,10 +284,11 @@ def generate(spec: Mapping, out: Path, *, experiment_seed: int = 20261005) -> No
 
 def audit(out: Path) -> tuple[dict, list[tuple]]:
     spec = validate_spec(read_json(out / "study.json"))
+    case_ids = [row["id"] for row in spec["cases"]]
     manifest = read_json(out / "geometry_manifest.json")
-    if [m["geometry_id"] for m in manifest] != list(CASES):
+    if [m["geometry_id"] for m in manifest] != case_ids:
         raise ValueError("Manifest IDs/order changed")
-    if {p.name for p in (out / "library").iterdir() if p.is_dir()} != set(CASES):
+    if {p.name for p in (out / "library").iterdir() if p.is_dir()} != set(case_ids):
         raise ValueError("Unexpected/missing geometry directory")
     items = []
     for record in manifest:
@@ -255,14 +306,17 @@ def audit(out: Path) -> tuple[dict, list[tuple]]:
     return spec, items
 
 
-def runtime_config(base: Mapping, n: int, device: str, batch_size: int) -> dict:
+def runtime_config(base: Mapping, n: int, device: str, batch_size: int,
+                   *, split_study: bool = False) -> dict:
     if device not in {"cpu", "cuda"} or batch_size < 1:
         raise ValueError("Use an explicit cpu/cuda device and a positive batch size")
     from ecsp_preflame.configuration import normalize_preflame_config
     cfg = normalize_preflame_config(base)
     cfg.setdefault("geometry", {}).update(domain_mm=25., grid_size=n,
-        minimum_gap_mm=1., minimum_width_mm=1., maximum_components_per_polarity=1,
-        maximum_total_components=2, surface_contact_model="overlay_on_full_propellant_domain")
+        minimum_gap_mm=1., minimum_width_mm=1.,
+        maximum_components_per_polarity=2 if split_study else 1,
+        maximum_total_components=4 if split_study else 2,
+        surface_contact_model="overlay_on_full_propellant_domain")
     adapter = cfg.setdefault("evaluator", {})
     adapter.update(backend="preflame_cpp_cuda", device=device, grid_size=n,
                    internal_batch_size=batch_size, save_representative_fields=True)
@@ -285,7 +339,10 @@ def build_geometry(items, n: int, device, minimum_gap_m: float, geometry_type):
     ids, anodes, cathodes = [], [], []
     for a, c, meta, _ in items:
         validate_item(a, c, meta, n)
-        if meta["gap_mm"] / 1000 + 1e-12 < minimum_gap_m:
+        # Only split cases validate the additional minimum-edge metadata. For
+        # legacy cases, extra metadata must never override their validated gap.
+        gap_mm = meta["minimum_edge_gap_mm"] if meta["geometry_id"] == SPLIT_CASE_ID else meta["gap_mm"]
+        if gap_mm / 1000 + 1e-12 < minimum_gap_m:
             raise ValueError("Case gap is below the evaluator's requested minimum")
         ids.append(meta["geometry_id"])
         anodes.append(a)
@@ -305,7 +362,7 @@ def create_study_evaluator(root: Path, cfg: Mapping, workdir: Path):
     from ecsp_preflame.evaluator import PreflameCandidateGeometryError
     from ecsp_v6.physics.geometry import GeometryBatch
 
-    class FullHeightStripEvaluator(CppCudaPreflameEvaluator):
+    class RegisteredStripEvaluator(CppCudaPreflameEvaluator):
         def _build_geometry_batch(self, items):
             if not math.isclose(self.domain_size_m, 0.025, abs_tol=1e-15, rel_tol=0):
                 raise RuntimeError("Resolved physics domain is not 25 mm")
@@ -317,7 +374,7 @@ def create_study_evaluator(root: Path, cfg: Mapping, workdir: Path):
 
     adapter = copy.deepcopy(cfg["evaluator"])
     adapter["physics_config"] = copy.deepcopy(dict(cfg))
-    evaluator = FullHeightStripEvaluator(root, adapter, workdir)
+    evaluator = RegisteredStripEvaluator(root, adapter, workdir)
     if evaluator.grid_size != cfg["geometry"]["grid_size"]:
         raise RuntimeError("Resolved grid differs from the exact raster")
     return evaluator
@@ -356,6 +413,7 @@ SUMMARY_DIAGNOSTIC_KEYS = {
 
 def summary_rows(records: list[dict]) -> list[dict]:
     rows = []
+    split_comparison = any(rec["geometry"]["geometry_id"] == SPLIT_CASE_ID for rec in records)
     for rec in records:
         m, raw = rec["geometry"], rec["raw"]
         good = raw.get("external_numerical_valid") is True and not raw.get("physicsRejected", False)
@@ -366,6 +424,13 @@ def summary_rows(records: list[dict]) -> list[dict]:
             "anode_area_mm2", "cathode_area_mm2", "total_electrode_area_mm2",
             "anode_to_cathode_area_ratio", "grid_size", "grid_spacing_mm")}
         row.update(groups=";".join(m["groups"]), result_state=state)
+        if split_comparison:
+            row.update(central_split_gap_mm=m.get("central_split_gap_mm", 0.0),
+                       segment_length_mm=m.get("segment_length_mm", m["electrode_length_mm"]),
+                       contact_area_loss_mm2=m.get("contact_area_loss_mm2", 0.0),
+                       contact_area_loss_fraction=m.get("contact_area_loss_fraction", 0.0),
+                       intended_anode_components=m["intended_anode_components"],
+                       intended_cathode_components=m["intended_cathode_components"])
         row.update({k: raw.get(k) for k in SUMMARY_KEYS})
         # Preserve every original raw field in result.json. No physical value
         # from a numerically invalid trial is an experimental observation.
@@ -386,12 +451,14 @@ def summary_rows(records: list[dict]) -> list[dict]:
 def evaluate(root: Path, out: Path, physics_path: Path, device: str,
              batch_size: int, resume: bool, factory=create_study_evaluator) -> list[dict]:
     spec, items = audit(out)
+    case_ids = [row["id"] for row in spec["cases"]]
+    split_study = spec["schema"] == SPLIT_SCHEMA
     if any(out == root / p or (root / p) in out.parents for p in ("python", "cpp", "config", "data")):
         raise ValueError("Simulation output must not be inside source/data directories")
     base = yaml.safe_load(physics_path.read_text(encoding="utf-8"))
-    cfg = runtime_config(base, spec["grid_size"], device, batch_size)
+    cfg = runtime_config(base, spec["grid_size"], device, batch_size, split_study=split_study)
     fence = source_fence(root)
-    identity = digest(dict(schema=SCHEMA, study=spec, runtime=cfg, sources=fence,
+    identity = digest(dict(schema=spec["schema"], study=spec, runtime=cfg, sources=fence,
                            geometry=read_json(out / "geometry_manifest.json")))
     run_path = out / "run_identity.json"
     if run_path.exists():
@@ -401,7 +468,7 @@ def evaluate(root: Path, out: Path, physics_path: Path, device: str,
         raise ValueError("Orphaned case outputs without run identity; use a new output")
     else:
         write_json(run_path, dict(signature=identity, base_revision=BASE_REVISION,
-                   physics_config=str(physics_path), device=device, schema=SCHEMA))
+                   physics_config=str(physics_path), device=device, schema=spec["schema"]))
     write_json(out / "requested_runtime_config.json", cfg)
     write_json(out / "sources_before.json", fence)
     records, pending = [], []
@@ -449,21 +516,28 @@ def evaluate(root: Path, out: Path, physics_path: Path, device: str,
         if after != fence:
             raise RuntimeError("Protected source/config inputs changed during execution")
     ordered = {r["geometry"]["geometry_id"]: r for r in records}
-    rows = summary_rows([ordered[sid] for sid in CASES])
+    rows = summary_rows([ordered[sid] for sid in case_ids])
     write_csv(out / "parameter_study_summary.csv", rows)
-    for group in ("spacing", "width", "area_ratio"):
-        write_csv(out / f"{group}_summary.csv", [r for r in rows if group in r["groups"].split(";")])
+    if split_study:
+        write_csv(out / "split_comparison_summary.csv", rows)
+    else:
+        for group in ("spacing", "width", "area_ratio"):
+            write_csv(out / f"{group}_summary.csv", [r for r in rows if group in r["groups"].split(";")])
     write_json(out / "RUN_FINISHED.json", dict(cases=len(rows), sources_unchanged=True,
                numerically_invalid=sum(r["result_state"] == "numerically_invalid" for r in rows),
                comparison="raw_independent_cases_no_staggered", deterministic_repetitions=1))
     return rows
 
 
-def summarize_experiments(source: Path, destination: Path) -> None:
+def summarize_experiments(source: Path, destination: Path, *, case_ids=None) -> None:
     """Sample mean/SD of successful trials; nonignition remains right-censored."""
     if source.resolve() == destination.resolve():
         raise ValueError("Experimental input and summary output must be different files")
-    groups = {sid: {"delays": [], "failed": 0, "excluded": 0, "pending": 0} for sid in CASES}
+    case_ids = list(CASES) if case_ids is None else list(case_ids)
+    if (not case_ids or len(set(case_ids)) != len(case_ids)
+        or any(sid not in REGISTERED_CASES for sid in case_ids)):
+        raise ValueError("Invalid experimental case selection")
+    groups = {sid: {"delays": [], "failed": 0, "excluded": 0, "pending": 0} for sid in case_ids}
     seen = set()
     with source.open(newline="", encoding="utf-8-sig") as stream:
         reader = csv.DictReader(stream)
@@ -474,7 +548,7 @@ def summarize_experiments(source: Path, destination: Path) -> None:
         explicit_validity = "valid" in reader.fieldnames
         for row in reader:
             sid, rep = row["case_id"], row["replicate"]
-            if sid not in CASES or not rep.isdigit() or int(rep) < 1:
+            if sid not in groups or not rep.isdigit() or int(rep) < 1:
                 raise ValueError("Invalid experimental case/replicate")
             key = (sid, int(rep))
             if key in seen:
@@ -558,7 +632,7 @@ def main() -> int:
     if args.command == "generate":
         spec = yaml.safe_load(relative(args.study_config).read_text(encoding="utf-8"))
         generate(spec, out, experiment_seed=args.experiment_seed)
-        print(f"Generated 8 exact full-height cases: {out}")
+        print(f"Generated {len(spec['cases'])} exact registered cases: {out}")
     elif args.command == "audit":
         spec, items = audit(out)
         print(json.dumps(dict(cases=len(items), grid_size=spec["grid_size"],
@@ -572,7 +646,8 @@ def main() -> int:
     else:
         if args.input is None:
             parser.error("summarize-experiments requires --input")
-        summarize_experiments(relative(args.input), out)
+        spec = validate_spec(yaml.safe_load(relative(args.study_config).read_text(encoding="utf-8")))
+        summarize_experiments(relative(args.input), out, case_ids=[row["id"] for row in spec["cases"]])
     return 0
 
 
