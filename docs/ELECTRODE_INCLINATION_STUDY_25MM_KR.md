@@ -96,6 +96,46 @@ mask가 서로 다르면 audit가 실패하고, 각도·코드·설정 변경 �
 
 ## 실행
 
+### 5° 간격으로 60°까지 요청
+
+`generate-sweep`은 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60°를
+요청받고 0° 대조군을 자동 추가한다. 설정 파일에서는 공통 폭·중앙 간격·격자를
+가져오고, `cases`의 각도 목록은 요청한 목록으로 대체한다.
+
+```bash
+RUN="$PWD/runs/straight25_angles_5_to_60"
+python python/run_electrode_parameter_study.py generate-sweep \
+  --study-config config/electrode_inclination_study_25mm.yaml \
+  --angles 5 10 15 20 25 30 35 40 45 50 55 60 \
+  --out "$RUN"
+python python/run_electrode_parameter_study.py audit --out "$RUN"
+python python/run_electrode_parameter_study.py evaluate \
+  --out "$RUN" --device cuda --batch-size 7
+```
+
+`--angles`를 생략해도 위 5~60° 목록을 사용한다. 일부 각도만 지정하거나 소수
+각도를 지정할 수도 있다. 형상·격자 제약 때문에 불가능한 각도는 제외 이유와 함께
+`angle_feasibility.csv` 및 `.json`에 남긴다. 요청 원본은 `sweep_request.json`에
+저장한다. 제외된 각도는 solver와 실험 순서표에 들어가지 않는다. 이는 무점화나
+수치해석 실패가 아니라 **형상 생성 불가**를 뜻한다. 0° 외에 생성 가능한 각도가
+하나도 없으면 오류로 종료한다. 직접 `generate`를 사용하는 기존 방식은 잘못된
+case 하나만 있어도 전체 요청을 거부한다.
+
+현재 예시 폭 4 mm·중앙 간격 17 mm·높이 25 mm에서는 최대 각도가 약 32.62°다.
+따라서 **0, 5, 10, 15, 20, 25, 30°의 7개**를 생성하고 **35~60°의 6개**를
+제외한다. 각도를 자동 축소하거나 전극 폭·면적·중앙 간격을 바꾸지 않는다.
+
+실험 집계 시에는 생성한 실제 case 목록을 사용해야 한다.
+
+```bash
+python python/run_electrode_parameter_study.py summarize-experiments \
+  --study-config "$RUN/study.json" \
+  --input "$RUN/experiment_measurements.csv" \
+  --out "$RUN/experiment_summary.csv"
+```
+
+### 설정 파일의 명시적 case 목록 사용
+
 저장소 루트의 기존 Python 실행 환경에서 다음을 실행한다.
 
 ```bash
@@ -170,3 +210,37 @@ mask와의 정확한 일치, 면적·대칭·연결성·최소 간격, 손상 �
 비선형 Robin 반복이 수렴했고 최종 물리장은 유한했다. 이 검사는 형상 전달 및
 짧은 시간적분의 실행 확인이다. 전체 2초 계산, Vmin 검색, CUDA/A100 실행,
 격자수렴성 및 실험적 점화 성능 비교는 수행하지 않았다.
+
+5~60° sweep 추가 후 위 네 테스트와 `tests/test_electrode_inclination_sweep.py`를
+함께 실행하여 **149개 통과**를 확인했다. 기본 sweep의 CLI 생성·audit에서도
+7개 허용/6개 제외가 확인됐다. 이번 추가에서 새 생산 PDE 계산은 실행하지 않았다.
+
+## 25×12 mm로 바꿀 때의 기하학적 한계
+
+여기서는 **가로 25 mm·세로 12 mm**를 뜻하며 각도는 수직 기준이다.
+현재 solver의 정사각형 격자를 직사각형으로 변경한 기능이 아니다.
+아래 값과 `electrode_inclination_sweep.inclination_limits()`는 연속기하 계산이며,
+직사각형 domain의 PDE 실행이나 raster 가능성을 보장하지 않는다.
+
+세로 길이 H, 중앙 간격 g, 최소 끝 간격 g_min에 대해
+
+\[
+g_{\rm end}=g-H\tan\theta,\qquad
+\theta_{\rm gap}=\arctan\frac{g-g_{\min}}{H}.
+\]
+
+여기에 각 극의 수직 폭 조건 \(w\cos\theta\ge1\,\mathrm{mm}\)도 적용한다.
+수평 폭을 각 4 mm, 중앙 간격을 17 mm, 최소 간격을 1 mm로 유지하면 다음과 같다.
+
+| Domain 가로×세로 | 연속기하 최대각 | 5° 간격에서 최대각 | 극당 접촉면적 |
+|---|---:|---:|---:|
+| 25×25 mm | 32.619° | 30° | 100 mm² |
+| 25×12 mm | 53.130° | 50° | 48 mm² |
+
+25×12 mm에서 50°의 끝 간격은 2.699 mm, 55°는 −0.138 mm,
+60°는 −3.785 mm다. 음수는 전극끼리 겹친다는 뜻이다.
+
+반대로 domain을 줄여도 기존 극당 100 mm²까지 유지한다면 수평 폭을
+100/12=8.333 mm로 늘려야 한다. 좌우 경계에 맞추었을 때 중앙 간격은
+25−2×8.333=8.333 mm이며, 최대각은 31.430°(5° 단위로 30°)가 된다.
+이는 다른 치수 조건의 비교이므로 폭 4 mm를 유지한 53.130°와 구분한다.

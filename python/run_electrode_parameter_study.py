@@ -29,6 +29,7 @@ import yaml
 from electrode_inclination_geometry import (
     INCLINED_SCHEMA, make_inclined_case, validate_inclined_spec,
 )
+from electrode_inclination_sweep import DEFAULT_INCLINATION_ANGLES, plan_inclination_sweep
 
 BASE_REVISION = "563ffbff7ee1cfbf46a81ff946aac69383b4a461"
 SCHEMA = "full_height_strip_study_v1"
@@ -259,8 +260,14 @@ def geometry_svg(meta: Mapping) -> str:
             'stroke="black" stroke-width="0.08"/>' + ''.join(rects) + '</svg>\n')
 
 
-def generate(spec: Mapping, out: Path, *, experiment_seed: int = 20261005) -> None:
+def generate(spec: Mapping, out: Path, *, experiment_seed: int = 20261005,
+             sweep_request: Mapping | None = None) -> None:
     spec = validate_spec(spec)
+    sweep_report = None
+    if sweep_request is not None:
+        planned, sweep_report = plan_inclination_sweep(sweep_request["template"], sweep_request["angles"])
+        if planned != spec:
+            raise ValueError("Sweep request does not match the generated study")
     case_ids = [row["id"] for row in spec["cases"]]
     if isinstance(experiment_seed, bool) or not isinstance(experiment_seed, int) or experiment_seed < 0:
         raise ValueError("experiment_seed must be a nonnegative integer")
@@ -284,6 +291,10 @@ def generate(spec: Mapping, out: Path, *, experiment_seed: int = 20261005) -> No
         records.append(meta)
     write_json(staging / "study.json", spec)
     write_json(staging / "geometry_manifest.json", records)
+    if sweep_request is not None:
+        write_json(staging / "sweep_request.json", sweep_request)
+        write_json(staging / "angle_feasibility.json", sweep_report)
+        write_csv(staging / "angle_feasibility.csv", sweep_report)
     template = [dict(case_id=sid, replicate=k, batch_id="", valid="", exclusion_reason="",
                      ignition_observed="", ignition_delay_s="", observation_window_s="", notes="")
                 for sid in case_ids for k in range(1, spec["experimental_replicates"] + 1)]
@@ -305,8 +316,28 @@ def generate(spec: Mapping, out: Path, *, experiment_seed: int = 20261005) -> No
     staging.rename(out)
 
 
+def generate_sweep(template: Mapping, out: Path, angles=None,
+                   *, experiment_seed: int = 20261005) -> list[dict]:
+    """Generate feasible cases and record all requested, including rejected, angles."""
+    template = validate_spec(template)
+    requested = list(DEFAULT_INCLINATION_ANGLES if angles is None else angles)
+    spec, report = plan_inclination_sweep(template, requested)
+    generate(spec, out, experiment_seed=experiment_seed,
+             sweep_request={"template": template, "angles": requested})
+    return report
+
+
 def audit(out: Path) -> tuple[dict, list[tuple]]:
     spec = validate_spec(read_json(out / "study.json"))
+    sweep_files = [out / name for name in ("sweep_request.json", "angle_feasibility.json",
+                                           "angle_feasibility.csv")]
+    if any(path.exists() for path in sweep_files):
+        if not all(path.is_file() for path in sweep_files):
+            raise ValueError("Incomplete inclination sweep request/report")
+        request = read_json(sweep_files[0])
+        planned, report = plan_inclination_sweep(request["template"], request["angles"])
+        if planned != spec or read_json(sweep_files[1]) != report:
+            raise ValueError("Inclination sweep request/report does not match the study")
     case_ids = [row["id"] for row in spec["cases"]]
     manifest = read_json(out / "geometry_manifest.json")
     if [m["geometry_id"] for m in manifest] != case_ids:
@@ -655,7 +686,7 @@ def summarize_experiments(source: Path, destination: Path, *, case_ids=None, stu
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("generate", "audit", "evaluate", "summarize-experiments"))
+    parser.add_argument("command", choices=("generate", "generate-sweep", "audit", "evaluate", "summarize-experiments"))
     parser.add_argument("--project-root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--study-config", type=Path, default=Path("config/electrode_parameter_study_25mm.yaml"))
     parser.add_argument("--physics-config", type=Path, default=Path(PHYSICS_DEFAULT))
@@ -666,17 +697,29 @@ def main() -> int:
                         help="Random seed for the physical experiment schedule (generate only)")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--input", type=Path)
+    parser.add_argument("--angles", type=float, nargs="+",
+                        help="generate-sweep only: requested angles from vertical; default 5 10 ... 60; adds 0-degree control")
     args = parser.parse_args()
     root = args.project_root.resolve()
     def relative(path):
         return path.resolve() if path.is_absolute() else (root / path).resolve()
     if args.out is None:
         parser.error("--out is required")
+    if args.angles is not None and args.command != "generate-sweep":
+        parser.error("--angles requires generate-sweep")
     out = relative(args.out)
     if args.command == "generate":
         spec = yaml.safe_load(relative(args.study_config).read_text(encoding="utf-8"))
         generate(spec, out, experiment_seed=args.experiment_seed)
         print(f"Generated {len(spec['cases'])} validated study cases: {out}")
+    elif args.command == "generate-sweep":
+        spec = yaml.safe_load(relative(args.study_config).read_text(encoding="utf-8"))
+        report = generate_sweep(spec, out, args.angles, experiment_seed=args.experiment_seed)
+        for row in report:
+            print(f"{row['inclination_deg']:g} deg: {row['status']} {row['reason']}")
+        accepted = sum(row["status"] == "accepted" for row in report)
+        print(f"Generated {accepted} feasible cases (including 0-degree control); "
+              f"{len(report)-accepted} rejected; see {out / 'angle_feasibility.csv'}")
     elif args.command == "audit":
         spec, items = audit(out)
         print(json.dumps(dict(cases=len(items), grid_size=spec["grid_size"],

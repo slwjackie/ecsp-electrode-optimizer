@@ -135,3 +135,48 @@ def test_legacy_ids_cannot_be_repurposed(spec):
     spec["cases"][0]["id"] = "WD_W4"
     with pytest.raises(ValueError, match="legacy"):
         study.validate_spec(spec)
+
+
+def test_sweep_persists_requested_and_rejected_angles_and_audits(tmp_path, spec):
+    out = tmp_path / "sweep"
+    report = study.generate_sweep(spec, out)
+    planned, items = study.audit(out)
+    assert [m["inclination_deg"] for _, _, m, _ in items] == [0, 5, 10, 15, 20, 25, 30]
+    assert [r["inclination_deg"] for r in report if r["status"] == "rejected"] == [35, 40, 45, 50, 55, 60]
+    assert len(study.read_json(out / "angle_feasibility.json")) == 13
+    with (out / "angle_feasibility.csv").open() as stream:
+        assert len(list(csv.DictReader(stream))) == 13
+    with (out / "experiment_schedule.csv").open() as stream:
+        assert len(list(csv.DictReader(stream))) == 35
+    # Experimental summaries must use the generated seven-case study, not the four-case template.
+    study.summarize_experiments(out / "experiment_measurements_template.csv",
+                               out / "experiment_summary.csv", study_spec=planned)
+    with (out / "experiment_summary.csv").open() as stream:
+        assert len(list(csv.DictReader(stream))) == 7
+    with pytest.raises(FileExistsError):
+        study.generate_sweep(spec, out)
+    report[-1]["status"] = "accepted"
+    study.write_json(out / "angle_feasibility.json", report)
+    with pytest.raises(ValueError, match="request/report"):
+        study.audit(out)
+
+
+def test_sweep_cannot_drop_request_file(tmp_path, spec):
+    out = tmp_path / "sweep"
+    study.generate_sweep(spec, out)
+    (out / "sweep_request.json").unlink()
+    with pytest.raises(ValueError, match="Incomplete"):
+        study.audit(out)
+
+
+def test_sweep_cli_custom_angles(tmp_path):
+    import subprocess
+    out = tmp_path / "sweep"
+    cmd = [sys.executable, str(ROOT / "python/run_electrode_parameter_study.py"),
+           "generate-sweep", "--study-config", "config/electrode_inclination_study_25mm.yaml",
+           "--out", str(out), "--angles", "5", "15", "35", "60"]
+    run = subprocess.run(cmd, capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+    assert "35 deg: rejected" in run.stdout and "60 deg: rejected" in run.stdout
+    assert "Generated 3 feasible cases" in run.stdout
+    assert [r["inclination_deg"] for r in study.audit(out)[0]["cases"]] == [0, 5, 15]
