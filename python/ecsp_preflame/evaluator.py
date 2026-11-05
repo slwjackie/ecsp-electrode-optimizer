@@ -1160,10 +1160,17 @@ class ElectrochemicalThermalDecompositionEvaluator(DirectCondensedV772NoFEvaluat
         if not isinstance(vmin_cfg, Mapping):
             vmin_cfg = {}
         self.vmin_enabled = bool(vmin_cfg.get("enabled", True))
-        if not self.vmin_enabled:
+        # Independent fixed-voltage studies may opt out, but workflows with
+        # an active Vmin objective must retain the original search contract.
+        objectives = physics_config.get("evaluation", {}).get("objectives_minimise", [])
+        if not self.vmin_enabled and (
+            not getattr(self, "supports_reference_voltage_only", False)
+            or "minimum_ignition_voltage_V" in objectives
+        ):
             raise EvaluatorError(
                 "electrochemical-thermal-decomposition minimum_ignition_voltage_search.enabled must be true "
-                "because minimum ignition voltage is an active objective"
+                "for this workflow or while minimum ignition voltage is an active objective; "
+                "independent parameter studies may use --skip-vmin"
             )
         self.vmin_lower_bound_V = float(vmin_cfg.get("lower_bound_V", 20.0))
         configured_upper = vmin_cfg.get("upper_bound_V", self.voltage)

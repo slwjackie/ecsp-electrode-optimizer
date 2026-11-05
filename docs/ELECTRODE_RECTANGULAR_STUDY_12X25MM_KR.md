@@ -91,6 +91,20 @@ CPU 실행은 `--device cpu`를 사용한다. 실제 시료에 맞춰 보정한 
 `--physics-config <파일>`을 추가한다. 이전 source/config의 결과는 새 코드와
 혼합하여 재개하지 않으며, 같은 입력으로 중단한 계산만 `--resume`으로 이어간다.
 
+최소 점화 전압을 구하지 않고 고정 기준 전압에서 폭·각도만 비교하려면
+`evaluate`에 `--skip-vmin`을 추가한다. 다른 성능 지표와 물리장은 계속 저장한다.
+
+```bash
+python python/run_electrode_parameter_study.py evaluate \
+  --out "$RUN" --device cpu --batch-size 1 --skip-vmin
+```
+
+CSV의 최소 전압 값·유효성 칸은 공란, 상태는
+`not_requested_reference_voltage_only`로 기록된다. 실제 기준 전압은
+`referenceAppliedVoltage_V`에 저장한다. 탐색 포함 실행과 결과를 혼합하지
+않도록 새 output에서 시작하고, 재개할 때도 `--skip-vmin --resume`을 지정한다.
+시간 측정과 전압 탐색 횟수는 [25 mm 안내](ELECTRODE_INCLINATION_STUDY_25MM_KR.md#최소-점화-전압-탐색-생략)를 따른다.
+
 ## 각도 목록을 직접 지정하는 sweep
 
 `generate-sweep`은 각 폭 그룹에 요청한 각도를 적용한다. 0° 대조군을 보존하고,

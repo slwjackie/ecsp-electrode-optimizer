@@ -383,7 +383,8 @@ def audit(out: Path) -> tuple[dict, list[tuple]]:
 
 
 def runtime_config(base: Mapping, n: int, device: str, batch_size: int,
-                   *, split_study: bool = False, rectangular_study: bool = False) -> dict:
+                   *, split_study: bool = False, rectangular_study: bool = False,
+                   skip_vmin: bool = False) -> dict:
     if device not in {"cpu", "cuda"} or batch_size < 1:
         raise ValueError("Use an explicit cpu/cuda device and a positive batch size")
     from ecsp_preflame.configuration import normalize_preflame_config
@@ -399,12 +400,19 @@ def runtime_config(base: Mapping, n: int, device: str, batch_size: int,
     adapter.update(backend="preflame_cpp_cuda", device=device, grid_size=n,
                    internal_batch_size=batch_size, save_representative_fields=True)
     adapter.setdefault("cpp_cuda", {})["cpu_workers"] = 0
+    if skip_vmin:
+        cfg.setdefault("minimum_ignition_voltage_search", {})["enabled"] = False
+        evaluation = cfg.setdefault("evaluation", {})
+        evaluation["objectives_minimise"] = [
+            key for key in evaluation.get("objectives_minimise", [])
+            if key != "minimum_ignition_voltage_V"
+        ]
     numerics = adapter.setdefault("base_overrides", {}).setdefault("numerics", {})
     numerics["physicsDevice"] = device
     if str(numerics.get("physicsDtype", "float64")).lower() != "float64":
         raise ValueError("Use a production FP64 config; this runner does not change precision")
-    # All other top-level blocks, including chemistry, numerics and onset/Vmin
-    # semantics, remain verbatim. Their optimization/baseline flags are inert:
+    # Chemistry, numerics, onset and evaluation horizon remain verbatim.
+    # Vmin is only disabled by explicit opt-out. Optimization/baseline flags are inert:
     # none of those orchestrators is instantiated by this independent runner.
     return cfg
 
@@ -451,6 +459,37 @@ def create_study_evaluator(root: Path, cfg: Mapping, workdir: Path):
     from ecsp_v6.physics.geometry import GeometryBatch
 
     class RegisteredStripEvaluator(CppCudaPreflameEvaluator):
+        supports_reference_voltage_only = True
+
+        def _evaluate_chunk(self, items):
+            if self.vmin_enabled:
+                return super()._evaluate_chunk(items)
+            # Use the identical full reference run, including diagnostics and
+            # common-time continuation. Never enter the voltage-search scheduler.
+            rows, _ = self._safe_run(items, [self.voltage] * len(items))
+            for item, row in zip(items, rows):
+                # A failed reference row can carry a legacy Vmin penalty. No
+                # voltage objective is meaningful when no search was requested.
+                for key in list(row):
+                    if key.startswith("minimumIgnitionVoltage"):
+                        del row[key]
+                row.update(
+                    referenceAppliedVoltage_V=float(self.voltage),
+                    minimumIgnitionVoltage_V=None,
+                    minimumIgnitionVoltageObjective_V=None,
+                    minimumIgnitionVoltageSearchValid=None,
+                    minimumIgnitionVoltageSearchStatus="not_requested_reference_voltage_only",
+                    minimumIgnitionVoltageLeftCensored=False,
+                    minimumIgnitionVoltageRightCensored=False,
+                    minimumIgnitionVoltageTrialCount=0,
+                    minimumIgnitionVoltageBisectionIterations=0,
+                    minimumIgnitionVoltageTrials=[],
+                    minimumIgnitionVoltageFinalFullHorizonCheck=False,
+                    cppCudaWorkerPid=os.getpid(),
+                )
+                write_json(Path(item[3]) / "condensed_metrics.json", row)
+            return rows
+
         def _build_geometry_batch(self, items):
             if not math.isclose(self.domain_size_m, 0.025, abs_tol=1e-15, rel_tol=0):
                 raise RuntimeError("Resolved physics domain is not 25 mm")
@@ -537,6 +576,8 @@ def summary_rows(records: list[dict]) -> list[dict]:
                        intended_anode_components=m["intended_anode_components"],
                        intended_cathode_components=m["intended_cathode_components"])
         row.update({k: raw.get(k) for k in SUMMARY_KEYS})
+        if "referenceAppliedVoltage_V" in raw:
+            row["referenceAppliedVoltage_V"] = raw["referenceAppliedVoltage_V"]
         # Preserve every original raw field in result.json. No physical value
         # from a numerically invalid trial is an experimental observation.
         if not good:
@@ -554,7 +595,8 @@ def summary_rows(records: list[dict]) -> list[dict]:
 
 
 def evaluate(root: Path, out: Path, physics_path: Path, device: str,
-             batch_size: int, resume: bool, factory=create_study_evaluator) -> list[dict]:
+             batch_size: int, resume: bool, factory=create_study_evaluator,
+             *, skip_vmin: bool = False) -> list[dict]:
     spec, items = audit(out)
     case_ids = [row["id"] for row in spec["cases"]]
     split_study = spec["schema"] == SPLIT_SCHEMA
@@ -562,7 +604,8 @@ def evaluate(root: Path, out: Path, physics_path: Path, device: str,
         raise ValueError("Simulation output must not be inside source/data directories")
     base = yaml.safe_load(physics_path.read_text(encoding="utf-8"))
     cfg = runtime_config(base, spec["grid_size"], device, batch_size, split_study=split_study,
-                         rectangular_study=spec["schema"] == RECTANGULAR_SCHEMA)
+                         rectangular_study=spec["schema"] == RECTANGULAR_SCHEMA,
+                         skip_vmin=skip_vmin)
     fence = source_fence(root)
     identity = digest(dict(schema=spec["schema"], study=spec, runtime=cfg, sources=fence,
                            geometry=read_json(out / "geometry_manifest.json")))
@@ -740,6 +783,8 @@ def main() -> int:
     parser.add_argument("--experiment-seed", type=int, default=20261005,
                         help="Random seed for the physical experiment schedule (generate only)")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--skip-vmin", action="store_true",
+                        help="evaluate only: keep the fixed-voltage reference metrics and skip minimum-voltage search")
     parser.add_argument("--input", type=Path)
     parser.add_argument("--angles", type=float, nargs="+",
                         help="generate-sweep only: requested angles from vertical; default 0 5 10 15 20 25 30; ensures 0-degree control")
@@ -753,6 +798,8 @@ def main() -> int:
         parser.error("--out is required")
     if args.angles is not None and args.command != "generate-sweep":
         parser.error("--angles requires generate-sweep")
+    if args.skip_vmin and args.command != "evaluate":
+        parser.error("--skip-vmin requires evaluate")
     if args.electrode_width_mm is not None and args.command not in {"generate", "generate-sweep"}:
         parser.error("--electrode-width-mm is for generate/generate-sweep only; evaluation uses the stored study")
     out = relative(args.out)
@@ -786,7 +833,7 @@ def main() -> int:
                               spacing_mm=25 / spec["grid_size"], pde_executed=False)))
     elif args.command == "evaluate":
         rows = evaluate(root, out, relative(args.physics_config), args.device,
-                        args.batch_size, args.resume)
+                        args.batch_size, args.resume, skip_vmin=args.skip_vmin)
         bad = sum(r["result_state"] == "numerically_invalid" for r in rows)
         print(f"Completed {len(rows)} cases; numerically invalid: {bad}")
         return 2 if bad else 0

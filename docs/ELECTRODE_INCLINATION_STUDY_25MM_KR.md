@@ -166,6 +166,30 @@ python python/run_electrode_parameter_study.py evaluate \
   --out "$RUN" --device cuda --batch-size 7 --resume
 ```
 
+### 최소 점화 전압 탐색 생략
+
+고정 기준 전압(기본 260 V)에서 각도별 성능만 비교하려면 `evaluate`에
+`--skip-vmin`을 추가한다. 기준 전압의 시간적분, 응축상 onset 판정, 공통 평가
+시각까지의 continuation, 전류·온도·에너지·미분해 지표와 물리장 저장은 그대로다.
+
+```bash
+python python/run_electrode_parameter_study.py evaluate \
+  --out "$RUN" --device cpu --batch-size 1 --skip-vmin
+```
+
+최소 전압 값과 유효성 칸은 공란이고, `minimumIgnitionVoltageSearchStatus`는
+`not_requested_reference_voltage_only`다. `referenceAppliedVoltage_V`에 실제
+기준 전압을 저장한다. 미실행 전압 탐색에 실패 penalty나 가짜 전압을 넣지 않는다.
+탐색을 켜고 실행했던 폴더와는 설정이 다르므로 새 실행 폴더를 생성해야 한다.
+재개할 때에는 원래 명령의 `--skip-vmin`도 유지하고 `--resume`을 추가한다.
+
+기본 전압 탐색은 기준 전압에서 onset이 없으면 추가 PDE를 실행하지 않는다.
+onset이 있으면 하한 20 V, 최대 6회의 이분 탐색(260−20 V 폭을 5 V 이하로),
+필요한 최종 상한 재검증까지 기준 계산을 포함해 최대 9회 수행한다.
+탐색의 성공 trial은 onset에서 조기 종료하므로 횟수와 실제 시간 비율은 다르다.
+실측 시간은 `adapter/cpp_cuda_batch_waves.jsonl`의 `role`과 `elapsed_s`로
+기준 계산(`reference`)과 추가 전압 탐색을 구분해 확인한다.
+
 실제 실험으로 보정한 physics 입력을 사용할 경우 `evaluate`에
 `--physics-config config/YOUR_EXISTING_CALIBRATED_CONFIG.yaml`을 추가한다.
 기본 입력은 기존 `config/preflame_electrochemical_thermal_decomposition_a100_cpu8.yaml`이다.
