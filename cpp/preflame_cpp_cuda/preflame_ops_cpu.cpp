@@ -18,7 +18,7 @@ Tensor contacts_cpu(const Tensor&ci,const Tensor&an,const Tensor&s,const Tensor&
  TORCH_CHECK(n>0&&s.numel()==NS*n&&tr.numel()==NP*n,
              "C++/CUDA preflame contact tensors have inconsistent state/property sizes");
  TORCH_CHECK(an.numel()==m&&a.numel()==p.batch&&v.numel()==p.batch&&
-             n==int64_t(p.batch)*p.n*p.n,
+             n==int64_t(p.batch)*p.ny*p.nx,
              "C++/CUDA preflame contact tensors have inconsistent contact/batch sizes");
  if(m==0)return out;
  const int64_t*cp=ci.data_ptr<int64_t>();const bool*ap=an.data_ptr<bool>(),*act=a.data_ptr<bool>();const double*sp=s.data_ptr<double>(),*tp=tr.data_ptr<double>(),*vp=v.data_ptr<double>();double*op=out.data_ptr<double>();
@@ -35,8 +35,8 @@ Tensor current_cpu(const Tensor&s,const Tensor&tr,const Tensor&m,const Params&p)
  at::parallel_for(0,n,1024,[n,sp,tp,mp,op,params](int64_t a,int64_t b){for(int64_t i=a;i<b;i++)current_cell(i,n,sp,tp,mp,op,*params);});return out;
 }
 Tensor stencil_cpu(const Tensor&c,const Tensor&x){
- int64_t n=x.numel();auto out=at::empty_like(x);int side=int(x.size(-1));
+ int64_t n=x.numel();auto out=at::empty_like(x);int ny=int(x.size(-2)),nx=int(x.size(-1));
  const double*cp=c.data_ptr<double>(),*xp=x.data_ptr<double>();double*yp=out.data_ptr<double>();
- at::parallel_for(0,n,2048,[n,cp,xp,yp,side](int64_t a,int64_t b){for(int64_t i=a;i<b;i++)stencil_cell(i,n,cp,xp,yp,side);});return out;
+ at::parallel_for(0,n,2048,[n,cp,xp,yp,ny,nx](int64_t a,int64_t b){for(int64_t i=a;i<b;i++)stencil_cell(i,n,cp,xp,yp,ny,nx);});return out;
 }
 }

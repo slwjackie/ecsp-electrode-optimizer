@@ -16,8 +16,8 @@ __global__ void contacts_kernel(int64_t m,int64_t n,const int64_t*ci,const bool*
 __global__ void current_kernel(int64_t n,const double*s,const double*tr,const bool*m,double*o,Params p){
  for(int64_t i=int64_t(blockIdx.x)*blockDim.x+threadIdx.x;i<n;i+=int64_t(blockDim.x)*gridDim.x)current_cell(i,n,s,tr,m,o,p);
 }
-__global__ void stencil_kernel(int64_t n,const double*c,const double*x,double*y,int side){
- for(int64_t i=int64_t(blockIdx.x)*blockDim.x+threadIdx.x;i<n;i+=int64_t(blockDim.x)*gridDim.x)stencil_cell(i,n,c,x,y,side);
+__global__ void stencil_kernel(int64_t n,const double*c,const double*x,double*y,int ny,int nx){
+ for(int64_t i=int64_t(blockIdx.x)*blockDim.x+threadIdx.x;i<n;i+=int64_t(blockDim.x)*gridDim.x)stencil_cell(i,n,c,x,y,ny,nx);
 }
 static int blocks(int64_t n){return int(std::min<int64_t>((n+255)/256,65535));}
 Tensor props_cuda(const Tensor&s,const Tensor&m,const Tensor&t,const Params&p){
@@ -38,6 +38,6 @@ Tensor current_cuda(const Tensor&s,const Tensor&tr,const Tensor&m,const Params&p
 }
 Tensor stencil_cuda(const Tensor&c,const Tensor&x){
  const c10::cuda::CUDAGuard guard(x.device());auto out=at::empty_like(x);int64_t n=x.numel();
- stencil_kernel<<<blocks(n),256,0,c10::cuda::getCurrentCUDAStream()>>>(n,c.data_ptr<double>(),x.data_ptr<double>(),out.data_ptr<double>(),int(x.size(-1)));C10_CUDA_KERNEL_LAUNCH_CHECK();return out;
+ stencil_kernel<<<blocks(n),256,0,c10::cuda::getCurrentCUDAStream()>>>(n,c.data_ptr<double>(),x.data_ptr<double>(),out.data_ptr<double>(),int(x.size(-2)),int(x.size(-1)));C10_CUDA_KERNEL_LAUNCH_CHECK();return out;
 }
 }

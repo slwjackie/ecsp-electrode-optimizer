@@ -3,6 +3,8 @@
 이 실행기는 직선 전극 8개 조건을 공통 `ecsp_preflame` 해석기로 평가한다.
 기존 148개 catalogue와 독립적으로 실행하며 staggered 형상을 생성하거나 비교하지 않는다.
 공통 코드의 분리와 이름 변경은 [리팩터링 안내](PREFLAME_REFACTOR_KR.md)를 따른다.
+면적과 중앙 간격을 고정한 경사각 비교는 별도 설정의
+[25 mm 전극 경사각 study](ELECTRODE_INCLINATION_STUDY_25MM_KR.md)를 사용한다.
 
 ## 고정 설계
 

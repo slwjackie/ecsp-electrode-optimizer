@@ -4,7 +4,7 @@
 #include "preflame_engine.h"
 namespace py=pybind11;
 PYBIND11_MODULE(TORCH_EXTENSION_NAME,m){
- m.def("run",&preflame_cpp_cuda::run,py::call_guard<py::gil_scoped_release>(),"Compiled FP64 electrochemical-thermal-decomposition integrator; masks [B,N,N], voltages [B].");
+ m.def("run",&preflame_cpp_cuda::run,py::call_guard<py::gil_scoped_release>(),"Compiled FP64 electrochemical-thermal-decomposition integrator; masks [B,Ny,Nx] with equal cell spacing, voltages [B].");
  m.attr("version")="8.2.1";
 #if __cplusplus >= 202002L
  m.attr("compiler_standard")="c++20";

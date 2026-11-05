@@ -551,6 +551,18 @@ class DirectCondensedV772NoFEvaluator:
             if "domain_mm" in geometry:
                 resolved["geometry"]["domainSize_m"] = float(geometry["domain_mm"]) / 1000.0
                 resolved["manufacturability"]["domainSize_m"] = float(geometry["domain_mm"]) / 1000.0
+            if "domain_width_mm" in geometry or "domain_height_mm" in geometry:
+                if not {"domain_width_mm", "domain_height_mm"}.issubset(geometry):
+                    raise EvaluatorError("Rectangular domains require both domain_width_mm and domain_height_mm")
+                width_m = float(geometry["domain_width_mm"]) / 1000.0
+                height_m = float(geometry["domain_height_mm"]) / 1000.0
+                if not all(math.isfinite(v) and v > 0 for v in (width_m, height_m)):
+                    raise EvaluatorError("Rectangular domain dimensions must be finite and positive")
+                if "domain_mm" in geometry and not math.isclose(float(geometry["domain_mm"]) / 1000., height_m, rel_tol=1e-12):
+                    raise EvaluatorError("domain_mm must equal domain_height_mm for rectangular studies")
+                resolved["geometry"].update(domainSize_m=height_m,
+                    domainWidth_m=width_m, domainHeight_m=height_m)
+                resolved["manufacturability"]["domainSize_m"] = height_m
             if "minimum_gap_mm" in geometry:
                 resolved["geometry"]["minimumElectrodeGap_m"] = float(
                     geometry["minimum_gap_mm"]
@@ -595,6 +607,8 @@ class DirectCondensedV772NoFEvaluator:
             self.adapter_config.get("grid_size", resolved["coupled"]["gridSize"])
         )
         self.domain_size_m = float(resolved["geometry"]["domainSize_m"])
+        self.domain_width_m = float(resolved["geometry"].get("domainWidth_m", self.domain_size_m))
+        self.domain_height_m = float(resolved["geometry"].get("domainHeight_m", self.domain_size_m))
         self.minimum_gap_m = float(resolved["geometry"]["minimumElectrodeGap_m"])
         self.internal_batch_size = max(
             1,
@@ -1873,6 +1887,24 @@ class ElectrochemicalThermalDecompositionEvaluator(DirectCondensedV772NoFEvaluat
         output: Mapping[str, Any],
         items: Sequence[tuple[np.ndarray, np.ndarray, Mapping[str, Any], Path]],
     ) -> list[dict[str, Any]]:
+        # The propagation handoff schema and its downstream solver still use
+        # square domains. Reject rectangles before any legacy contact resize.
+        geometry_cfg = self.config["geometry"]
+        height = float(geometry_cfg.get("domainHeight_m", geometry_cfg["domainSize_m"]))
+        width = float(geometry_cfg.get("domainWidth_m", geometry_cfg["domainSize_m"]))
+        rectangular = not math.isclose(width, height, rel_tol=1e-12, abs_tol=0.)
+        for anode, cathode, _, _ in items:
+            for mask in (anode, cathode):
+                shape = np.shape(mask)
+                rectangular |= len(shape) >= 2 and shape[-2] != shape[-1]
+        for value in output.get("handoffFields", {}).values():
+            shape = getattr(value, "shape", ())
+            rectangular |= len(shape) >= 3 and shape[-2] != shape[-1]
+        if rectangular:
+            raise EvaluatorError(
+                "Rectangular domains support preflame evaluation only; "
+                "propagation handoff requires a square domain"
+            )
         handoff_raw = output["handoffFields"]
         arrays = {
             key: self._handoff_numpy(value)

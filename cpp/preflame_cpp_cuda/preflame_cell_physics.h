@@ -25,7 +25,7 @@ struct Property { int mode=0,offset=0,size=0; double value=0,tref=298.15,ea=0; }
 struct Kinetic { int offset=0,size=0; double heat=0; };
 struct Channel {double eq=0,j0=0,alpha=.5,n=1,reverse=1,heat=0,stoich=0;};
 struct Params {
-    int n=0,batch=0,full_bv=1,full_np=1,diffusion=1,augmented=0,joule_mode=0;
+    int ny=0,nx=0,batch=0,full_bv=1,full_np=1,diffusion=1,augmented=0,joule_mode=0;
     int local_min=8,local_max=60,newton=2;
     double R=8.314462618,F=96485.33212,zp=1,zm=-1,dx=1,dt=.00025;
     double sigma_min=1e-4,sigma_max=.5,initial_T=298.15,ambient=298.15;
@@ -158,7 +158,7 @@ PREFLAME_HD double limit_update(double old,double rate,double ref,const Params& 
 PREFLAME_HD void advance_cell(int64_t i,int64_t total,const double* s,const bool* prop,
     const bool* active,const double* tr,const double* heat,const double* table,
     double* out,double* diag,const Params& p){
-    int64_t cells=int64_t(p.n)*p.n,b=i/cells,j=i%cells;int row=int(j/p.n),col=int(j%p.n);
+    int64_t cells=int64_t(p.ny)*p.nx,b=i/cells,j=i%cells;int row=int(j/p.nx),col=int(j%p.nx);
     if(!active[b]){
         for(int f=0;f<NS;f++){out[f*total+i]=s[f*total+i];}
         for(int f=0;f<ND;f++){diag[f*total+i]=0;}
@@ -177,7 +177,7 @@ PREFLAME_HD void advance_cell(int64_t i,int64_t total,const double* s,const bool
     double proposed_a1=clamp(a1+p.dt*r1,0,1),proposed_a2=clamp(a2+p.dt*r2,0,1);
     double proposed_da1=mx(proposed_a1-a1,0),proposed_da2=mx(proposed_a2-a2,0);
     double dc=0,da=0,dw=0,conduct=0,thermal_face_sum=0;
-    int64_t nb[4]={i+1,i-1,i+p.n,i-p.n};bool valid[4]={col<p.n-1,col>0,row<p.n-1,row>0};
+    int64_t nb[4]={i+1,i-1,i+p.nx,i-p.nx};bool valid[4]={col<p.nx-1,col>0,row<p.ny-1,row>0};
     for(int d=0;d<4;d++){
         int64_t q=nb[d];if(!valid[d]||!prop[q])continue;
         double kface=harmonic(tr[7*total+i],tr[7*total+q]);
@@ -284,7 +284,7 @@ PREFLAME_HD ContactEval eval_contact(double gap,double drop,double G,double T,do
 PREFLAME_HD void contact_cell(int64_t f,int64_t count,int64_t total,const int64_t* cells,
         const bool* anode,const double* s,const double* tr,const double* volts,const bool* active,
         double* out,const Params& p){
-    int64_t i=cells[f],b=i/(int64_t(p.n)*p.n); bool an=anode[f];
+    int64_t i=cells[f],b=i/(int64_t(p.ny)*p.nx); bool an=anode[f];
     if(!active[b]){
         for(int k=0;k<NCONTACT;k++){out[k*count+f]=0;}
         return;
@@ -329,19 +329,19 @@ PREFLAME_HD void current_cell(int64_t i,int64_t total,const double* s,const doub
         for(int k=0;k<3;k++){out[k*total+i]=0;}
         return;
     }
-    int64_t local=i%(int64_t(p.n)*p.n);int row=int(local/p.n),col=int(local%p.n);
-    double ex=-grad_dir(s+7*total,prop,i,i+1,i-1,col<p.n-1,col>0,p.dx);
-    double ey=-grad_dir(s+7*total,prop,i,i+p.n,i-p.n,row<p.n-1,row>0,p.dx);
+    int64_t local=i%(int64_t(p.ny)*p.nx);int row=int(local/p.nx),col=int(local%p.nx);
+    double ex=-grad_dir(s+7*total,prop,i,i+1,i-1,col<p.nx-1,col>0,p.dx);
+    double ey=-grad_dir(s+7*total,prop,i,i+p.nx,i-p.nx,row<p.ny-1,row>0,p.dx);
     double jdx=0,jdy=0;
     if(p.diffusion){
-        jdx=-p.F*(p.zp*tr[i]*grad_dir(s+total,prop,i,i+1,i-1,col<p.n-1,col>0,p.dx)
-                  +p.zm*tr[total+i]*grad_dir(s+2*total,prop,i,i+1,i-1,col<p.n-1,col>0,p.dx));
-        jdy=-p.F*(p.zp*tr[i]*grad_dir(s+total,prop,i,i+p.n,i-p.n,row<p.n-1,row>0,p.dx)
-                  +p.zm*tr[total+i]*grad_dir(s+2*total,prop,i,i+p.n,i-p.n,row<p.n-1,row>0,p.dx));
+        jdx=-p.F*(p.zp*tr[i]*grad_dir(s+total,prop,i,i+1,i-1,col<p.nx-1,col>0,p.dx)
+                  +p.zm*tr[total+i]*grad_dir(s+2*total,prop,i,i+1,i-1,col<p.nx-1,col>0,p.dx));
+        jdy=-p.F*(p.zp*tr[i]*grad_dir(s+total,prop,i,i+p.nx,i-p.nx,row<p.ny-1,row>0,p.dx)
+                  +p.zm*tr[total+i]*grad_dir(s+2*total,prop,i,i+p.nx,i-p.nx,row<p.ny-1,row>0,p.dx));
     }
     double jx=tr[5*total+i]*ex+jdx,jy=tr[5*total+i]*ey+jdy;
     double jm=sqrt_fp64(jx*jx+jy*jy),heat=0,rhs=0;
-    int64_t nb[4]={i+1,i-1,i+p.n,i-p.n};bool valid[4]={col<p.n-1,col>0,row<p.n-1,row>0};
+    int64_t nb[4]={i+1,i-1,i+p.nx,i-p.nx};bool valid[4]={col<p.nx-1,col>0,row<p.ny-1,row>0};
     // Conservative FV dissipation: evaluate each internal face with the same
     // harmonic transport used by the potential operator, then give half of
     // that face's power-density contribution to each adjacent control volume.
@@ -367,12 +367,12 @@ PREFLAME_HD void current_cell(int64_t i,int64_t total,const double* s,const doub
     out[i]=jm;out[total+i]=p.joule_mode==0?heat:mx(heat,0);
     out[2*total+i]=rhs;
 }
-PREFLAME_HD void stencil_cell(int64_t i,int64_t total,const double* coeff,const double* x,double* y,int n){
-    double v=coeff[i]*x[i];int64_t j=i%(int64_t(n)*n);int r=int(j/n),c=int(j%n);
-    if(c<n-1){v-=coeff[total+i]*x[i+1];}
+PREFLAME_HD void stencil_cell(int64_t i,int64_t total,const double* coeff,const double* x,double* y,int ny,int nx){
+    double v=coeff[i]*x[i];int64_t j=i%(int64_t(ny)*nx);int r=int(j/nx),c=int(j%nx);
+    if(c<nx-1){v-=coeff[total+i]*x[i+1];}
     if(c>0){v-=coeff[2*total+i]*x[i-1];}
-    if(r<n-1){v-=coeff[3*total+i]*x[i+n];}
-    if(r>0){v-=coeff[4*total+i]*x[i-n];}
+    if(r<ny-1){v-=coeff[3*total+i]*x[i+nx];}
+    if(r>0){v-=coeff[4*total+i]*x[i-nx];}
     y[i]=v;
 }
 } // namespace preflame_cpp_cuda

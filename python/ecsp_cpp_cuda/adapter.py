@@ -95,7 +95,7 @@ def pack_config(config: dict, composition: Any, grid_size: int) -> tuple[dict[st
     cfg={
      'R':float(tr['gasConstant_J_per_molK']), 'F':float(tr['faradayConstant_C_per_mol']),
      'zp':float(tr['chargeNumberCation']),'zm':float(tr['chargeNumberAnion']),
-     'dx':float(config['geometry']['domainSize_m'])/grid_size,'dt':float(model['timeStep_s']),
+     'dx':float(config['geometry'].get('domainHeight_m',config['geometry']['domainSize_m']))/grid_size,'dt':float(model['timeStep_s']),
      'end':float(model['endTime_s']),'evaluation':float(model.get('evaluationTime_s',model['endTime_s'])),
      'electrical_interval':float(model['electricalUpdateInterval_s']), 'snapshot':float(model.get('handoffSnapshotInterval_s',.02)),
      'layer':float(config['geometry']['surfaceLayerThickness_m']),
@@ -288,7 +288,7 @@ def run_cpp_cuda_batch(geometry, config, composition, voltage, dtype=torch.float
         # both the list storage and the transient stacked tensors.
         history_allocation_bytes+=(
             2*4*snapshot_count_upper_bound*geometry.batch_size
-            *geometry.grid_size*geometry.grid_size*8
+            *cpp_cuda_propellant.shape[-2]*cpp_cuda_propellant.shape[-1]*8
         )
     if history_allocation_bytes>int(cfg['max_history_bytes']):
         raise ValueError(
