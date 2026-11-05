@@ -116,8 +116,9 @@ class CppCudaPreflameEvaluator(ElectrochemicalThermalDecompositionEvaluator):
         standard_tag=str(cpp_cuda_build['compiler_language_standard']).replace('+','p')
         record.update(backend='preflame_cpp_cuda',cpp_cuda_build=cpp_cuda_build,
             numerical_engine=f'compiled_{standard_tag}_fp64_with_custom_cuda_kernels',batch_size=self.internal_batch_size,
-            vmin_search='candidate_parallel_bisection',successful_trial_early_stop=self.early_stop,
-            final_upper_full_horizon_verification=self.verify_final,
+            vmin_search='candidate_parallel_bisection' if self.vmin_enabled else 'not_requested_reference_voltage_only',
+            successful_trial_early_stop=self.early_stop and self.vmin_enabled,
+            final_upper_full_horizon_verification=self.verify_final and self.vmin_enabled,
             geometry_semantics='full_domain_propellant_with_separate_surface_contact_masks',
             electrode_masks_remove_propellant=False,
             core_source_language_floor='c++17',
