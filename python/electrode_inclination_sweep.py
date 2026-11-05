@@ -15,7 +15,7 @@ import numpy as np
 
 from electrode_inclination_geometry import make_inclined_case, validate_inclined_spec
 
-DEFAULT_INCLINATION_ANGLES = tuple(range(5, 61, 5))
+DEFAULT_INCLINATION_ANGLES = tuple(range(0, 31, 5))
 
 
 def _finite_number(value: Any, name: str) -> float:

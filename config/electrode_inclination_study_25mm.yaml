@@ -2,8 +2,7 @@
 # Each contact has area 25 * 4 = 100 mm^2. At the centre, 4 + 17 + 4 = 25 mm.
 # inclination_deg is the angle of each arm from vertical; positive angles move
 # both ends toward the opposite electrode. Width means horizontal cross-section.
-# Use generate-sweep --angles 5 10 15 20 25 30 35 40 45 50 55 60 to request
-# a full sweep; this geometry admits only 0..30 degrees in 5-degree increments.
+# Both generate and the default generate-sweep use 0..30 degrees in 5-degree increments.
 # Rejected angles are reported, not evaluated or silently clamped.
 schema: inclined_strip_study_v1
 domain_mm: 25.0
@@ -13,6 +12,9 @@ placement: centered_assembly
 experimental_replicates: 5
 cases:
   - {id: ANGLE_00, anode_width_mm: 4.0, cathode_width_mm: 4.0, gap_mm: 17.0, inclination_deg: 0.0, groups: [inclination]}
+  - {id: ANGLE_05, anode_width_mm: 4.0, cathode_width_mm: 4.0, gap_mm: 17.0, inclination_deg: 5.0, groups: [inclination]}
   - {id: ANGLE_10, anode_width_mm: 4.0, cathode_width_mm: 4.0, gap_mm: 17.0, inclination_deg: 10.0, groups: [inclination]}
+  - {id: ANGLE_15, anode_width_mm: 4.0, cathode_width_mm: 4.0, gap_mm: 17.0, inclination_deg: 15.0, groups: [inclination]}
   - {id: ANGLE_20, anode_width_mm: 4.0, cathode_width_mm: 4.0, gap_mm: 17.0, inclination_deg: 20.0, groups: [inclination]}
   - {id: ANGLE_25, anode_width_mm: 4.0, cathode_width_mm: 4.0, gap_mm: 17.0, inclination_deg: 25.0, groups: [inclination]}
+  - {id: ANGLE_30, anode_width_mm: 4.0, cathode_width_mm: 4.0, gap_mm: 17.0, inclination_deg: 30.0, groups: [inclination]}

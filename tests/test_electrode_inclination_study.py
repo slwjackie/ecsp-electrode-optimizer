@@ -104,13 +104,13 @@ def test_evaluate_resume_summary_and_changed_angle(tmp_path, spec):
 
     ev = FakeEvaluator()
     rows = study.evaluate(root, out, physics, "cpu", 2, False, lambda *_: ev)
-    assert ev.calls == 2
+    assert ev.calls == 4  # Seven cases in batches of two.
     assert [r["inclination_deg"] for r in rows] == [r["inclination_deg"] for r in spec["cases"]]
     assert all(r["ignitionDelay_s"] is None for r in rows)
     assert (out / "inclination_summary.csv").exists()
     assert not (out / "spacing_summary.csv").exists()
     study.evaluate(root, out, physics, "cpu", 2, True, lambda *_: ev)
-    assert ev.calls == 2
+    assert ev.calls == 4
     spec["cases"][-1]["inclination_deg"] -= 1
     study.write_json(out / "study.json", spec)
     with pytest.raises(ValueError, match="declared study case"):
@@ -139,7 +139,7 @@ def test_legacy_ids_cannot_be_repurposed(spec):
 
 def test_sweep_persists_requested_and_rejected_angles_and_audits(tmp_path, spec):
     out = tmp_path / "sweep"
-    report = study.generate_sweep(spec, out)
+    report = study.generate_sweep(spec, out, angles=list(range(5, 61, 5)))
     planned, items = study.audit(out)
     assert [m["inclination_deg"] for _, _, m, _ in items] == [0, 5, 10, 15, 20, 25, 30]
     assert [r["inclination_deg"] for r in report if r["status"] == "rejected"] == [35, 40, 45, 50, 55, 60]
@@ -148,7 +148,7 @@ def test_sweep_persists_requested_and_rejected_angles_and_audits(tmp_path, spec)
         assert len(list(csv.DictReader(stream))) == 13
     with (out / "experiment_schedule.csv").open() as stream:
         assert len(list(csv.DictReader(stream))) == 35
-    # Experimental summaries must use the generated seven-case study, not the four-case template.
+    # Experimental summaries use the actual generated case list.
     study.summarize_experiments(out / "experiment_measurements_template.csv",
                                out / "experiment_summary.csv", study_spec=planned)
     with (out / "experiment_summary.csv").open() as stream:
@@ -167,6 +167,16 @@ def test_sweep_cannot_drop_request_file(tmp_path, spec):
     (out / "sweep_request.json").unlink()
     with pytest.raises(ValueError, match="Incomplete"):
         study.audit(out)
+
+
+def test_default_sweep_matches_seven_case_yaml(tmp_path, spec):
+    out = tmp_path / "default_sweep"
+    report = study.generate_sweep(spec, out)
+    planned, items = study.audit(out)
+    assert planned == study.validate_spec(spec)
+    assert [row["inclination_deg"] for row in planned["cases"]] == list(range(0, 31, 5))
+    assert len(items) == len(report) == 7
+    assert all(row["status"] == "accepted" for row in report)
 
 
 def test_sweep_cli_custom_angles(tmp_path):

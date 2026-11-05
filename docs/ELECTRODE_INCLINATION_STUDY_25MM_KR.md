@@ -55,9 +55,12 @@ case ID는 영문자로 시작하고 영문·숫자·`_`·`-`만 사용하며 �
 | ID | 각도 | 중앙 간격 mm | 끝 간격 mm | 양극 면적 mm² | 음극 면적 mm² |
 |---|---:|---:|---:|---:|---:|
 | ANGLE_00 | 0° | 17 | 17.000 | 100 | 100 |
+| ANGLE_05 | 5° | 17 | 14.813 | 100 | 100 |
 | ANGLE_10 | 10° | 17 | 12.592 | 100 | 100 |
+| ANGLE_15 | 15° | 17 | 10.301 | 100 | 100 |
 | ANGLE_20 | 20° | 17 | 7.901 | 100 | 100 |
 | ANGLE_25 | 25° | 17 | 5.342 | 100 | 100 |
+| ANGLE_30 | 30° | 17 | 2.566 | 100 | 100 |
 
 간격은 위 식으로 계산한 연속 형상의 값이다. solver에 전달되는 계단형 mask의
 최소 간격은 별도로 기록한다. 기존 2 mm 중앙 간격을 사용하면 같은 큰 각도를
@@ -96,24 +99,25 @@ mask가 서로 다르면 audit가 실패하고, 각도·코드·설정 변경 �
 
 ## 실행
 
-### 5° 간격으로 60°까지 요청
+### 0°부터 5° 간격으로 30°까지 실행
 
-`generate-sweep`은 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60°를
-요청받고 0° 대조군을 자동 추가한다. 설정 파일에서는 공통 폭·중앙 간격·격자를
-가져오고, `cases`의 각도 목록은 요청한 목록으로 대체한다.
+`generate-sweep`의 기본 각도는 **0, 5, 10, 15, 20, 25, 30°**다.
+설정 파일의 명시적 `cases`도 같은 7개 조건이므로 `generate` 역시 이 목록을 생성한다.
+`generate-sweep`은 설정 파일의 공통 폭·중앙 간격·격자를 가져오고, `cases`의
+각도 목록을 요청한 목록으로 대체한다. 사용자 목록에 0°가 없으면 대조군을 자동 추가한다.
 
 ```bash
-RUN="$PWD/runs/straight25_angles_5_to_60"
+RUN="$PWD/runs/straight25_angles_0_to_30"
 python python/run_electrode_parameter_study.py generate-sweep \
   --study-config config/electrode_inclination_study_25mm.yaml \
-  --angles 5 10 15 20 25 30 35 40 45 50 55 60 \
+  --angles 0 5 10 15 20 25 30 \
   --out "$RUN"
 python python/run_electrode_parameter_study.py audit --out "$RUN"
 python python/run_electrode_parameter_study.py evaluate \
   --out "$RUN" --device cuda --batch-size 7
 ```
 
-`--angles`를 생략해도 위 5~60° 목록을 사용한다. 일부 각도만 지정하거나 소수
+`--angles`를 생략해도 위 0~30° 목록을 사용한다. 일부 각도만 지정하거나 소수
 각도를 지정할 수도 있다. 형상·격자 제약 때문에 불가능한 각도는 제외 이유와 함께
 `angle_feasibility.csv` 및 `.json`에 남긴다. 요청 원본은 `sweep_request.json`에
 저장한다. 제외된 각도는 solver와 실험 순서표에 들어가지 않는다. 이는 무점화나
@@ -122,8 +126,9 @@ python python/run_electrode_parameter_study.py evaluate \
 case 하나만 있어도 전체 요청을 거부한다.
 
 현재 예시 폭 4 mm·중앙 간격 17 mm·높이 25 mm에서는 최대 각도가 약 32.62°다.
-따라서 **0, 5, 10, 15, 20, 25, 30°의 7개**를 생성하고 **35~60°의 6개**를
-제외한다. 각도를 자동 축소하거나 전극 폭·면적·중앙 간격을 바꾸지 않는다.
+따라서 기본 목록의 **0, 5, 10, 15, 20, 25, 30°의 7개 모두**를 생성한다.
+별도 요청에 불가능한 각도가 포함되면 해당 각도만 제외 이유와 함께 보고한다.
+각도를 자동 축소하거나 전극 폭·면적·중앙 간격을 바꾸지 않는다.
 
 실험 집계 시에는 생성한 실제 case 목록을 사용해야 한다.
 
@@ -149,7 +154,7 @@ python python/run_electrode_parameter_study.py generate \
 python python/run_electrode_parameter_study.py audit --out "$RUN"
 
 python python/run_electrode_parameter_study.py evaluate \
-  --out "$RUN" --device cuda --batch-size 4
+  --out "$RUN" --device cuda --batch-size 7
 ```
 
 CPU에서는 마지막 명령의 `--device cuda`를 `--device cpu`로 바꾼다.
@@ -158,7 +163,7 @@ MPS는 사용하지 않는다. 기존 output은 덮어쓰지 않으므로 설정
 
 ```bash
 python python/run_electrode_parameter_study.py evaluate \
-  --out "$RUN" --device cuda --batch-size 4 --resume
+  --out "$RUN" --device cuda --batch-size 7 --resume
 ```
 
 실제 실험으로 보정한 physics 입력을 사용할 경우 `evaluate`에
@@ -177,8 +182,8 @@ metadata에 남는다. 해석 후 `parameter_study_summary.csv`와
 `cases/<ID>/result.json`에 보존한다. 응축상 onset 시간은 visible-flame delay와
 동일한 관측량으로 간주하지 않는다.
 
-기본 예시는 4조건×5회=20행의 실험 기록 template과 무작위 block 순서표를 생성한다.
-이는 실제 실험 계획이며 20회 시뮬레이션이나 생성된 실험결과가 아니다.
+기본 예시는 7조건×5회=35행의 실험 기록 template과 무작위 block 순서표를 생성한다.
+이는 실제 실험 계획이며 35회 시뮬레이션이나 생성된 실험결과가 아니다.
 측정값을 별도 `experiment_measurements.csv`에 기록한 뒤 다음과 같이 집계한다.
 
 ```bash
@@ -200,7 +205,7 @@ python -m pytest -q tests/test_electrode_parameter_study.py \
   tests/test_electrode_inclination_study.py
 ```
 
-위 테스트 **118개 통과**. 기존 직선·분할 study 회귀검사, 0°에서 기존 8개 직선
+최초 0°/10°/20°/25° 비교 기능 추가 시 위 테스트 **118개 통과**. 기존 직선·분할 study 회귀검사, 0°에서 기존 8개 직선
 mask와의 정확한 일치, 면적·대칭·연결성·최소 간격, 손상 입력 거부,
 실행 연결·재개·CSV 집계를 확인했다. 실행 연결 테스트의 fake evaluator는
 물리 정확도를 검증하지 않는다. CLI의 `generate`와 `audit`도 실행했다.
@@ -211,16 +216,26 @@ mask와의 정확한 일치, 면적·대칭·연결성·최소 간격, 손상 �
 짧은 시간적분의 실행 확인이다. 전체 2초 계산, Vmin 검색, CUDA/A100 실행,
 격자수렴성 및 실험적 점화 성능 비교는 수행하지 않았다.
 
-5~60° sweep 추가 후 위 네 테스트와 `tests/test_electrode_inclination_sweep.py`를
+이전 5~60° 기본 sweep을 추가했을 때 위 네 테스트와 `tests/test_electrode_inclination_sweep.py`를
 함께 실행하여 **149개 통과**를 확인했다. 기본 sweep의 CLI 생성·audit에서도
-7개 허용/6개 제외가 확인됐다. 이번 추가에서 새 생산 PDE 계산은 실행하지 않았다.
+7개 허용/6개 제외가 확인됐다. 이는 이전 기본값의 검증 기록이며, 현재 기본 목록은
+0~30°의 7개 조건이다. 해당 sweep 추가에서 새 생산 PDE 계산은 실행하지 않았다.
 
-## 25×12 mm로 바꿀 때의 기하학적 한계
+현재 0~30° 기본값 및 가로 12 mm·세로 25 mm 계산 검증을 반영한 뒤 관련
+테스트 **150개 통과**를 확인했다. 기본 `generate-sweep`과 `audit`에서
+**7개 허용·0개 제외**를 확인했다. 이번 수정에서 새 생산 PDE 계산은 실행하지 않았다.
 
-여기서는 **가로 25 mm·세로 12 mm**를 뜻하며 각도는 수직 기준이다.
+## 가로 12 mm·세로 25 mm로 바꿀 때의 기하학적 한계
+
+여기서는 **가로 12 mm·세로 25 mm**를 뜻하며 각도는 수직 기준이다.
 현재 solver의 정사각형 격자를 직사각형으로 변경한 기능이 아니다.
 아래 값과 `electrode_inclination_sweep.inclination_limits()`는 연속기하 계산이며,
 직사각형 domain의 PDE 실행이나 raster 가능성을 보장하지 않는다.
+
+양극·음극의 수평 폭을 각 4 mm로 유지하고 중앙 높이에서 좌우 domain 경계에
+배치하면, 중앙 간격은 **12−4−4=4 mm**다. 기존 17 mm 간격은 가로 12 mm
+안에 들어가지 않는다. 세로 길이는 여전히 25 mm이므로 각 극의 접촉면적은
+**25×4=100 mm²**로 유지된다.
 
 세로 길이 H, 중앙 간격 g, 최소 끝 간격 g_min에 대해
 
@@ -230,17 +245,29 @@ g_{\rm end}=g-H\tan\theta,\qquad
 \]
 
 여기에 각 극의 수직 폭 조건 \(w\cos\theta\ge1\,\mathrm{mm}\)도 적용한다.
-수평 폭을 각 4 mm, 중앙 간격을 17 mm, 최소 간격을 1 mm로 유지하면 다음과 같다.
+최소 끝 간격 1 mm를 유지할 때 가로 12 mm·세로 25 mm의 최대각은
 
-| Domain 가로×세로 | 연속기하 최대각 | 5° 간격에서 최대각 | 극당 접촉면적 |
-|---|---:|---:|---:|
-| 25×25 mm | 32.619° | 30° | 100 mm² |
-| 25×12 mm | 53.130° | 50° | 48 mm² |
+\[
+\theta_{\max}=\arctan\frac{4-1}{25}
+=6.842773\ldots^\circ.
+\]
 
-25×12 mm에서 50°의 끝 간격은 2.699 mm, 55°는 −0.138 mm,
-60°는 −3.785 mm다. 음수는 전극끼리 겹친다는 뜻이다.
+이 각도에서는 폭 조건보다 끝 간격 조건이 먼저 제한한다.
 
-반대로 domain을 줄여도 기존 극당 100 mm²까지 유지한다면 수평 폭을
-100/12=8.333 mm로 늘려야 한다. 좌우 경계에 맞추었을 때 중앙 간격은
-25−2×8.333=8.333 mm이며, 최대각은 31.430°(5° 단위로 30°)가 된다.
-이는 다른 치수 조건의 비교이므로 폭 4 mm를 유지한 53.130°와 구분한다.
+| Domain 가로×세로 | 중앙 간격 | 연속기하 최대각 | 5° 간격에서 최대각 | 극당 접촉면적 |
+|---|---:|---:|---:|---:|
+| 25×25 mm | 17 mm | 32.619° | 30° | 100 mm² |
+| 12×25 mm | 4 mm | 6.843° | 5° | 100 mm² |
+
+가로 12 mm·세로 25 mm에서의 끝 간격은 다음과 같다.
+
+| 각도 | 끝 간격 | 최소 간격 1 mm 충족 |
+|---|---:|---|
+| 0° | 4.000 mm | 충족 |
+| 5° | 1.813 mm | 충족 |
+| 10° | −0.408 mm | 불충족: 전극 겹침 |
+
+따라서 이 치수에서 5° 간격으로 선택하면 **0°와 5°만 가능**하다.
+최소 간격 1 mm 조건을 무시하더라도 접촉이 시작되는 각도는
+\(\arctan(4/25)=9.090277\ldots^\circ\)이므로, 겹치지 않으려면 그보다 작아야 한다.
+폭이나 좌우 여백을 바꾸면 중앙 간격도 바뀌며 최대각을 다시 계산해야 한다.

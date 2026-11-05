@@ -698,7 +698,7 @@ def main() -> int:
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--input", type=Path)
     parser.add_argument("--angles", type=float, nargs="+",
-                        help="generate-sweep only: requested angles from vertical; default 5 10 ... 60; adds 0-degree control")
+                        help="generate-sweep only: requested angles from vertical; default 0 5 10 15 20 25 30; ensures 0-degree control")
     args = parser.parse_args()
     root = args.project_root.resolve()
     def relative(path):

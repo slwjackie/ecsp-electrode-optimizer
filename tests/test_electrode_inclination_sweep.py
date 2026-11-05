@@ -23,11 +23,10 @@ def test_default_sweep_records_every_request_and_keeps_fixed_area(template):
     before = copy.deepcopy(template)
     study, reports = plan_inclination_sweep(template)
     assert template == before
-    assert [r["inclination_deg"] for r in reports] == list(range(0, 61, 5))
+    assert [r["inclination_deg"] for r in reports] == list(range(0, 31, 5))
     assert [r["inclination_deg"] for r in study["cases"]] == list(range(0, 31, 5))
-    assert [r["status"] for r in reports] == ["accepted"] * 7 + ["rejected"] * 6
-    assert all("end gap" in r["reason"] for r in reports[7:])
-    assert reports[-1]["end_gap_mm"] < 0
+    assert [r["status"] for r in reports] == ["accepted"] * 7
+    assert reports[-1]["end_gap_mm"] > 1
     for row in study["cases"]:
         a, c, meta = make_inclined_case(row, study["grid_size"])
         assert a.sum() == c.sum() == 6400
@@ -81,12 +80,18 @@ def test_normal_width_can_be_the_limiting_constraint():
     assert limits["gap_limit_deg"] > 60
 
 
-def test_preserving_100_square_mm_area_on_short_domain_changes_limit():
-    width = 100 / 12
-    gap = 25 - 2 * width
-    limits = inclination_limits(25, 12, width, width, gap)
-    assert limits["maximum_inclination_deg"] == pytest.approx(math.degrees(math.atan((gap - 1) / 12)))
-    assert 30 < limits["maximum_inclination_deg"] < 35
+def test_narrow_domain_is_12_wide_25_high_and_preserves_100_square_mm_area():
+    height, domain_width = 25, 12
+    width = 100 / height
+    gap = domain_width - 2 * width
+    limits = inclination_limits(domain_width, height, width, width, gap)
+    assert gap == 4
+    assert limits["maximum_inclination_deg"] == pytest.approx(math.degrees(math.atan(3 / 25)))
+    assert 5 < limits["maximum_inclination_deg"] < 10
+    assert gap - height * math.tan(math.radians(5)) == pytest.approx(1.8127834118519)
+    assert gap - height * math.tan(math.radians(10)) < 0
+    assert width * height == 100
+    assert limits["geometry_only"] and not limits["raster_checked"]
 
 
 @pytest.mark.parametrize("args", [
