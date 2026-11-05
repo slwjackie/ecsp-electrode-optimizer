@@ -14,8 +14,8 @@ static int get_int(const Settings&c,const std::string&k,int d){
              "C++/CUDA integer setting is invalid: ",k);
  return static_cast<int>(v);
 }
-static Params params(const Settings&c,int b,int n){
- Params p;p.n=n;p.batch=b;
+static Params params(const Settings&c,int b,int ny,int nx){
+ Params p;p.ny=ny;p.nx=nx;p.batch=b;
 #define RI(x) p.x=get_int(c,#x,p.x)
  RI(full_bv);RI(full_np);RI(diffusion);RI(augmented);RI(joule_mode);RI(local_min);RI(local_max);RI(newton);
 #undef RI
@@ -47,16 +47,16 @@ static Tensor finite_norm_converged(const Tensor&norm,const Tensor&tolerance){
  return at::isfinite(norm)&at::isfinite(tolerance)&(norm<=tolerance);
 }
 static Tensor shift(const Tensor&x,int d){
- auto y=at::zeros_like(x);int n=x.size(-1);
- if(d==0)y.index_put_({Ellipsis,Slice(),Slice(0,n-1)},x.index({Ellipsis,Slice(),Slice(1,n)}));
- if(d==1)y.index_put_({Ellipsis,Slice(),Slice(1,n)},x.index({Ellipsis,Slice(),Slice(0,n-1)}));
- if(d==2)y.index_put_({Ellipsis,Slice(0,n-1),Slice()},x.index({Ellipsis,Slice(1,n),Slice()}));
- if(d==3)y.index_put_({Ellipsis,Slice(1,n),Slice()},x.index({Ellipsis,Slice(0,n-1),Slice()}));
+ auto y=at::zeros_like(x);int ny=x.size(-2),nx=x.size(-1);
+ if(d==0)y.index_put_({Ellipsis,Slice(),Slice(0,nx-1)},x.index({Ellipsis,Slice(),Slice(1,nx)}));
+ if(d==1)y.index_put_({Ellipsis,Slice(),Slice(1,nx)},x.index({Ellipsis,Slice(),Slice(0,nx-1)}));
+ if(d==2)y.index_put_({Ellipsis,Slice(0,ny-1),Slice()},x.index({Ellipsis,Slice(1,ny),Slice()}));
+ if(d==3)y.index_put_({Ellipsis,Slice(1,ny),Slice()},x.index({Ellipsis,Slice(0,ny-1),Slice()}));
  return y;
 }
 struct Geometry {
- Tensor an,ca,prop,active,count,contact_cells,contact_anode,contact_dense_index;int b,n;int64_t total;
- Geometry(Tensor a,Tensor c):an(a),ca(c),prop(at::ones_like(a)),b(a.size(0)),n(a.size(1)),total(a.numel()){
+ Tensor an,ca,prop,active,count,contact_cells,contact_anode,contact_dense_index;int b,ny,nx;int64_t total;
+ Geometry(Tensor a,Tensor c):an(a),ca(c),prop(at::ones_like(a)),b(a.size(0)),ny(a.size(1)),nx(a.size(2)),total(a.numel()){
   // Cell-centred finite volumes cover the complete surface, including the
   // outer ring. Missing exterior neighbours are the natural no-flux boundary.
   active=prop.clone();
@@ -66,7 +66,7 @@ struct Geometry {
   contact_anode=an.reshape({-1}).index_select(0,contact_cells);
   contact_dense_index=contact_cells;
  }
- Tensor dense(const Tensor&x) const {auto o=at::zeros({b,n,n},x.options());o.reshape({-1}).index_copy_(0,contact_dense_index,x);return o;}
+ Tensor dense(const Tensor&x) const {auto o=at::zeros({b,ny,nx},x.options());o.reshape({-1}).index_copy_(0,contact_dense_index,x);return o;}
 };
 struct Boundary {Tensor ia,ic,sensitivity,local_res,jwa,jwc,jla,jlc,ja,jc,ka,kc,normal_power;};
 static Boundary boundary(Tensor s,const Tensor&tr,const Tensor&v,const Tensor&running,const Params&p,const Geometry&g){
@@ -177,7 +177,7 @@ static Electrical electrical(Tensor&s,const Tensor&tr,const Tensor&v,const Tenso
  // Internal heat/source bundle: qJ, qEchem-total, LP sink, mobile-water
  // sink, |J|, qEchem-water, qEchem-LP.  The split heat fields allow the
  // integrator to scale heat by the actually accepted Faradaic inventory.
- auto heat=at::zeros({7,g.b,g.n,g.n},s.options());
+ auto heat=at::zeros({7,g.b,g.ny,g.nx},s.options());
  // raw[1] is conservative in-plane face-network power density.  The compact
  // contact solve returns W/m^2 for the unresolved normal resistor.
  heat[0].copy_(raw[1]+bd.normal_power/p.layer);heat[4].copy_(raw[0]);
@@ -258,7 +258,7 @@ static TimeLoopHostStatus check_time_loop_failures(
 std::map<std::string,Tensor> run(const Tensor&anode,const Tensor&cathode,const Tensor&voltage,const Tensor&table,const Settings&cfg){
  c10::InferenceMode guard;
  for(const auto&item:cfg)TORCH_CHECK(std::isfinite(item.second),"nonfinite C++/CUDA setting: ",item.first);
- TORCH_CHECK(anode.dim()==3&&anode.size(0)>0&&anode.size(1)==anode.size(2)&&anode.size(1)>=5,"expected square [B,N,N], N>=5");
+ TORCH_CHECK(anode.dim()==3&&anode.size(0)>0&&anode.size(1)>=5&&anode.size(2)>=5,"expected [B,Ny,Nx], Ny,Nx>=5");
  TORCH_CHECK(anode.sizes()==cathode.sizes()&&anode.device()==cathode.device(),"geometry mismatch");
  TORCH_CHECK(anode.scalar_type()==at::kBool&&cathode.scalar_type()==at::kBool,"masks must be bool");
  TORCH_CHECK(voltage.scalar_type()==at::kDouble&&table.scalar_type()==at::kDouble,"FP64 required");
@@ -279,7 +279,7 @@ std::map<std::string,Tensor> run(const Tensor&anode,const Tensor&cathode,const T
  TORCH_CHECK((sum2(canonical_cathode.to(at::kLong))>0).all().item<bool>(),"each candidate must contain a cathode contact cell");
  TORCH_CHECK(table.dim()==1&&voltage.dim()==1,"table and voltages must be vectors");
  TORCH_CHECK(at::isfinite(voltage).all().item<bool>()&&at::isfinite(table).all().item<bool>(),"nonfinite C++/CUDA input");
- auto opts=voltage.options();Geometry g(canonical_anode,canonical_cathode);Params p=params(cfg,g.b,g.n);
+ auto opts=voltage.options();Geometry g(canonical_anode,canonical_cathode);Params p=params(cfg,g.b,g.ny,g.nx);
  TORCH_CHECK((p.full_bv==0||p.full_bv==1)&&(p.full_np==0||p.full_np==1)&&
              (p.diffusion==0||p.diffusion==1)&&(p.augmented==0||p.augmented==1)&&
              p.joule_mode>=0&&p.joule_mode<=2,"invalid C++/CUDA model selector");
@@ -391,14 +391,14 @@ std::map<std::string,Tensor> run(const Tensor&anode,const Tensor&cathode,const T
   int64_t scheduled_upper=static_cast<int64_t>(std::ceil(end/snapshot_period));
   int64_t snapshot_count_upper=std::min<int64_t>(step_count,scheduled_upper+2);
   long double snapshot_values=static_cast<long double>(4)*snapshot_count_upper*
-      static_cast<long double>(g.b)*static_cast<long double>(g.n)*
-      static_cast<long double>(g.n);
+      static_cast<long double>(g.b)*static_cast<long double>(g.ny)*
+      static_cast<long double>(g.nx);
   // Four full-grid fields are retained and then stacked for the return map.
   retained_history_bytes+=2*snapshot_values*sizeof(double);
  }
  TORCH_CHECK(retained_history_bytes<=static_cast<long double>(max_history_bytes),
              "C++/CUDA retained-history allocation exceeds the configured byte budget");
- auto s=at::zeros({NS,g.b,g.n,g.n},opts);s[0].fill_(p.initial_T);
+ auto s=at::zeros({NS,g.b,g.ny,g.nx},opts);s[0].fill_(p.initial_T);
  auto prop64=g.prop.to(at::kDouble);
  s[1].copy_(prop64*p.cp0);s[2].copy_(prop64*p.cm0);s[3].copy_(prop64*p.water0);
  // Contacts overlay propellant; they are not fixed-potential material cells.

@@ -228,9 +228,10 @@ mask와의 정확한 일치, 면적·대칭·연결성·최소 간격, 손상 �
 ## 가로 12 mm·세로 25 mm로 바꿀 때의 기하학적 한계
 
 여기서는 **가로 12 mm·세로 25 mm**를 뜻하며 각도는 수직 기준이다.
-현재 solver의 정사각형 격자를 직사각형으로 변경한 기능이 아니다.
+이 domain의 실제 직사각형 격자와 폭 2 mm·4 mm 선택은
+[12×25 mm 비교 안내](ELECTRODE_RECTANGULAR_STUDY_12X25MM_KR.md)를 따른다.
 아래 값과 `electrode_inclination_sweep.inclination_limits()`는 연속기하 계산이며,
-직사각형 domain의 PDE 실행이나 raster 가능성을 보장하지 않는다.
+실제 생성 시에는 raster의 최소 간격도 별도로 검사한다.
 
 양극·음극의 수평 폭을 각 4 mm로 유지하고 중앙 높이에서 좌우 domain 경계에
 배치하면, 중앙 간격은 **12−4−4=4 mm**다. 기존 17 mm 간격은 가로 12 mm

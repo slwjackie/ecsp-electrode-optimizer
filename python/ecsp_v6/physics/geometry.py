@@ -28,6 +28,10 @@ class GeometryBatch:
     grid_size: int
     domain_size_m: float
     minimum_gap_m: float
+    # Optional rectangular extents. Legacy scalar size remains the height and
+    # grid_size the row count; both spacings must agree in supported solvers.
+    domain_width_m: float | None = None
+    domain_height_m: float | None = None
 
     @property
     def batch_size(self) -> int:

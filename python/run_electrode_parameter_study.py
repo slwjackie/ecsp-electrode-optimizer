@@ -30,6 +30,9 @@ from electrode_inclination_geometry import (
     INCLINED_SCHEMA, make_inclined_case, validate_inclined_spec,
 )
 from electrode_inclination_sweep import DEFAULT_INCLINATION_ANGLES, plan_inclination_sweep
+from electrode_rectangular_geometry import (
+    RECTANGULAR_SCHEMA, make_rectangular_case, validate_rectangular_spec,
+)
 
 BASE_REVISION = "563ffbff7ee1cfbf46a81ff946aac69383b4a461"
 SCHEMA = "full_height_strip_study_v1"
@@ -99,8 +102,9 @@ def write_csv(path: Path, rows: list[dict], fields: list[str] | None = None) -> 
 
 def validate_spec(spec: Mapping[str, Any]) -> dict:
     """A deliberately fixed study; reject silent changes of its physical design."""
-    if isinstance(spec, Mapping) and spec.get("schema") == INCLINED_SCHEMA:
-        result = validate_inclined_spec(spec)
+    if isinstance(spec, Mapping) and spec.get("schema") in {INCLINED_SCHEMA, RECTANGULAR_SCHEMA}:
+        validator = validate_rectangular_spec if spec["schema"] == RECTANGULAR_SCHEMA else validate_inclined_spec
+        result = validator(spec)
         if any(row["id"] in REGISTERED_CASES for row in result["cases"]):
             raise ValueError("Inclined cases must not reuse legacy registered case IDs")
         return result
@@ -222,10 +226,11 @@ def validate_item(a: np.ndarray, c: np.ndarray, meta: Mapping, n: int) -> None:
     Never repair masks, resize them, loosen an area tolerance or drop metadata.
     """
     sid = meta.get("geometry_id")
-    if meta.get("schema") == INCLINED_SCHEMA:
+    if meta.get("schema") in {INCLINED_SCHEMA, RECTANGULAR_SCHEMA}:
         if sid in REGISTERED_CASES:
             raise ValueError("Inclined cases must not reuse legacy registered case IDs")
-        ea, ec, em = make_inclined_case(meta.get("design_case"), n)
+        maker = make_rectangular_case if meta["schema"] == RECTANGULAR_SCHEMA else make_inclined_case
+        ea, ec, em = maker(meta.get("design_case"), n)
     else:
         if sid not in REGISTERED_CASES:
             raise ValueError("Unregistered parameter-study case")
@@ -255,8 +260,10 @@ def geometry_svg(meta: Mapping) -> str:
                          f'fill="none" stroke="black" stroke-width="0.08"/>'
                          f'<text x="{(x0+x1)/2}" y="{(y0+y1)/2}" text-anchor="middle" '
                          f'font-size="0.9">{polarity[0].upper()}</text>')
-    return ('<svg xmlns="http://www.w3.org/2000/svg" width="25mm" height="25mm" '
-            'viewBox="0 0 25 25"><rect width="25" height="25" fill="white" '
+    width = meta.get("domain_width_mm", 25.)
+    height = meta.get("domain_height_mm", 25.)
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:g}mm" height="{height:g}mm" '
+            f'viewBox="0 0 {width:g} {height:g}"><rect width="{width:g}" height="{height:g}" fill="white" '
             'stroke="black" stroke-width="0.08"/>' + ''.join(rects) + '</svg>\n')
 
 
@@ -278,13 +285,19 @@ def generate(spec: Mapping, out: Path, *, experiment_seed: int = 20261005,
     records = []
     for row in spec["cases"]:
         sid = row["id"]
-        a, c, meta = (make_inclined_case(row, spec["grid_size"])
-                      if spec["schema"] == INCLINED_SCHEMA
-                      else make_case(sid, spec["grid_size"]))
+        if spec["schema"] == RECTANGULAR_SCHEMA:
+            a, c, meta = make_rectangular_case(row, spec["grid_size"])
+        elif spec["schema"] == INCLINED_SCHEMA:
+            a, c, meta = make_inclined_case(row, spec["grid_size"])
+        else:
+            a, c, meta = make_case(sid, spec["grid_size"])
         folder = staging / "library" / sid
         folder.mkdir(parents=True)
+        dimensions = ({"domain_width_mm": meta["domain_width_mm"],
+                       "domain_height_mm": meta["domain_height_mm"]}
+                      if spec["schema"] == RECTANGULAR_SCHEMA else {})
         np.savez_compressed(folder / "mask.npz", anode=a, cathode=c,
-                            propellant=np.ones_like(a), domain_mm=25.0)
+                            propellant=np.ones_like(a), domain_mm=25.0, **dimensions)
         (folder / "geometry.svg").write_text(geometry_svg(meta), encoding="utf-8")
         meta["mask_file_sha256"] = file_hash(folder / "mask.npz")
         write_json(folder / "metadata.json", meta)
@@ -350,21 +363,27 @@ def audit(out: Path) -> tuple[dict, list[tuple]]:
         meta = read_json(folder / "metadata.json")
         if meta != record or file_hash(folder / "mask.npz") != meta["mask_file_sha256"]:
             raise ValueError("Stored geometry checksum/metadata mismatch")
-        if spec["schema"] == INCLINED_SCHEMA:
-            if meta.get("schema") != INCLINED_SCHEMA or meta.get("design_case") != design:
+        if spec["schema"] in {INCLINED_SCHEMA, RECTANGULAR_SCHEMA}:
+            if meta.get("schema") != spec["schema"] or meta.get("design_case") != design:
                 raise ValueError("Inclined geometry does not match the declared study case")
         with np.load(folder / "mask.npz", allow_pickle=False) as z:
             a, c = z["anode"].copy(), z["cathode"].copy()
             if (z["propellant"].shape != a.shape or z["propellant"].dtype != np.bool_
                 or not z["propellant"].all() or float(z["domain_mm"]) != 25.0):
                 raise ValueError("Full-propellant overlay contract violated")
+            if spec["schema"] == RECTANGULAR_SCHEMA and (
+                "domain_width_mm" not in z or "domain_height_mm" not in z
+                or float(z["domain_width_mm"]) != spec["domain_width_mm"]
+                or float(z["domain_height_mm"]) != spec["domain_height_mm"]
+            ):
+                raise ValueError("Rectangular mask domain dimensions differ from the study")
         validate_item(a, c, meta, spec["grid_size"])
         items.append((a, c, meta, out / "cases" / meta["geometry_id"]))
     return spec, items
 
 
 def runtime_config(base: Mapping, n: int, device: str, batch_size: int,
-                   *, split_study: bool = False) -> dict:
+                   *, split_study: bool = False, rectangular_study: bool = False) -> dict:
     if device not in {"cpu", "cuda"} or batch_size < 1:
         raise ValueError("Use an explicit cpu/cuda device and a positive batch size")
     from ecsp_preflame.configuration import normalize_preflame_config
@@ -374,6 +393,8 @@ def runtime_config(base: Mapping, n: int, device: str, batch_size: int,
         maximum_components_per_polarity=2 if split_study else 1,
         maximum_total_components=4 if split_study else 2,
         surface_contact_model="overlay_on_full_propellant_domain")
+    if rectangular_study:
+        cfg["geometry"].update(domain_width_mm=12., domain_height_mm=25.)
     adapter = cfg.setdefault("evaluator", {})
     adapter.update(backend="preflame_cpp_cuda", device=device, grid_size=n,
                    internal_batch_size=batch_size, save_representative_fields=True)
@@ -393,27 +414,34 @@ def build_geometry(items, n: int, device, minimum_gap_m: float, geometry_type):
     import torch
     if not items:
         raise ValueError("Empty geometry batch")
-    ids, anodes, cathodes = [], [], []
+    ids, anodes, cathodes, dimensions = [], [], [], set()
     for a, c, meta, _ in items:
         validate_item(a, c, meta, n)
         # Bent and split geometries validate their own smallest clearances. For
         # legacy cases, extra metadata must never override their validated gap.
-        if meta.get("schema") == INCLINED_SCHEMA:
+        if meta.get("schema") in {INCLINED_SCHEMA, RECTANGULAR_SCHEMA}:
             gap_mm = min(meta["minimum_edge_gap_mm"], meta["raster_minimum_gap_mm"])
         else:
             gap_mm = meta["minimum_edge_gap_mm"] if meta["geometry_id"] == SPLIT_CASE_ID else meta["gap_mm"]
         if gap_mm / 1000 + 1e-12 < minimum_gap_m:
             raise ValueError("Case gap is below the evaluator's requested minimum")
         ids.append(meta["geometry_id"])
+        dimensions.add((meta.get("domain_width_mm", 25.), meta.get("domain_height_mm", 25.)))
         anodes.append(a)
         cathodes.append(c)
     if len(ids) != len(set(ids)):
         raise ValueError("Duplicate case in one physics batch")
+    if len(dimensions) != 1:
+        raise ValueError("A physics batch must share one domain shape")
+    width, height = next(iter(dimensions))
+    extents = ({"domain_width_m": width / 1000, "domain_height_m": height / 1000}
+               if width != height else {})
     at = torch.as_tensor(np.stack(anodes), dtype=torch.bool, device=device)
     ct = torch.as_tensor(np.stack(cathodes), dtype=torch.bool, device=device)
     return geometry_type(geometry_ids=ids, anode=at, cathode=ct,
                          fixed=torch.zeros_like(at), propellant=torch.ones_like(at),
-                         grid_size=n, domain_size_m=0.025, minimum_gap_m=minimum_gap_m)
+                         grid_size=n, domain_size_m=height / 1000, minimum_gap_m=minimum_gap_m,
+                         **extents)
 
 
 def create_study_evaluator(root: Path, cfg: Mapping, workdir: Path):
@@ -427,8 +455,14 @@ def create_study_evaluator(root: Path, cfg: Mapping, workdir: Path):
             if not math.isclose(self.domain_size_m, 0.025, abs_tol=1e-15, rel_tol=0):
                 raise RuntimeError("Resolved physics domain is not 25 mm")
             try:
-                return build_geometry(items, self.grid_size, self.device,
-                                      self.minimum_gap_m, GeometryBatch)
+                geometry = build_geometry(items, self.grid_size, self.device,
+                                          self.minimum_gap_m, GeometryBatch)
+                resolved = getattr(self, "config", {}).get("geometry", {})
+                expected_width = float(resolved.get("domainWidth_m", self.domain_size_m))
+                actual_width = getattr(geometry, "domain_width_m", None) or geometry.domain_size_m
+                if not math.isclose(actual_width, expected_width, abs_tol=1e-15, rel_tol=0):
+                    raise ValueError("Resolved physics domain width differs from the mask")
+                return geometry
             except (ValueError, KeyError, TypeError) as exc:
                 raise PreflameCandidateGeometryError(str(exc)) from exc
 
@@ -484,12 +518,16 @@ def summary_rows(records: list[dict]) -> list[dict]:
             "anode_area_mm2", "cathode_area_mm2", "total_electrode_area_mm2",
             "anode_to_cathode_area_ratio", "grid_size", "grid_spacing_mm")}
         row.update(groups=";".join(m["groups"]), result_state=state)
-        if m.get("schema") == INCLINED_SCHEMA:
+        if m.get("schema") in {INCLINED_SCHEMA, RECTANGULAR_SCHEMA}:
             for key in ("inclination_deg", "central_gap_mm", "end_gap_mm",
                         "minimum_edge_gap_mm", "raster_minimum_gap_mm",
                         "raster_max_boundary_error_mm", "actual_anode_area_mm2",
                         "actual_cathode_area_mm2", "anode_normal_width_mm",
                         "cathode_normal_width_mm", "electrode_centerline_length_mm"):
+                row[key] = m[key]
+        if m.get("schema") == RECTANGULAR_SCHEMA:
+            for key in ("domain_width_mm", "domain_height_mm", "grid_rows", "grid_columns",
+                        "propellant_domain_area_mm2"):
                 row[key] = m[key]
         if split_comparison:
             row.update(central_split_gap_mm=m.get("central_split_gap_mm", 0.0),
@@ -523,7 +561,8 @@ def evaluate(root: Path, out: Path, physics_path: Path, device: str,
     if any(out == root / p or (root / p) in out.parents for p in ("python", "cpp", "config", "data")):
         raise ValueError("Simulation output must not be inside source/data directories")
     base = yaml.safe_load(physics_path.read_text(encoding="utf-8"))
-    cfg = runtime_config(base, spec["grid_size"], device, batch_size, split_study=split_study)
+    cfg = runtime_config(base, spec["grid_size"], device, batch_size, split_study=split_study,
+                         rectangular_study=spec["schema"] == RECTANGULAR_SCHEMA)
     fence = source_fence(root)
     identity = digest(dict(schema=spec["schema"], study=spec, runtime=cfg, sources=fence,
                            geometry=read_json(out / "geometry_manifest.json")))
@@ -587,8 +626,13 @@ def evaluate(root: Path, out: Path, physics_path: Path, device: str,
     write_csv(out / "parameter_study_summary.csv", rows)
     if split_study:
         write_csv(out / "split_comparison_summary.csv", rows)
-    elif spec["schema"] == INCLINED_SCHEMA:
+    elif spec["schema"] in {INCLINED_SCHEMA, RECTANGULAR_SCHEMA}:
         write_csv(out / "inclination_summary.csv", rows)
+        if spec["schema"] == RECTANGULAR_SCHEMA:
+            for width in (2, 4):
+                selected = [r for r in rows if r["anode_width_mm"] == width]
+                if selected:
+                    write_csv(out / f"width_{width}mm_summary.csv", selected)
     else:
         for group in ("spacing", "width", "area_ratio"):
             write_csv(out / f"{group}_summary.csv", [r for r in rows if group in r["groups"].split(";")])
@@ -699,6 +743,8 @@ def main() -> int:
     parser.add_argument("--input", type=Path)
     parser.add_argument("--angles", type=float, nargs="+",
                         help="generate-sweep only: requested angles from vertical; default 0 5 10 15 20 25 30; ensures 0-degree control")
+    parser.add_argument("--electrode-width-mm", type=int, choices=(2, 4),
+                        help="12x25 mm generate/generate-sweep only: choose one common anode/cathode width; omit for both")
     args = parser.parse_args()
     root = args.project_root.resolve()
     def relative(path):
@@ -707,22 +753,36 @@ def main() -> int:
         parser.error("--out is required")
     if args.angles is not None and args.command != "generate-sweep":
         parser.error("--angles requires generate-sweep")
+    if args.electrode_width_mm is not None and args.command not in {"generate", "generate-sweep"}:
+        parser.error("--electrode-width-mm is for generate/generate-sweep only; evaluation uses the stored study")
     out = relative(args.out)
-    if args.command == "generate":
+    if args.command in {"generate", "generate-sweep"}:
         spec = yaml.safe_load(relative(args.study_config).read_text(encoding="utf-8"))
+        if args.electrode_width_mm is not None:
+            if spec.get("schema") != RECTANGULAR_SCHEMA:
+                parser.error("--electrode-width-mm requires the 12x25 mm rectangular study config")
+            spec = validate_spec(spec)
+            spec["cases"] = [row for row in spec["cases"]
+                             if row["anode_width_mm"] == args.electrode_width_mm]
+            spec = validate_spec(spec)
+    if args.command == "generate":
         generate(spec, out, experiment_seed=args.experiment_seed)
         print(f"Generated {len(spec['cases'])} validated study cases: {out}")
     elif args.command == "generate-sweep":
-        spec = yaml.safe_load(relative(args.study_config).read_text(encoding="utf-8"))
         report = generate_sweep(spec, out, args.angles, experiment_seed=args.experiment_seed)
         for row in report:
-            print(f"{row['inclination_deg']:g} deg: {row['status']} {row['reason']}")
+            prefix = (f"width={row['anode_width_mm']:g} mm "
+                      if spec["schema"] == RECTANGULAR_SCHEMA else "")
+            print(f"{prefix}{row['inclination_deg']:g} deg: {row['status']} {row['reason']}")
         accepted = sum(row["status"] == "accepted" for row in report)
         print(f"Generated {accepted} feasible cases (including 0-degree control); "
               f"{len(report)-accepted} rejected; see {out / 'angle_feasibility.csv'}")
     elif args.command == "audit":
         spec, items = audit(out)
         print(json.dumps(dict(cases=len(items), grid_size=spec["grid_size"],
+                              grid_rows=items[0][0].shape[0], grid_columns=items[0][0].shape[1],
+                              domain_width_mm=spec.get("domain_width_mm", 25.),
+                              domain_height_mm=spec.get("domain_height_mm", 25.),
                               spacing_mm=25 / spec["grid_size"], pde_executed=False)))
     elif args.command == "evaluate":
         rows = evaluate(root, out, relative(args.physics_config), args.device,

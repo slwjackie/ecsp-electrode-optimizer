@@ -1,0 +1,18 @@
+# Genuine rectangular domain: 12 mm horizontal x 25 mm vertical, without padding.
+# Width is the horizontal cross-section; each width group preserves contact area.
+# Select width 2 or 4 by retaining that group's cases (including its 0-degree control).
+# The common-angle comparison is 0/5 degrees; width 2 additionally permits 10/15.
+schema: rectangular_inclined_strip_study_v1
+domain_width_mm: 12.0
+domain_height_mm: 25.0
+electrode_length_mm: 25.0
+grid_size: 200  # rows; equal 0.125 mm cells give 96 columns
+placement: edge_anchored_pair
+experimental_replicates: 5
+cases:
+  - {id: W2_ANGLE_00, anode_width_mm: 2.0, cathode_width_mm: 2.0, gap_mm: 8.0, inclination_deg: 0.0, groups: [inclination]}
+  - {id: W2_ANGLE_05, anode_width_mm: 2.0, cathode_width_mm: 2.0, gap_mm: 8.0, inclination_deg: 5.0, groups: [inclination]}
+  - {id: W2_ANGLE_10, anode_width_mm: 2.0, cathode_width_mm: 2.0, gap_mm: 8.0, inclination_deg: 10.0, groups: [inclination]}
+  - {id: W2_ANGLE_15, anode_width_mm: 2.0, cathode_width_mm: 2.0, gap_mm: 8.0, inclination_deg: 15.0, groups: [inclination]}
+  - {id: W4_ANGLE_00, anode_width_mm: 4.0, cathode_width_mm: 4.0, gap_mm: 4.0, inclination_deg: 0.0, groups: [inclination]}
+  - {id: W4_ANGLE_05, anode_width_mm: 4.0, cathode_width_mm: 4.0, gap_mm: 4.0, inclination_deg: 5.0, groups: [inclination]}

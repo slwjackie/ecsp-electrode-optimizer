@@ -1,8 +1,8 @@
 """Plan angle requests without sending impossible electrode contacts to physics.
 
-The planner uses the existing square-domain rasterizer. ``inclination_limits``
-also describes rectangular domains analytically; it does not add rectangular
-domain support to the production solver.
+The planner dispatches to the square or 12 x 25 mm rectangular rasterizer.
+``inclination_limits`` is a separate analytical calculation; raster validation
+is performed for every generated case.
 """
 from __future__ import annotations
 
@@ -14,6 +14,9 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 
 from electrode_inclination_geometry import make_inclined_case, validate_inclined_spec
+from electrode_rectangular_geometry import (
+    RECTANGULAR_SCHEMA, make_rectangular_case, validate_rectangular_spec,
+)
 
 DEFAULT_INCLINATION_ANGLES = tuple(range(0, 31, 5))
 
@@ -76,7 +79,10 @@ def plan_inclination_sweep(template: Mapping[str, Any],
     as rejected. Bad numeric input is an error, not a rejected physical design.
     At least one nonzero angle must survive, as required by the study contract.
     """
-    result = validate_inclined_spec(template)
+    rectangular = isinstance(template, Mapping) and template.get("schema") == RECTANGULAR_SCHEMA
+    validator = validate_rectangular_spec if rectangular else validate_inclined_spec
+    make_case = make_rectangular_case if rectangular else make_inclined_case
+    result = validator(template)
     requested = DEFAULT_INCLINATION_ANGLES if angles is None else angles
     if isinstance(requested, (str, bytes, Mapping)):
         raise ValueError("angles must be a sequence of finite numbers")
@@ -90,35 +96,43 @@ def plan_inclination_sweep(template: Mapping[str, Any],
     if any(not 0 <= angle < 90 for angle in numeric):
         raise ValueError("inclination_deg must satisfy 0 <= angle < 90")
     numeric = sorted(set(numeric) | {0.})
-    control = next(row for row in result["cases"] if row["inclination_deg"] == 0)
-    wa, wc, gap = (control[key] for key in
-                   ("anode_width_mm", "cathode_width_mm", "gap_mm"))
-    limits = inclination_limits(result["domain_mm"], result["electrode_length_mm"],
-                                wa, wc, gap)
-    accepted, reports, masks = [], [], set()
-    for angle in numeric:
-        row = copy.deepcopy(control)
-        row.update(id=_case_id(angle), inclination_deg=angle)
-        report = dict(inclination_deg=angle, geometry_id=row["id"],
-                      status="rejected", reason="", central_gap_mm=gap,
-                      end_gap_mm=gap - result["electrode_length_mm"] * math.tan(math.radians(angle)),
-                      anode_normal_width_mm=wa * math.cos(math.radians(angle)),
-                      cathode_normal_width_mm=wc * math.cos(math.radians(angle)),
-                      maximum_analytical_inclination_deg=limits["maximum_inclination_deg"],
-                      raster_minimum_gap_mm=None)
-        try:
-            a, c, meta = make_inclined_case(row, result["grid_size"])
-            key = (np.packbits(a).tobytes(), np.packbits(c).tobytes())
-            if key in masks:
-                raise ValueError("Identical raster mask to an accepted angle; reduce grid spacing or increase angle separation")
-            masks.add(key)
-        except ValueError as exc:
-            report["reason"] = str(exc)
-        else:
-            accepted.append(meta["design_case"])
-            report.update(status="accepted", raster_minimum_gap_mm=meta["raster_minimum_gap_mm"])
-        reports.append(report)
-    if len(accepted) < 2:
+    controls = [row for row in result["cases"] if row["inclination_deg"] == 0]
+    controls.sort(key=lambda row: (row["anode_width_mm"], row["cathode_width_mm"]))
+    domain_width = result["domain_width_mm"] if rectangular else result["domain_mm"]
+    domain_height = result["domain_height_mm"] if rectangular else result["electrode_length_mm"]
+    accepted, reports = [], []
+    for control in controls:
+        wa, wc, gap = (control[key] for key in
+                       ("anode_width_mm", "cathode_width_mm", "gap_mm"))
+        limits = inclination_limits(domain_width, domain_height, wa, wc, gap)
+        masks = set()
+        for angle in numeric:
+            row = copy.deepcopy(control)
+            sid = f"W{wa:g}_{_case_id(angle)}" if rectangular else _case_id(angle)
+            row.update(id=sid, inclination_deg=angle)
+            report = dict(inclination_deg=angle, geometry_id=row["id"],
+                          status="rejected", reason="", central_gap_mm=gap,
+                          end_gap_mm=gap - domain_height * math.tan(math.radians(angle)),
+                          anode_normal_width_mm=wa * math.cos(math.radians(angle)),
+                          cathode_normal_width_mm=wc * math.cos(math.radians(angle)),
+                          maximum_analytical_inclination_deg=limits["maximum_inclination_deg"],
+                          raster_minimum_gap_mm=None)
+            if rectangular:
+                report.update(anode_width_mm=wa, cathode_width_mm=wc,
+                              domain_width_mm=domain_width, domain_height_mm=domain_height)
+            try:
+                a, c, meta = make_case(row, result["grid_size"])
+                key = (np.packbits(a).tobytes(), np.packbits(c).tobytes())
+                if key in masks:
+                    raise ValueError("Identical raster mask to an accepted angle; reduce grid spacing or increase angle separation")
+                masks.add(key)
+            except ValueError as exc:
+                report["reason"] = str(exc)
+            else:
+                accepted.append(meta["design_case"])
+                report.update(status="accepted", raster_minimum_gap_mm=meta["raster_minimum_gap_mm"])
+            reports.append(report)
+    if not any(row["inclination_deg"] > 0 for row in accepted):
         raise ValueError("No feasible nonzero inclination angle remains; inspect dimensions, angle range and grid spacing")
     result["cases"] = accepted
-    return validate_inclined_spec(result), reports
+    return validator(result), reports

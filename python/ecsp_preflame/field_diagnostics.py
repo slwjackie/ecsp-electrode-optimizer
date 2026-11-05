@@ -42,14 +42,29 @@ def _lane(tensor, index: int):
     return tensor[index:index + 1]
 
 
-def _make_geometry(item, grid_size: int, domain_size_m: float, device):
+def _make_geometry(item, grid_size: int, domain_size_m: float, device,
+                   *, domain_width_m: float | None = None, domain_height_m: float | None = None):
     import torch
     from ecsp_v6.physics.geometry import GeometryBatch
     from ecsp_v6.physics.numerics import resize_nearest_numpy
 
     a_raw, c_raw, metadata, _ = item
-    a = resize_nearest_numpy(np.asarray(a_raw, dtype=bool), grid_size)
-    c = resize_nearest_numpy(np.asarray(c_raw, dtype=bool), grid_size)
+    width = domain_size_m if domain_width_m is None else float(domain_width_m)
+    height = domain_size_m if domain_height_m is None else float(domain_height_m)
+    from ecsp_preflame.electrochemical_thermal_decomposition import _preflame_grid_spacing
+    if not all(math.isfinite(v) and v > 0 for v in (width, height)):
+        raise ValueError("Representative geometry requires finite positive extents")
+    if not math.isclose(width, height, rel_tol=1e-12, abs_tol=0.):
+        # Rectangular studies already provide exact masks at production resolution.
+        # Never invoke the legacy square resize path for them.
+        a, c = np.asarray(a_raw, dtype=bool), np.asarray(c_raw, dtype=bool)
+        if a.ndim != 2 or a.shape != c.shape or a.shape[0] != grid_size:
+            raise ValueError("Representative rectangular masks do not match the production grid")
+        _preflame_grid_spacing({"geometry": {"domainSize_m": domain_size_m,
+            "domainWidth_m": width, "domainHeight_m": height}}, *a.shape)
+    else:
+        a = resize_nearest_numpy(np.asarray(a_raw, dtype=bool), grid_size)
+        c = resize_nearest_numpy(np.asarray(c_raw, dtype=bool), grid_size)
     anode = torch.as_tensor(a, device=device, dtype=torch.bool).unsqueeze(0)
     cathode = torch.as_tensor(c, device=device, dtype=torch.bool).unsqueeze(0)
     # electrochemical-thermal-decomposition surface-overlay semantics: the entire 2-D domain remains propellant;
@@ -65,6 +80,8 @@ def _make_geometry(item, grid_size: int, domain_size_m: float, device):
         grid_size=grid_size,
         domain_size_m=domain_size_m,
         minimum_gap_m=0.0,
+        domain_width_m=width,
+        domain_height_m=height,
     ), a, c
 
 
@@ -260,15 +277,25 @@ def write_snapshot_artifacts(
     time_s: float,
     initial_temperature_K: float,
     semantics: str,
+    domain_width_mm: float | None = None,
+    domain_height_mm: float | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
-    n = int(temperature.shape[0])
-    if any(np.asarray(x).shape != (n, n) for x in (
+    if np.asarray(temperature).ndim != 2:
+        raise ValueError("Representative temperature must be a 2-D field")
+    ny, nx = temperature.shape
+    if any(np.asarray(x).shape != (ny, nx) for x in (
         current_x, current_y, current_magnitude, potential, progress, joule_heat, anode, cathode
     )):
-        raise ValueError("Representative snapshot fields must share one square grid")
-    x_mm = (np.arange(n, dtype=np.float64) + 0.5) * float(domain_mm) / n
+        raise ValueError("Representative snapshot fields must share one grid")
+    width = float(domain_mm if domain_width_mm is None else domain_width_mm)
+    height = float(domain_mm if domain_height_mm is None else domain_height_mm)
+    from ecsp_preflame.electrochemical_thermal_decomposition import _preflame_grid_spacing
+    _preflame_grid_spacing({"geometry": {"domainSize_m": float(domain_mm) / 1000.,
+        "domainWidth_m": width / 1000., "domainHeight_m": height / 1000.}}, ny, nx)
+    x_mm = (np.arange(nx, dtype=np.float64) + 0.5) * width / nx
+    y_mm = (np.arange(ny, dtype=np.float64) + 0.5) * height / ny
     npz_name = f"fields_{tag}.npz"
     np.savez_compressed(
         folder / npz_name,
@@ -282,9 +309,11 @@ def write_snapshot_artifacts(
         anode_mask=np.asarray(anode, np.uint8),
         cathode_mask=np.asarray(cathode, np.uint8),
         x_mm=x_mm.astype(np.float32),
-        y_mm=x_mm.astype(np.float32),
+        y_mm=y_mm.astype(np.float32),
         time_s=np.asarray(float(time_s), np.float64),
         domain_mm=np.asarray(float(domain_mm), np.float64),
+        domain_width_mm=np.asarray(width, np.float64),
+        domain_height_mm=np.asarray(height, np.float64),
     )
 
     names = {
@@ -330,8 +359,12 @@ def write_snapshot_artifacts(
         "state_semantics": semantics,
         "solver_storage_dtype": "float64",
         "archive_storage_dtype": "float32",
-        "grid_size": n,
+        "grid_size": ny,
+        "grid_rows": ny,
+        "grid_columns": nx,
         "domain_mm": float(domain_mm),
+        "domain_width_mm": width,
+        "domain_height_mm": height,
         "current_density_definition": (
             "production compute_current() evaluated from the saved compiled state/potential; "
             "includes configured conductive and diffusion-current terms"
@@ -342,10 +375,10 @@ def write_snapshot_artifacts(
 
 def _diagnostic_arrays(state, geometry, config, composition):
     import torch
-    from ecsp_preflame.electrochemical_thermal_decomposition import preflame_transport_fields
+    from ecsp_preflame.electrochemical_thermal_decomposition import preflame_transport_fields, _preflame_grid_spacing
     from ecsp_v6.physics.electrochem import compute_current
 
-    spacing = float(geometry.domain_size_m) / int(geometry.grid_size)
+    spacing = _preflame_grid_spacing(config, *geometry.anode.shape[-2:])
     with torch.inference_mode():
         transport = preflame_transport_fields(state, geometry, config, composition)
         electrical = compute_current(
@@ -378,12 +411,15 @@ def save_representative_field_artifacts(
         raise RuntimeError("Representative field capture requested but compiled finalFields are missing")
     initial_temperature = float(config["preflameModel"]["thermal"]["initialTemperature_K"])
     domain_mm = float(domain_size_m) * 1000.0
+    width_m = float(config["geometry"].get("domainWidth_m", domain_size_m))
+    height_m = float(config["geometry"].get("domainHeight_m", domain_size_m))
     records = []
 
     for i, (item, row) in enumerate(zip(items, rows)):
         folder = Path(item[3])
         geometry, anode, cathode = _make_geometry(
-            item, int(grid_size), float(domain_size_m), _lane(final_fields["temperature_K"], i).device
+            item, int(grid_size), float(domain_size_m), _lane(final_fields["temperature_K"], i).device,
+            domain_width_m=width_m, domain_height_m=height_m,
         )
         artifacts: dict[str, Any] = {}
         metrics: dict[str, Any] = {}
@@ -403,6 +439,7 @@ def save_representative_field_artifacts(
             anode=anode,
             cathode=cathode,
             domain_mm=domain_mm,
+            domain_width_mm=1000. * width_m, domain_height_mm=1000. * height_m,
             time_s=float(row.get("evaluationTime_s", config["preflameModel"]["evaluationTime_s"])),
             initial_temperature_K=initial_temperature,
             semantics=eval_semantics,
@@ -425,6 +462,7 @@ def save_representative_field_artifacts(
                 anode=anode,
                 cathode=cathode,
                 domain_mm=domain_mm,
+                domain_width_mm=1000. * width_m, domain_height_mm=1000. * height_m,
                 time_s=float(onset_time),
                 initial_temperature_K=initial_temperature,
                 semantics="first_condensed_phase_onset_state",

@@ -830,6 +830,24 @@ def _validate_preflame_config(config: dict[str, Any]) -> tuple[DecompositionKine
     return parsed
 
 
+def _preflame_grid_spacing(config: Mapping[str, Any], rows: int, columns: int) -> float:
+    """Resolve physical extents without stretching rectangular arrays to squares."""
+    geometry = config["geometry"]
+    legacy_height = float(geometry["domainSize_m"])
+    width = float(geometry.get("domainWidth_m", legacy_height))
+    height = float(geometry.get("domainHeight_m", legacy_height))
+    if not all(math.isfinite(value) and value > 0 for value in (width, height, legacy_height)):
+        raise ValueError("Preflame domain extents must be finite and positive")
+    if not math.isclose(height, legacy_height, rel_tol=1e-12, abs_tol=0.):
+        raise ValueError("geometry.domainSize_m must equal domainHeight_m")
+    if rows < 2 or columns < 2:
+        raise ValueError("Preflame grids require at least two rows and columns")
+    dy, dx = height / rows, width / columns
+    if not math.isclose(dx, dy, rel_tol=1e-12, abs_tol=0.):
+        raise ValueError("Rectangular preflame grids require equal physical dx and dy")
+    return dy
+
+
 def _validate_preflame_runtime_contract(
     config: Mapping[str, Any],
     composition: CompositionModel,
@@ -1265,28 +1283,31 @@ def _validate_preflame_runtime_contract(
         )
 
     domain_size = float(geometry_cfg["domainSize_m"])
+    domain_width = float(geometry_cfg.get("domainWidth_m", domain_size))
+    domain_height = float(geometry_cfg.get("domainHeight_m", domain_size))
     surface_layer = float(geometry_cfg["surfaceLayerThickness_m"])
     contact_length = float(interface["contactNormalConductionLength_m"])
     if not all(
         math.isfinite(value) and value > 0.0
-        for value in (domain_size, surface_layer, contact_length)
+        for value in (domain_size, domain_width, domain_height, surface_layer, contact_length)
     ):
         raise ValueError(
             "electrochemical-thermal-decomposition domain size, surface-layer thickness and contact-normal length "
             "must be finite and positive"
         )
+    if not math.isclose(domain_height, domain_size, rel_tol=1e-12, abs_tol=0.):
+        raise ValueError("geometry.domainSize_m must equal domainHeight_m")
     if geometry is not None:
         if (
             geometry.anode.ndim != 3
             or geometry.cathode.shape != geometry.anode.shape
             or geometry.propellant.shape != geometry.anode.shape
             or geometry.fixed.shape != geometry.anode.shape
-            or geometry.anode.shape[-2] != geometry.anode.shape[-1]
-            or geometry.anode.shape[-1] != geometry.grid_size
+            or geometry.anode.shape[-2] != geometry.grid_size
             or geometry.anode.shape[0] != geometry.batch_size
         ):
             raise ValueError(
-                "electrochemical-thermal-decomposition GeometryBatch tensors must be square [batch, grid_size, grid_size]"
+                "electrochemical-thermal-decomposition GeometryBatch tensors must share [batch, grid_size, columns]"
             )
         geometry_domain = float(geometry.domain_size_m)
         domain_tolerance = 64.0 * max(
@@ -1300,7 +1321,12 @@ def _validate_preflame_runtime_contract(
             raise ValueError(
                 "GeometryBatch.domain_size_m must equal geometry.domainSize_m"
             )
-        spacing = domain_size / geometry.grid_size
+        for attribute, expected in (("domain_width_m", domain_width), ("domain_height_m", domain_height)):
+            extent = getattr(geometry, attribute, None)
+            extent = geometry_domain if extent is None else float(extent)
+            if not math.isfinite(extent) or not math.isclose(extent, expected, rel_tol=1e-12, abs_tol=0.):
+                raise ValueError(f"GeometryBatch.{attribute} must match configured physical extent")
+        spacing = _preflame_grid_spacing(config, geometry.anode.shape[-2], geometry.anode.shape[-1])
         cell_area = spacing * spacing
         cell_volume = cell_area * surface_layer
         if (
@@ -1620,8 +1646,7 @@ def continue_preflame_onset_batch_to_evaluation(
         raise ValueError(
             "Objective continuation fields must be [batch, rows, columns]"
         )
-    if temperature.shape[-2] != temperature.shape[-1] or temperature.shape[-1] < 2:
-        raise ValueError("Objective continuation requires a square grid >=2")
+    spacing = _preflame_grid_spacing(config, temperature.shape[-2], temperature.shape[-1])
 
     def field(name: str) -> torch.Tensor:
         value = torch.as_tensor(
@@ -1788,7 +1813,7 @@ def continue_preflame_onset_batch_to_evaluation(
             thermal.get("stefanBoltzmann_W_per_m2K4", 5.670374419e-8)
         )
         thickness = float(config["geometry"]["surfaceLayerThickness_m"])
-        spacing = float(config["geometry"]["domainSize_m"]) / temperature.shape[-1]
+        # Equal cell spacing was checked against both physical extents above.
         cell_area = spacing * spacing
         cell_volume = cell_area * thickness
         if (
@@ -2617,6 +2642,8 @@ def run_preflame_batch(
     all-success batches terminate early in either mode because no pre-flame
     state remains to advance.
     """
+    if geometry.anode.shape[-2] != geometry.anode.shape[-1]:
+        raise ValueError("Rectangular preflame integration requires the C++/CUDA backend")
     channel_1, channel_2 = _validate_preflame_config(config)
     _validate_preflame_runtime_contract(config, composition, geometry)
     bc = config["preflameModel"]
