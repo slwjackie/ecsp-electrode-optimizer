@@ -26,6 +26,10 @@ from typing import Any, Mapping
 import numpy as np
 import yaml
 
+from electrode_inclination_geometry import (
+    INCLINED_SCHEMA, make_inclined_case, validate_inclined_spec,
+)
+
 BASE_REVISION = "563ffbff7ee1cfbf46a81ff946aac69383b4a461"
 SCHEMA = "full_height_strip_study_v1"
 SPLIT_SCHEMA = "split_checkerboard_study_v1"
@@ -94,6 +98,11 @@ def write_csv(path: Path, rows: list[dict], fields: list[str] | None = None) -> 
 
 def validate_spec(spec: Mapping[str, Any]) -> dict:
     """A deliberately fixed study; reject silent changes of its physical design."""
+    if isinstance(spec, Mapping) and spec.get("schema") == INCLINED_SCHEMA:
+        result = validate_inclined_spec(spec)
+        if any(row["id"] in REGISTERED_CASES for row in result["cases"]):
+            raise ValueError("Inclined cases must not reuse legacy registered case IDs")
+        return result
     expected_keys = {"schema", "domain_mm", "electrode_length_mm", "grid_size",
                      "placement", "experimental_replicates", "cases"}
     if set(spec) != expected_keys or spec["schema"] not in {SCHEMA, SPLIT_SCHEMA}:
@@ -212,20 +221,31 @@ def validate_item(a: np.ndarray, c: np.ndarray, meta: Mapping, n: int) -> None:
     Never repair masks, resize them, loosen an area tolerance or drop metadata.
     """
     sid = meta.get("geometry_id")
-    if sid not in REGISTERED_CASES:
-        raise ValueError("Unregistered parameter-study case")
-    ea, ec, em = make_case(sid, n)
+    if meta.get("schema") == INCLINED_SCHEMA:
+        if sid in REGISTERED_CASES:
+            raise ValueError("Inclined cases must not reuse legacy registered case IDs")
+        ea, ec, em = make_inclined_case(meta.get("design_case"), n)
+    else:
+        if sid not in REGISTERED_CASES:
+            raise ValueError("Unregistered parameter-study case")
+        ea, ec, em = make_case(sid, n)
     if any(meta.get(k) != v for k, v in em.items()):
         raise ValueError(f"{sid}: missing or inconsistent geometry metadata")
     if (a.dtype != np.bool_ or c.dtype != np.bool_ or
         not np.array_equal(a, ea) or not np.array_equal(c, ec)):
-        raise ValueError(f"{sid}: mask differs from the exact registered rectangle contract")
+        raise ValueError(f"{sid}: mask differs from the declared geometry contract")
 
 
 def geometry_svg(meta: Mapping) -> str:
     # An engineering vector drawing from exact coordinates, not a generated image.
     rects = []
     for polarity in ("anode", "cathode"):
+        if f"{polarity}_polygon_mm" in meta:
+            points = " ".join(f"{x},{y}" for x, y in meta[f"{polarity}_polygon_mm"])
+            color = "#d64b45" if polarity == "anode" else "#3765bd"
+            rects.append(f'<polygon points="{points}" fill="{color}" fill-opacity="0.25" '
+                         f'stroke="{color}" stroke-width="0.08"/>')
+            continue
         bounds = meta.get(f"{polarity}_rectangles_mm")
         if bounds is None:
             bounds = [meta[f"{polarity}_bounds_mm"]]
@@ -249,8 +269,11 @@ def generate(spec: Mapping, out: Path, *, experiment_seed: int = 20261005) -> No
     out.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=out.name + ".preparing-", dir=out.parent))
     records = []
-    for sid in case_ids:
-        a, c, meta = make_case(sid, spec["grid_size"])
+    for row in spec["cases"]:
+        sid = row["id"]
+        a, c, meta = (make_inclined_case(row, spec["grid_size"])
+                      if spec["schema"] == INCLINED_SCHEMA
+                      else make_case(sid, spec["grid_size"]))
         folder = staging / "library" / sid
         folder.mkdir(parents=True)
         np.savez_compressed(folder / "mask.npz", anode=a, cathode=c,
@@ -291,11 +314,14 @@ def audit(out: Path) -> tuple[dict, list[tuple]]:
     if {p.name for p in (out / "library").iterdir() if p.is_dir()} != set(case_ids):
         raise ValueError("Unexpected/missing geometry directory")
     items = []
-    for record in manifest:
+    for design, record in zip(spec["cases"], manifest):
         folder = out / "library" / record["geometry_id"]
         meta = read_json(folder / "metadata.json")
         if meta != record or file_hash(folder / "mask.npz") != meta["mask_file_sha256"]:
             raise ValueError("Stored geometry checksum/metadata mismatch")
+        if spec["schema"] == INCLINED_SCHEMA:
+            if meta.get("schema") != INCLINED_SCHEMA or meta.get("design_case") != design:
+                raise ValueError("Inclined geometry does not match the declared study case")
         with np.load(folder / "mask.npz", allow_pickle=False) as z:
             a, c = z["anode"].copy(), z["cathode"].copy()
             if (z["propellant"].shape != a.shape or z["propellant"].dtype != np.bool_
@@ -339,9 +365,12 @@ def build_geometry(items, n: int, device, minimum_gap_m: float, geometry_type):
     ids, anodes, cathodes = [], [], []
     for a, c, meta, _ in items:
         validate_item(a, c, meta, n)
-        # Only split cases validate the additional minimum-edge metadata. For
+        # Bent and split geometries validate their own smallest clearances. For
         # legacy cases, extra metadata must never override their validated gap.
-        gap_mm = meta["minimum_edge_gap_mm"] if meta["geometry_id"] == SPLIT_CASE_ID else meta["gap_mm"]
+        if meta.get("schema") == INCLINED_SCHEMA:
+            gap_mm = min(meta["minimum_edge_gap_mm"], meta["raster_minimum_gap_mm"])
+        else:
+            gap_mm = meta["minimum_edge_gap_mm"] if meta["geometry_id"] == SPLIT_CASE_ID else meta["gap_mm"]
         if gap_mm / 1000 + 1e-12 < minimum_gap_m:
             raise ValueError("Case gap is below the evaluator's requested minimum")
         ids.append(meta["geometry_id"])
@@ -424,6 +453,13 @@ def summary_rows(records: list[dict]) -> list[dict]:
             "anode_area_mm2", "cathode_area_mm2", "total_electrode_area_mm2",
             "anode_to_cathode_area_ratio", "grid_size", "grid_spacing_mm")}
         row.update(groups=";".join(m["groups"]), result_state=state)
+        if m.get("schema") == INCLINED_SCHEMA:
+            for key in ("inclination_deg", "central_gap_mm", "end_gap_mm",
+                        "minimum_edge_gap_mm", "raster_minimum_gap_mm",
+                        "raster_max_boundary_error_mm", "actual_anode_area_mm2",
+                        "actual_cathode_area_mm2", "anode_normal_width_mm",
+                        "cathode_normal_width_mm", "electrode_centerline_length_mm"):
+                row[key] = m[key]
         if split_comparison:
             row.update(central_split_gap_mm=m.get("central_split_gap_mm", 0.0),
                        segment_length_mm=m.get("segment_length_mm", m["electrode_length_mm"]),
@@ -520,6 +556,8 @@ def evaluate(root: Path, out: Path, physics_path: Path, device: str,
     write_csv(out / "parameter_study_summary.csv", rows)
     if split_study:
         write_csv(out / "split_comparison_summary.csv", rows)
+    elif spec["schema"] == INCLINED_SCHEMA:
+        write_csv(out / "inclination_summary.csv", rows)
     else:
         for group in ("spacing", "width", "area_ratio"):
             write_csv(out / f"{group}_summary.csv", [r for r in rows if group in r["groups"].split(";")])
@@ -529,13 +567,19 @@ def evaluate(root: Path, out: Path, physics_path: Path, device: str,
     return rows
 
 
-def summarize_experiments(source: Path, destination: Path, *, case_ids=None) -> None:
+def summarize_experiments(source: Path, destination: Path, *, case_ids=None, study_spec=None) -> None:
     """Sample mean/SD of successful trials; nonignition remains right-censored."""
     if source.resolve() == destination.resolve():
         raise ValueError("Experimental input and summary output must be different files")
+    allowed_ids = REGISTERED_CASES
+    if study_spec is not None:
+        validated = validate_spec(study_spec)
+        allowed_ids = [row["id"] for row in validated["cases"]]
+        if case_ids is None:
+            case_ids = allowed_ids
     case_ids = list(CASES) if case_ids is None else list(case_ids)
     if (not case_ids or len(set(case_ids)) != len(case_ids)
-        or any(sid not in REGISTERED_CASES for sid in case_ids)):
+        or any(sid not in allowed_ids for sid in case_ids)):
         raise ValueError("Invalid experimental case selection")
     groups = {sid: {"delays": [], "failed": 0, "excluded": 0, "pending": 0} for sid in case_ids}
     seen = set()
@@ -632,7 +676,7 @@ def main() -> int:
     if args.command == "generate":
         spec = yaml.safe_load(relative(args.study_config).read_text(encoding="utf-8"))
         generate(spec, out, experiment_seed=args.experiment_seed)
-        print(f"Generated {len(spec['cases'])} exact registered cases: {out}")
+        print(f"Generated {len(spec['cases'])} validated study cases: {out}")
     elif args.command == "audit":
         spec, items = audit(out)
         print(json.dumps(dict(cases=len(items), grid_size=spec["grid_size"],
@@ -647,7 +691,7 @@ def main() -> int:
         if args.input is None:
             parser.error("summarize-experiments requires --input")
         spec = validate_spec(yaml.safe_load(relative(args.study_config).read_text(encoding="utf-8")))
-        summarize_experiments(relative(args.input), out, case_ids=[row["id"] for row in spec["cases"]])
+        summarize_experiments(relative(args.input), out, study_spec=spec)
     return 0
 
 
