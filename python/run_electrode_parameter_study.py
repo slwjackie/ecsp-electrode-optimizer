@@ -33,6 +33,16 @@ from electrode_inclination_sweep import DEFAULT_INCLINATION_ANGLES, plan_inclina
 from electrode_rectangular_geometry import (
     RECTANGULAR_SCHEMA, make_rectangular_case, validate_rectangular_spec,
 )
+from electrode_central_gap_geometry import (
+    CENTRAL_GAP_SCHEMA, make_central_gap_case, validate_central_gap_spec,
+)
+
+PARAMETRIC_MAKERS = {
+    INCLINED_SCHEMA: make_inclined_case,
+    RECTANGULAR_SCHEMA: make_rectangular_case,
+    CENTRAL_GAP_SCHEMA: make_central_gap_case,
+}
+RECTANGULAR_STUDY_SCHEMAS = {RECTANGULAR_SCHEMA, CENTRAL_GAP_SCHEMA}
 
 BASE_REVISION = "563ffbff7ee1cfbf46a81ff946aac69383b4a461"
 SCHEMA = "full_height_strip_study_v1"
@@ -102,8 +112,10 @@ def write_csv(path: Path, rows: list[dict], fields: list[str] | None = None) -> 
 
 def validate_spec(spec: Mapping[str, Any]) -> dict:
     """A deliberately fixed study; reject silent changes of its physical design."""
-    if isinstance(spec, Mapping) and spec.get("schema") in {INCLINED_SCHEMA, RECTANGULAR_SCHEMA}:
-        validator = validate_rectangular_spec if spec["schema"] == RECTANGULAR_SCHEMA else validate_inclined_spec
+    if isinstance(spec, Mapping) and spec.get("schema") in PARAMETRIC_MAKERS:
+        validator = {INCLINED_SCHEMA: validate_inclined_spec,
+                     RECTANGULAR_SCHEMA: validate_rectangular_spec,
+                     CENTRAL_GAP_SCHEMA: validate_central_gap_spec}[spec["schema"]]
         result = validator(spec)
         if any(row["id"] in REGISTERED_CASES for row in result["cases"]):
             raise ValueError("Inclined cases must not reuse legacy registered case IDs")
@@ -226,10 +238,10 @@ def validate_item(a: np.ndarray, c: np.ndarray, meta: Mapping, n: int) -> None:
     Never repair masks, resize them, loosen an area tolerance or drop metadata.
     """
     sid = meta.get("geometry_id")
-    if meta.get("schema") in {INCLINED_SCHEMA, RECTANGULAR_SCHEMA}:
+    if meta.get("schema") in PARAMETRIC_MAKERS:
         if sid in REGISTERED_CASES:
             raise ValueError("Inclined cases must not reuse legacy registered case IDs")
-        maker = make_rectangular_case if meta["schema"] == RECTANGULAR_SCHEMA else make_inclined_case
+        maker = PARAMETRIC_MAKERS[meta["schema"]]
         ea, ec, em = maker(meta.get("design_case"), n)
     else:
         if sid not in REGISTERED_CASES:
@@ -285,17 +297,15 @@ def generate(spec: Mapping, out: Path, *, experiment_seed: int = 20261005,
     records = []
     for row in spec["cases"]:
         sid = row["id"]
-        if spec["schema"] == RECTANGULAR_SCHEMA:
-            a, c, meta = make_rectangular_case(row, spec["grid_size"])
-        elif spec["schema"] == INCLINED_SCHEMA:
-            a, c, meta = make_inclined_case(row, spec["grid_size"])
+        if spec["schema"] in PARAMETRIC_MAKERS:
+            a, c, meta = PARAMETRIC_MAKERS[spec["schema"]](row, spec["grid_size"])
         else:
             a, c, meta = make_case(sid, spec["grid_size"])
         folder = staging / "library" / sid
         folder.mkdir(parents=True)
         dimensions = ({"domain_width_mm": meta["domain_width_mm"],
                        "domain_height_mm": meta["domain_height_mm"]}
-                      if spec["schema"] == RECTANGULAR_SCHEMA else {})
+                      if spec["schema"] in RECTANGULAR_STUDY_SCHEMAS else {})
         np.savez_compressed(folder / "mask.npz", anode=a, cathode=c,
                             propellant=np.ones_like(a), domain_mm=25.0, **dimensions)
         (folder / "geometry.svg").write_text(geometry_svg(meta), encoding="utf-8")
@@ -333,6 +343,8 @@ def generate_sweep(template: Mapping, out: Path, angles=None,
                    *, experiment_seed: int = 20261005) -> list[dict]:
     """Generate feasible cases and record all requested, including rejected, angles."""
     template = validate_spec(template)
+    if template["schema"] == CENTRAL_GAP_SCHEMA:
+        raise ValueError("Central-gap study derives angles from fixed end gaps; use generate, not generate-sweep")
     requested = list(DEFAULT_INCLINATION_ANGLES if angles is None else angles)
     spec, report = plan_inclination_sweep(template, requested)
     generate(spec, out, experiment_seed=experiment_seed,
@@ -363,7 +375,7 @@ def audit(out: Path) -> tuple[dict, list[tuple]]:
         meta = read_json(folder / "metadata.json")
         if meta != record or file_hash(folder / "mask.npz") != meta["mask_file_sha256"]:
             raise ValueError("Stored geometry checksum/metadata mismatch")
-        if spec["schema"] in {INCLINED_SCHEMA, RECTANGULAR_SCHEMA}:
+        if spec["schema"] in PARAMETRIC_MAKERS:
             if meta.get("schema") != spec["schema"] or meta.get("design_case") != design:
                 raise ValueError("Inclined geometry does not match the declared study case")
         with np.load(folder / "mask.npz", allow_pickle=False) as z:
@@ -371,7 +383,7 @@ def audit(out: Path) -> tuple[dict, list[tuple]]:
             if (z["propellant"].shape != a.shape or z["propellant"].dtype != np.bool_
                 or not z["propellant"].all() or float(z["domain_mm"]) != 25.0):
                 raise ValueError("Full-propellant overlay contract violated")
-            if spec["schema"] == RECTANGULAR_SCHEMA and (
+            if spec["schema"] in RECTANGULAR_STUDY_SCHEMAS and (
                 "domain_width_mm" not in z or "domain_height_mm" not in z
                 or float(z["domain_width_mm"]) != spec["domain_width_mm"]
                 or float(z["domain_height_mm"]) != spec["domain_height_mm"]
@@ -427,7 +439,7 @@ def build_geometry(items, n: int, device, minimum_gap_m: float, geometry_type):
         validate_item(a, c, meta, n)
         # Bent and split geometries validate their own smallest clearances. For
         # legacy cases, extra metadata must never override their validated gap.
-        if meta.get("schema") in {INCLINED_SCHEMA, RECTANGULAR_SCHEMA}:
+        if meta.get("schema") in PARAMETRIC_MAKERS:
             gap_mm = min(meta["minimum_edge_gap_mm"], meta["raster_minimum_gap_mm"])
         else:
             gap_mm = meta["minimum_edge_gap_mm"] if meta["geometry_id"] == SPLIT_CASE_ID else meta["gap_mm"]
@@ -557,16 +569,19 @@ def summary_rows(records: list[dict]) -> list[dict]:
             "anode_area_mm2", "cathode_area_mm2", "total_electrode_area_mm2",
             "anode_to_cathode_area_ratio", "grid_size", "grid_spacing_mm")}
         row.update(groups=";".join(m["groups"]), result_state=state)
-        if m.get("schema") in {INCLINED_SCHEMA, RECTANGULAR_SCHEMA}:
+        if m.get("schema") in PARAMETRIC_MAKERS:
             for key in ("inclination_deg", "central_gap_mm", "end_gap_mm",
                         "minimum_edge_gap_mm", "raster_minimum_gap_mm",
                         "raster_max_boundary_error_mm", "actual_anode_area_mm2",
                         "actual_cathode_area_mm2", "anode_normal_width_mm",
                         "cathode_normal_width_mm", "electrode_centerline_length_mm"):
                 row[key] = m[key]
-        if m.get("schema") == RECTANGULAR_SCHEMA:
+        if m.get("schema") in RECTANGULAR_STUDY_SCHEMAS:
             for key in ("domain_width_mm", "domain_height_mm", "grid_rows", "grid_columns",
                         "propellant_domain_area_mm2"):
+                row[key] = m[key]
+        if m.get("schema") == CENTRAL_GAP_SCHEMA:
+            for key in ("central_side_clearance_mm", "end_side_clearance_mm"):
                 row[key] = m[key]
         if split_comparison:
             row.update(central_split_gap_mm=m.get("central_split_gap_mm", 0.0),
@@ -604,7 +619,7 @@ def evaluate(root: Path, out: Path, physics_path: Path, device: str,
         raise ValueError("Simulation output must not be inside source/data directories")
     base = yaml.safe_load(physics_path.read_text(encoding="utf-8"))
     cfg = runtime_config(base, spec["grid_size"], device, batch_size, split_study=split_study,
-                         rectangular_study=spec["schema"] == RECTANGULAR_SCHEMA,
+                         rectangular_study=spec["schema"] in RECTANGULAR_STUDY_SCHEMAS,
                          skip_vmin=skip_vmin)
     fence = source_fence(root)
     identity = digest(dict(schema=spec["schema"], study=spec, runtime=cfg, sources=fence,
@@ -669,6 +684,8 @@ def evaluate(root: Path, out: Path, physics_path: Path, device: str,
     write_csv(out / "parameter_study_summary.csv", rows)
     if split_study:
         write_csv(out / "split_comparison_summary.csv", rows)
+    elif spec["schema"] == CENTRAL_GAP_SCHEMA:
+        write_csv(out / "central_gap_summary.csv", rows)
     elif spec["schema"] in {INCLINED_SCHEMA, RECTANGULAR_SCHEMA}:
         write_csv(out / "inclination_summary.csv", rows)
         if spec["schema"] == RECTANGULAR_SCHEMA:

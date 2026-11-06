@@ -1,0 +1,16 @@
+# Fixed endpoint footprints: anode x=3..5 mm, cathode x=7..9 mm at y=0 and 25 mm.
+# Width means horizontal cross-section. Angles are derived from central gaps.
+schema: fixed_end_gap_central_sweep_v1
+domain_width_mm: 12.0
+domain_height_mm: 25.0
+electrode_length_mm: 25.0
+electrode_width_mm: 2.0
+end_gap_mm: 2.0
+grid_size: 200  # Ny; equal 0.125 mm cells give Nx=96
+placement: fixed_end_gap_mirrored_pair
+experimental_replicates: 5
+cases:
+  - {id: CENTRAL_G2, central_gap_mm: 2.0, groups: [central_gap]}
+  - {id: CENTRAL_G4, central_gap_mm: 4.0, groups: [central_gap]}
+  - {id: CENTRAL_G6, central_gap_mm: 6.0, groups: [central_gap]}
+  - {id: CENTRAL_G8, central_gap_mm: 8.0, groups: [central_gap]}

@@ -12,6 +12,7 @@
 | 25 mm 직선 전극 8개 조건의 parameter study | `python/run_electrode_parameter_study.py` | [직선 전극 안내](docs/ELECTRODE_PARAMETER_STUDY_25MM_KR.md) |
 | 25 mm 동일 면적·중앙 간격에서 직선/경사 전극 비교 | 같은 실행기에 `--study-config config/electrode_inclination_study_25mm.yaml` | [경사각 비교 안내](docs/ELECTRODE_INCLINATION_STUDY_25MM_KR.md) |
 | 가로 12 mm·세로 25 mm에서 폭 2/4 mm·경사각 비교 | 같은 실행기에 `--study-config config/electrode_inclination_study_12x25mm.yaml` | [직사각형 전극 안내](docs/ELECTRODE_RECTANGULAR_STUDY_12X25MM_KR.md) |
+| 가로 12 mm·세로 25 mm에서 끝 간격·폭 2 mm 고정, 중앙 간격 2/4/6/8 mm 비교 | 같은 실행기에 `--study-config config/electrode_central_gap_study_12x25mm.yaml` | [중앙 간격 비교 안내](docs/ELECTRODE_CENTRAL_GAP_STUDY_12X25MM_KR.md) |
 | 25 mm 분할 교대 전극(폭 4 mm, 좌우 2 mm, 중앙 1 mm)과 비분할형 비교 | 같은 실행기에 `--study-config config/electrode_split_study_25mm.yaml` | [분할 전극 안내](docs/ELECTRODE_SPLIT_STUDY_25MM_KR.md) |
 | 고정 148개 형상과 각 형상의 면적 대응 staggered 비교 | `python/run_paired_preflame_screening.py` | [paired screening 안내](docs/image_design/PAIRED_SCREENING_KR.md) |
 | 기존 5개 형상 생성·감사·평가 | `python/run_five_topology_preflame.py` | [5개 형상 검증 기록](docs/image_design/FIVE_TOPOLOGY_VALIDATION_KR.md) |
